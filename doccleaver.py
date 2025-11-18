@@ -13,6 +13,7 @@ Full app | ZERO ERRORS | PROFESSIONAL | FINAL
 """
 
 import sys
+import os
 import json
 import traceback
 from pathlib import Path
@@ -778,12 +779,21 @@ class DocCleaver(QMainWindow):
         self.invoice_check_label.setStyleSheet("font-size: 7pt;")
         self.invoice_check_label.setAlignment(Qt.AlignCenter)
 
-        # Use a QVBoxLayout for the invoice check label
+        # Use a QVBoxLayout for the invoice check label and Edit Values button
         vbox_check = QVBoxLayout()
         vbox_check.setSpacing(12)
         vbox_check.setContentsMargins(0, 10, 0, 0)
 
         vbox_check.addWidget(self.invoice_check_label, alignment=Qt.AlignCenter)
+        
+        # Edit Values button (initially hidden, shown when values don't match)
+        self.edit_values_btn = QPushButton("Edit Values")
+        self.edit_values_btn.setFixedSize(120, 30)
+        self.edit_values_btn.setStyleSheet("background:#ff9800; color:white; font-weight:bold;")
+        self.edit_values_btn.setVisible(False)
+        self.edit_values_btn.clicked.connect(self.start_processing_with_editable_preview)
+        vbox_check.addWidget(self.edit_values_btn, alignment=Qt.AlignCenter)
+        
         vbox_check.addStretch()                     # pushes everything to the top
 
         # Now add the vertical layout as the widget for the row (after MID)
@@ -940,6 +950,7 @@ class DocCleaver(QMainWindow):
         self.progress.setVisible(False)
         self.invoice_check_label.setText("No file loaded")
         self.csv_total_value = 0.0
+        self.edit_values_btn.setVisible(False)
         self.status.setText("Cleared")
         self.status.setStyleSheet("font-size:14pt; padding:8px; background:#f0f0f0;")
         logger.info("Process tab cleared")
@@ -1051,12 +1062,18 @@ class DocCleaver(QMainWindow):
         if diff <= 0.05:
             self.invoice_check_label.setText(f"Match: ${self.csv_total_value:,.2f}")
             self.invoice_check_label.setStyleSheet("color:green; font-weight:bold; font-size:7pt;")
+            self.edit_values_btn.setVisible(False)
         else:
             self.invoice_check_label.setText(
                 f"CSV = ${self.csv_total_value:,.2f} | "
                 f"Entered = ${user_val:,.2f} | Diff = ${diff:,.2f}"
             )
             self.invoice_check_label.setStyleSheet("color:red; font-weight:bold; font-size:7pt;")
+            # Show Edit Values button when values don't match and haven't processed yet
+            if self.last_processed_df is None:
+                self.edit_values_btn.setVisible(True)
+            else:
+                self.edit_values_btn.setVisible(False)
         
         # Button state control
         if self.current_csv and len(self.shipment_mapping) >= 2:
@@ -1174,6 +1191,86 @@ class DocCleaver(QMainWindow):
         self.current_worker.missing_data.connect(self.log_missing_data_warning)
         self.current_worker.invoice_diff.connect(self.handle_invoice_diff)
         self.current_worker.start()
+    
+    def start_processing_with_editable_preview(self):
+        """Open the CSV file in default editor for user to edit directly"""
+        if not self.current_csv:
+            return
+        
+        try:
+            # Open the CSV file with the default system application
+            import subprocess
+            if sys.platform == 'win32':
+                os.startfile(self.current_csv)
+            elif sys.platform == 'darwin':  # macOS
+                subprocess.run(['open', self.current_csv])
+            else:  # linux
+                subprocess.run(['xdg-open', self.current_csv])
+            
+            # Show message to user
+            QMessageBox.information(
+                self, 
+                "Edit File", 
+                f"Opening file for editing:\n{Path(self.current_csv).name}\n\n"
+                "Edit the values, save the file, then return here.\n"
+                "The CI Value input will be updated when you reload the file."
+            )
+            
+            # Reload the file to get updated values
+            self.reload_csv_values()
+            
+        except Exception as e:
+            logger.error(f"Failed to open file: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to open file:\n{e}")
+    
+    def reload_csv_values(self):
+        """Reload CSV to recalculate total after external edits"""
+        if not self.current_csv:
+            return
+        
+        try:
+            col_map = {v: k for k, v in self.shipment_mapping.items()}
+            if Path(self.current_csv).suffix.lower() == ".xlsx":
+                df = pd.read_excel(self.current_csv, dtype=str)
+            else:
+                df = pd.read_csv(self.current_csv, dtype=str)
+            df = df.rename(columns=col_map)
+
+            if 'value_usd' in df.columns:
+                # Remove rows where value_usd is blank, empty, or zero
+                original_count = len(df)
+                df['value_usd'] = pd.to_numeric(df['value_usd'], errors='coerce')
+                df = df[df['value_usd'].notna() & (df['value_usd'] != 0)]
+                removed_count = original_count - len(df)
+                
+                # Save cleaned data back to file
+                if removed_count > 0:
+                    # Rename back to original columns for saving
+                    reverse_map = {k: v for k, v in self.shipment_mapping.items()}
+                    save_df = df.rename(columns=reverse_map)
+                    
+                    if Path(self.current_csv).suffix.lower() == ".xlsx":
+                        save_df.to_excel(self.current_csv, index=False)
+                    else:
+                        save_df.to_csv(self.current_csv, index=False)
+                    
+                    logger.info(f"Removed {removed_count} rows with blank/zero values")
+                
+                # Calculate total
+                total = df['value_usd'].sum()
+                self.csv_total_value = round(total, 2)
+                self.ci_input.setText(f"{self.csv_total_value:,.2f}")
+                self.update_invoice_check()
+                
+                if removed_count > 0:
+                    self.status.setText(f"File reloaded - Removed {removed_count} blank/zero rows")
+                    self.status.setStyleSheet("background:#ff9800; color:white; font-weight:bold; padding:8px;")
+                else:
+                    self.status.setText("File reloaded - Check invoice values")
+                    self.status.setStyleSheet("background:#2196F3; color:white; font-weight:bold; padding:8px;")
+        except Exception as e:
+            logger.error(f"reload_csv_values failed: {e}")
+            QMessageBox.warning(self, "Reload Error", f"Failed to reload values:\n{e}")
 
     def handle_invoice_diff(self, csv_sum, user_entered):
         # Display-only; enablement handled by update/check methods
