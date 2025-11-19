@@ -219,7 +219,7 @@ init_database()
 class DraggableLabel(QLabel):
     def __init__(self, text):
         super().__init__(text)
-        self.setStyleSheet("background:#e0e0e0;border:2px solid #aaa;border-radius:8px;padding:12px;font-weight:bold;")
+        self.setStyleSheet("background:#6b6b6b;border:2px solid #aaa;border-radius:8px;padding:12px;font-weight:bold;color:#ffffff;")
         self.setAlignment(Qt.AlignCenter)
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
@@ -234,7 +234,7 @@ class DropTarget(QLabel):
     def __init__(self, field_key, field_name):
         super().__init__(f"Drop {field_name} here")
         self.field_key = field_key
-        self.setStyleSheet("background:#f8f8f8;border:2px dashed #888;border-radius:10px;padding:12px;min-height:40px;max-height:60px;max-width:250px;font-size:12pt;")
+        self.setStyleSheet("background:#7a7a7a;border:2px dashed #888;border-radius:10px;padding:12px;min-height:40px;max-height:60px;max-width:250px;font-size:12pt;color:#ffffff;")
         self.setAlignment(Qt.AlignCenter)
         self.setAcceptDrops(True)
         self.column_name = None
