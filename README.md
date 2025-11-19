@@ -80,6 +80,8 @@ Theme-aware UI elements:
 - **Export Progress Indicator**: Real-time progress bar for export operations
 - **Deferred Loading**: Non-blocking startup with background file list refresh
 - **Auto-refresh**: Configurable automatic input file monitoring
+- **Automatic File Cleanup**: Moves exported files older than 3 days to Output/Processed directory
+- **Housekeeping on Startup**: Shows progress indicator during file maintenance operations
 
 ## Database
 
@@ -134,6 +136,19 @@ When enabled, rows are color-coded by material type:
 - **Copper**: Light bronze (#ffe0b2)
 
 Toggle available on both Section 232 Tariff List and Section 232 Actions tabs.
+
+## File Management
+
+- **Input Files**: Processed CSV files automatically moved to Input/Processed folder after export
+- **Output Files**: Exported Excel files older than 3 days automatically moved to Output/Processed folder
+- **Cleanup Schedule**: Runs on startup and every 30 minutes during operation
+- **Smart Detection**: Only moves files when conditions are met, maintains file integrity
+
+## Text Visibility
+
+- **Derivative Rows**: Display in medium charcoal gray (#4a4a4a) for optimal visibility on both light and dark themes
+- **Non-232 Rows**: Display in red for easy identification
+- **Theme-Aware Components**: File labels, status bars, and UI elements adapt to selected theme
 
 ## License
 
