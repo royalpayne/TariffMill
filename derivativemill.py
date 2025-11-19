@@ -2430,7 +2430,7 @@ class DerivativeMill(QMainWindow):
         search_box = QHBoxLayout()
         search_box.addWidget(QLabel("Quick Search:"))
         self.search_field_combo = QComboBox()
-        self.search_field_combo.addItems(["All Fields","Part Number","Description","HTS Code","Origin","MID","232 Ratio","Non-232 Ratio"])
+        self.search_field_combo.addItems(["All Fields","part_number","description","hts_code","country_origin","mid","steel_ratio","non_steel_ratio"])
         search_box.addWidget(self.search_field_combo)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Type to filter...")
@@ -2443,7 +2443,7 @@ class DerivativeMill(QMainWindow):
         self.parts_table = QTableWidget()
         self.parts_table.setColumnCount(8)
         self.parts_table.setHorizontalHeaderLabels([
-            "Part Number", "Description", "HTS Code", "Origin", "MID", "232 Ratio", "Non-232 Ratio", "Updated"
+            "part_number", "description", "hts_code", "country_origin", "mid", "steel_ratio", "non_steel_ratio", "updated_date"
         ])
         self.parts_table.setEditTriggers(QTableWidget.AllEditTriggers)
         self.parts_table.setSelectionBehavior(QTableWidget.SelectRows)
