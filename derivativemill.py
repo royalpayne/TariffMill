@@ -4110,6 +4110,15 @@ if __name__ == "__main__":
     logger.info(f"Application started by user: {login.authenticated_user}")
     win = DerivativeMill()
     win.setWindowTitle(f"{APP_NAME} {VERSION} - User: {login.authenticated_user}")
+    win.splash_screen = splash  # Store reference for housekeeping message
+    
+    # Update splash for housekeeping
+    splash.showMessage(
+        f"Loading {APP_NAME}...\n⏳ Housekeeping in Progress\nCleaning old files...",
+        Qt.AlignCenter,
+        QColor(243, 243, 243)
+    )
+    app.processEvents()
     
     # Close splash and show main window
     splash.finish(win)
