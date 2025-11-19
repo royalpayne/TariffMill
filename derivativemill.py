@@ -1417,19 +1417,19 @@ class DerivativeMill(QMainWindow):
         
         # Define button type colors
         if button_type == "primary" or button_type == "success":
-            # Green for success/primary actions
-            bg = QColor(40, 167, 69)  # Green
-            hover_bg = QColor(33, 136, 56)  # Darker green
+            # Teal for success/primary actions
+            bg = QColor(0, 128, 128)  # Teal
+            hover_bg = QColor(0, 77, 77)  # Darker Teal
             disabled_bg = QColor(160, 160, 160)  # Grey
         elif button_type == "danger":
-            # Red for destructive actions
-            bg = QColor(220, 53, 69)  # Red
-            hover_bg = QColor(200, 35, 51)  # Darker red
+            # Teal for success/primary actions
+            bg = QColor(0, 128, 128)  # Teal
+            hover_bg = QColor(0, 77, 77)  # Darker Teal
             disabled_bg = QColor(160, 160, 160)  # Grey
         elif button_type == "info":
-            # Blue for informational actions
-            bg = QColor(0, 120, 215)  # Blue
-            hover_bg = QColor(0, 95, 184)  # Darker blue
+            # Teal for success/primary actions
+            bg = QColor(0, 128, 128)  # Teal
+            hover_bg = QColor(0, 77, 77)  # Darker Teal
             disabled_bg = QColor(160, 160, 160)  # Grey
         elif button_type == "warning":
             # Orange for warning actions
@@ -2214,11 +2214,20 @@ class DerivativeMill(QMainWindow):
 
     def reset_current_mapping(self):
         self.shipment_mapping = {}
+        
+        # Clear drop targets (right side)
         for target in self.shipment_targets.values():
             target.column_name = None
             target.setText(f"Drop {target.field_key} here")
             target.setProperty("occupied", False)
             target.style().unpolish(target); target.style().polish(target)
+        
+        # Clear CSV columns drag labels (left side)
+        for label in self.shipment_drag_labels:
+            label.setParent(None)
+            label.deleteLater()
+        self.shipment_drag_labels = []
+        
         self.status.setText("Current mapping reset")
 
     def load_mapping_profiles(self):
