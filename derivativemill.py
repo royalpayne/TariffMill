@@ -1738,24 +1738,46 @@ class DerivativeMill(QMainWindow):
             df = df.rename(columns=col_map)
 
             if 'value_usd' in df.columns:
-                # Remove rows where value_usd is blank, empty, or zero
+                # Check for rows where value_usd is blank, empty, or zero
                 original_count = len(df)
                 df['value_usd'] = pd.to_numeric(df['value_usd'], errors='coerce')
-                df = df[df['value_usd'].notna() & (df['value_usd'] != 0)]
-                removed_count = original_count - len(df)
+                zero_rows_df = df[df['value_usd'].isna() | (df['value_usd'] == 0)]
+                zero_count = len(zero_rows_df)
                 
-                # Save cleaned data back to file
-                if removed_count > 0:
-                    # Rename back to original columns for saving
-                    reverse_map = {k: v for k, v in self.shipment_mapping.items()}
-                    save_df = df.rename(columns=reverse_map)
+                removed_count = 0
+                if zero_count > 0:
+                    # Prompt user to confirm deletion
+                    reply = QMessageBox.question(
+                        self,
+                        "Remove Zero Value Rows",
+                        f"Found {zero_count} row(s) with blank or zero values.\n\n"
+                        f"Do you want to remove these rows?\n\n"
+                        f"• Yes: Remove rows and continue processing\n"
+                        f"• No: Keep all rows and process as is",
+                        QMessageBox.Yes | QMessageBox.No,
+                        QMessageBox.Yes
+                    )
                     
-                    if Path(self.current_csv).suffix.lower() == ".xlsx":
-                        save_df.to_excel(self.current_csv, index=False)
+                    if reply == QMessageBox.Yes:
+                        # Remove the zero value rows
+                        df = df[df['value_usd'].notna() & (df['value_usd'] != 0)]
+                        removed_count = original_count - len(df)
+                        
+                        # Save cleaned data back to file
+                        if removed_count > 0:
+                            # Rename back to original columns for saving
+                            reverse_map = {k: v for k, v in self.shipment_mapping.items()}
+                            save_df = df.rename(columns=reverse_map)
+                            
+                            if Path(self.current_csv).suffix.lower() == ".xlsx":
+                                save_df.to_excel(self.current_csv, index=False)
+                            else:
+                                save_df.to_csv(self.current_csv, index=False)
+                            
+                            logger.info(f"Removed {removed_count} rows with blank/zero values")
                     else:
-                        save_df.to_csv(self.current_csv, index=False)
-                    
-                    logger.info(f"Removed {removed_count} rows with blank/zero values")
+                        # User chose No - keep all rows
+                        logger.info(f"User chose to keep {zero_count} row(s) with blank/zero values")
                 
                 # Calculate total
                 total = df['value_usd'].sum()
@@ -1766,6 +1788,9 @@ class DerivativeMill(QMainWindow):
                 if removed_count > 0:
                     self.status.setText(f"File reloaded - Removed {removed_count} blank/zero rows")
                     self.status.setStyleSheet("background:#ff9800; color:white; font-weight:bold; padding:8px;")
+                elif zero_count > 0:
+                    self.status.setText(f"File reloaded - Kept {zero_count} blank/zero rows")
+                    self.status.setStyleSheet("background:#2196F3; color:white; font-weight:bold; padding:8px;")
                 else:
                     self.status.setText("File reloaded - Check invoice values")
                     self.status.setStyleSheet("background:#2196F3; color:white; font-weight:bold; padding:8px;")
