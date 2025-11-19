@@ -640,7 +640,7 @@ class LoginDialog(QDialog):
 # ----------------------------------------------------------------------
 # MAIN APPLICATION — FINAL DESIGN
 # ----------------------------------------------------------------------
-class DocCleaver(QMainWindow):
+class DerivativeMill(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} {VERSION}")
@@ -4047,7 +4047,7 @@ if __name__ == "__main__":
     
     # Login successful, create main window
     logger.info(f"Application started by user: {login.authenticated_user}")
-    win = DocCleaver()
+    win = DerivativeMill()
     win.setWindowTitle(f"{APP_NAME} {VERSION} - User: {login.authenticated_user}")
     
     # Close splash and show main window
