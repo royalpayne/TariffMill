@@ -2372,11 +2372,13 @@ class DerivativeMill(QMainWindow):
 
         edit_box = QHBoxLayout()
         btn_add = QPushButton("Add Row")
+        btn_add.setStyleSheet(self.get_button_style("success"))
         btn_del = QPushButton("Delete Selected")
+        btn_del.setStyleSheet(self.get_button_style("danger"))
         btn_save = QPushButton("Save Changes")
+        btn_save.setStyleSheet(self.get_button_style("success"))
         btn_refresh = QPushButton("Refresh")
-        for btn in (btn_add, btn_del, btn_save, btn_refresh):
-            btn.setStyleSheet("font-weight:bold;")
+        btn_refresh.setStyleSheet(self.get_button_style("info"))
         btn_add.clicked.connect(self.add_part_row)
         btn_del.clicked.connect(self.delete_selected_parts)
         btn_save.clicked.connect(self.save_parts_table)
@@ -2411,6 +2413,7 @@ class DerivativeMill(QMainWindow):
         query_controls.addWidget(btn_run_query)
         
         btn_clear_query = QPushButton("Show All")
+        btn_clear_query.setStyleSheet(self.get_button_style("default"))
         btn_clear_query.clicked.connect(self.refresh_parts_table)
         query_controls.addWidget(btn_clear_query)
         
@@ -2960,11 +2963,12 @@ class DerivativeMill(QMainWindow):
         # Control buttons
         btn_layout = QHBoxLayout()
         btn_import = QPushButton("Import Actions CSV")
-        btn_import.setStyleSheet("background:#0078D7; color:white; font-weight:bold; padding:8px;")
+        btn_import.setStyleSheet(self.get_button_style("info"))
         btn_import.clicked.connect(self.import_actions_csv)
         btn_layout.addWidget(btn_import)
         
         btn_refresh = QPushButton("Refresh View")
+        btn_refresh.setStyleSheet(self.get_button_style("default"))
         btn_refresh.clicked.connect(self.refresh_actions_view)
         btn_layout.addWidget(btn_refresh)
         btn_layout.addStretch()
