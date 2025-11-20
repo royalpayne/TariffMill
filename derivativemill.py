@@ -819,25 +819,45 @@ class DerivativeMill(QMainWindow):
         # Connect to tab change signal for lazy initialization
         self.tabs.currentChanged.connect(self.on_tab_changed)
 
-        self.load_config_paths()
-        self.apply_saved_theme()
+        # Note: Database loading and initialization happens before window is shown
+        # See main() function for the loading sequence with splash screen
         
-        # Show loading indicator and load data synchronously
-        self.show_loading_indicator()
-        QApplication.processEvents()  # Process events to show the spinner
+        logger.success(f"{APP_NAME} {VERSION} GUI ready")
+    
+    def initialize_data(self, splash=None, progress_callback=None):
+        """Initialize database and load all data before showing window"""
+        steps = [
+            ("Loading configuration...", self.load_config_paths),
+            ("Applying theme...", self.apply_saved_theme),
+            ("Loading MIDs...", self.load_available_mids),
+            ("Loading profiles...", self.load_mapping_profiles),
+            ("Scanning output files...", self.refresh_exported_files),
+            ("Scanning input files...", self.refresh_input_files),
+            ("Starting auto-refresh...", self.setup_auto_refresh),
+            ("Finalizing...", self.update_status_bar_styles),
+        ]
         
-        self.load_available_mids()
-        self.load_mapping_profiles()
-        self.refresh_exported_files()
-        self.refresh_input_files()
-        self.setup_auto_refresh()
+        total_steps = len(steps)
+        for i, (message, func) in enumerate(steps):
+            if splash:
+                splash.showMessage(
+                    f"Loading {APP_NAME}...\n{message}\nPlease wait...",
+                    Qt.AlignCenter | Qt.AlignBottom,
+                    QColor(243, 243, 243)
+                )
+            if progress_callback:
+                progress_callback(int((i / total_steps) * 100))
+            QApplication.processEvents()
+            
+            try:
+                func()
+            except Exception as e:
+                logger.error(f"Error during {message}: {e}")
         
-        self.hide_loading_indicator()
+        if progress_callback:
+            progress_callback(100)
         
-        # Update status bar styles for current theme
-        self.update_status_bar_styles()
-        
-        logger.success(f"{APP_NAME} {VERSION} launched")
+        logger.success(f"{APP_NAME} {VERSION} loaded successfully")
     
     def on_tab_changed(self, index):
         """Initialize tabs lazily when they are first accessed"""
@@ -860,58 +880,6 @@ class DerivativeMill(QMainWindow):
             tab_setup_methods[index]()
             self.tabs_initialized.add(index)
             logger.debug(f"Initialized tab {index}")
-    
-    def show_loading_indicator(self):
-        """Show loading spinner overlay"""
-        # Create overlay widget
-        self.loading_overlay = QWidget(self)
-        self.loading_overlay.setStyleSheet("background-color: rgba(0, 0, 0, 100);")
-        self.loading_overlay.setGeometry(self.rect())
-        
-        # Create layout for centered content
-        overlay_layout = QVBoxLayout(self.loading_overlay)
-        overlay_layout.setAlignment(Qt.AlignCenter)
-        
-        # Create spinner label with loading text
-        self.loading_label = QLabel("Loading data...")
-        self.loading_label.setStyleSheet("""
-            color: white;
-            font-size: 16pt;
-            font-weight: bold;
-            background: transparent;
-            padding: 20px;
-        """)
-        self.loading_label.setAlignment(Qt.AlignCenter)
-        overlay_layout.addWidget(self.loading_label)
-        
-        # Create progress bar as spinner
-        self.loading_progress = QProgressBar()
-        self.loading_progress.setRange(0, 0)  # Indeterminate/busy indicator
-        self.loading_progress.setFixedWidth(300)
-        self.loading_progress.setFixedHeight(6)
-        self.loading_progress.setTextVisible(False)
-        self.loading_progress.setStyleSheet("""
-            QProgressBar {
-                border: none;
-                border-radius: 3px;
-                background-color: rgba(255, 255, 255, 30);
-            }
-            QProgressBar::chunk {
-                background-color: #00bcd4;
-                border-radius: 3px;
-            }
-        """)
-        overlay_layout.addWidget(self.loading_progress, alignment=Qt.AlignCenter)
-        
-        self.loading_overlay.show()
-        self.loading_overlay.raise_()
-    
-    def hide_loading_indicator(self):
-        """Hide loading spinner overlay"""
-        if hasattr(self, 'loading_overlay'):
-            self.loading_overlay.hide()
-            self.loading_overlay.deleteLater()
-            del self.loading_overlay
     
     def apply_saved_theme(self):
         """Load and apply the saved theme preference on startup"""
@@ -2749,7 +2717,7 @@ class DerivativeMill(QMainWindow):
         
         # Add color toggle checkbox
         self.tariff_color_toggle = QCheckBox("Color by Material")
-        self.tariff_color_toggle.setChecked(True)  # Enabled by default
+        self.tariff_color_toggle.setChecked(False)  # Disabled by default
         self.tariff_color_toggle.stateChanged.connect(self.filter_tariff_table)
         filter_bar.addWidget(self.tariff_color_toggle)
         
@@ -3051,7 +3019,7 @@ class DerivativeMill(QMainWindow):
         
         # Add color toggle checkbox
         self.actions_color_toggle = QCheckBox("Color by Material")
-        self.actions_color_toggle.setChecked(True)  # Enabled by default
+        self.actions_color_toggle.setChecked(False)  # Disabled by default
         self.actions_color_toggle.stateChanged.connect(self.filter_actions_table)
         filter_bar.addWidget(self.actions_color_toggle)
         
@@ -4196,7 +4164,7 @@ class DerivativeMill(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    # Theme will be set by apply_saved_theme() after window creation
+    # Theme will be set by apply_saved_theme() during initialization
     
     # Set application icon (for taskbar, alt-tab, etc. - use TEMP_RESOURCES_DIR for bundled resources)
     icon_path = TEMP_RESOURCES_DIR / "icon.ico"
@@ -4208,37 +4176,92 @@ if __name__ == "__main__":
     if login.exec_() != QDialog.Accepted:
         sys.exit(0)
     
-    # Create and show splash screen with Windows 11 styling
-    splash_pix = QPixmap(500, 250)
-    splash_pix.fill(QColor(51,51,51))  # Windows 11 dark background
-    splash = QSplashScreen(splash_pix, Qt.WindowStaysOnTopHint)
+    # Create splash screen with progress bar
+    splash_widget = QWidget()
+    splash_widget.setFixedSize(500, 300)
+    splash_widget.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+    splash_widget.setAttribute(Qt.WA_TranslucentBackground)
     
-    # Style the splash screen
-    splash.setStyleSheet("""
-        QSplashScreen {
-            background-color: #202020;
+    # Create layout for splash
+    splash_layout = QVBoxLayout(splash_widget)
+    splash_layout.setContentsMargins(0, 0, 0, 0)
+    
+    # Create main splash container with border
+    splash_container = QWidget()
+    splash_container.setStyleSheet("""
+        QWidget {
+            background-color: #333333;
             border: 3px solid #0078D4;
             border-radius: 15px;
         }
     """)
+    container_layout = QVBoxLayout(splash_container)
+    container_layout.setContentsMargins(30, 30, 30, 30)
+    container_layout.setSpacing(20)
     
-    # Add loading message with custom font
-    font = QFont("Segoe UI", 14, QFont.Bold)
-    splash.setFont(font)
-    splash.showMessage(
-        f"Loading {APP_NAME}...\nInitializing application\nPlease wait...",
-        Qt.AlignCenter,
-        QColor(243, 243, 243)  # Windows 11 primary text
+    # Add title
+    title_label = QLabel(f"<h1 style='color: #0078D4;'>{APP_NAME}</h1>")
+    title_label.setAlignment(Qt.AlignCenter)
+    container_layout.addWidget(title_label)
+    
+    # Add loading message
+    splash_message = QLabel("Initializing application\nPlease wait...")
+    splash_message.setStyleSheet("color: #f3f3f3; font-size: 12pt; font-weight: bold;")
+    splash_message.setAlignment(Qt.AlignCenter)
+    container_layout.addWidget(splash_message)
+    
+    # Add progress bar
+    splash_progress = QProgressBar()
+    splash_progress.setRange(0, 100)
+    splash_progress.setValue(0)
+    splash_progress.setTextVisible(True)
+    splash_progress.setFormat("%p%")
+    splash_progress.setFixedHeight(20)
+    splash_progress.setStyleSheet("""
+        QProgressBar {
+            border: 2px solid #555;
+            border-radius: 5px;
+            background-color: #1e1e1e;
+            text-align: center;
+            color: white;
+            font-weight: bold;
+        }
+        QProgressBar::chunk {
+            background-color: #0078D4;
+            border-radius: 3px;
+        }
+    """)
+    container_layout.addWidget(splash_progress)
+    
+    splash_layout.addWidget(splash_container)
+    
+    # Show splash
+    splash_widget.show()
+    # Center on screen
+    screen_geo = app.desktop().availableGeometry()
+    splash_widget.move(
+        (screen_geo.width() - splash_widget.width()) // 2,
+        (screen_geo.height() - splash_widget.height()) // 2
     )
-    splash.show()
     app.processEvents()
     
-    # Login successful, create main window
+    # Login successful, create main window (but don't show it yet)
     logger.info(f"Application started by user: {login.authenticated_user}")
+    splash_message.setText("Creating main window...\nPlease wait...")
+    splash_progress.setValue(10)
+    app.processEvents()
+    
     win = DerivativeMill()
     win.setWindowTitle(f"{APP_NAME} {VERSION} - User: {login.authenticated_user}")
     
+    # Initialize all data before showing window
+    def update_progress(value):
+        splash_progress.setValue(10 + int(value * 0.9))  # Scale to 10-100 range
+        app.processEvents()
+    
+    win.initialize_data(splash=splash_message, progress_callback=update_progress)
+    
     # Close splash and show main window
-    splash.finish(win)
+    splash_widget.close()
     win.show()
     sys.exit(app.exec_())
