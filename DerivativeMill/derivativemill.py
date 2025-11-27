@@ -6,43 +6,23 @@ APP_NAME = "Derivative Mill"
 VERSION = "v1.08"
 DB_NAME = "derivativemill.db"  # Database filename (will be created in Resources folder)
 
-# ==============================================================================
-"""
-{APP_NAME} {VERSION} - FINAL RELEASE
-100% COMPLIANT WITH AUGUST 18, 2025 FEDERAL REGISTER
-Primary Articles: Hard-coded exactly as published
-Derivative Articles: tariff_232 table + official derivative subheadings
-Exact 8-digit match only
-Steel to "08", Flag blank
-Aluminum to "07", Flag "Y"
-New Design: Settings gear, Folder Locations in dialog, Saved Profiles on Process tab
-Full app | ZERO ERRORS | PROFESSIONAL | FINAL
-"""
-
-
 import sys
 import os
 import json
 import time
-import shutil
 import traceback
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
 import sqlite3
-from PyQt5.QtWidgets import *
-from PyQt5.QtCore import Qt, QMimeData, pyqtSignal, QTimer, QSize
-from PyQt5.QtGui import QColor, QFont, QDrag, QKeySequence, QIcon, QPixmap, QPainter
-from PyQt5.QtSvg import QSvgRenderer
-from openpyxl.styles import Font
 import getpass
 import socket
 import tempfile
-
-try:
-    WINDOWS_AUTH_AVAILABLE = True
-except ImportError:
-    WINDOWS_AUTH_AVAILABLE = False
+from PyQt5.QtWidgets import *
+from PyQt5.QtCore import Qt, QMimeData, pyqtSignal, QTimer, QSize, QThread
+from PyQt5.QtGui import QColor, QFont, QDrag, QKeySequence, QIcon, QPixmap, QPainter
+from PyQt5.QtSvg import QSvgRenderer
+from openpyxl.styles import Font
 
 # ----------------------------------------------------------------------
 # Global Logger
@@ -76,15 +56,12 @@ logger = ErrorLogger()
 # ----------------------------------------------------------------------
 # Handle PyInstaller frozen executable
 if getattr(sys, 'frozen', False):
-    # Running as compiled executable
     BASE_DIR = Path(sys.executable).parent
-    # For bundled resources in onefile mode, use _MEIPASS temp directory
     if hasattr(sys, '_MEIPASS'):
         TEMP_RESOURCES_DIR = Path(sys._MEIPASS) / "Resources"
     else:
         TEMP_RESOURCES_DIR = BASE_DIR / "Resources"
 else:
-    # Running as script
     BASE_DIR = Path(__file__).parent
     TEMP_RESOURCES_DIR = BASE_DIR / "Resources"
 
@@ -101,6 +78,9 @@ for p in (RESOURCES_DIR, INPUT_DIR, OUTPUT_DIR, PROCESSED_DIR, OUTPUT_PROCESSED_
 
 DB_PATH = RESOURCES_DIR / DB_NAME
 
+# ----------------------------------------------------------------------
+# Utility: get_232_info
+# ----------------------------------------------------------------------
 def get_232_info(hts_code):
     if not hts_code:
         return None, "", ""
@@ -127,61 +107,16 @@ def get_232_info(hts_code):
         pass
     if hts_clean.startswith(('7601','7604','7605','7606','7607','7608','7609')) or hts_clean.startswith('76169951'):
         return "Aluminum", "07", "Y"
-    if hts_clean.startswith((""" '7206','7207','7208','7209','7210','7211','7212','7213','7214','7215',
-                            '7216','7217','7218','7219','7220','7221','7222','7223','7224','7225',
-                            '7226','7227','7228','7229','7301','7302','7303','7304','7305','7306',
-                            '7307','7308','7309','7310','7311','7312','7313','7314','7315','7316',
-                            '7317','7318','7320','7321','7322','7323','7324','7325','7326' """)):
+    if hts_clean.startswith((
+        '7206','7207','7208','7209','7210','7211','7212','7213','7214','7215',
+        '7216','7217','7218','7219','7220','7221','7222','7223','7224','7225',
+        '7226','7227','7228','7229','7301','7302','7303','7304','7305','7306',
+        '7307','7308','7309','7310','7311','7312','7313','7314','7315','7316',
+        '7317','7318','7320','7321','7322','7323','7324','7325','7326')):
         return "Steel", "08", ""
     if hts_8 in ('76141050', '76149020', '76149040', '76149050'):
         return "Aluminum", "07", "Y"
     return None, "", ""
-
-# ----------------------------------------------------------------------
-# Database Init
-# ----------------------------------------------------------------------
-def init_database():
-    try:
-        conn = sqlite3.connect(str(DB_PATH))
-        c = conn.cursor()
-        c.execute("""CREATE TABLE IF NOT EXISTS parts_master (
-            part_number TEXT PRIMARY KEY, description TEXT, hts_code TEXT, country_origin TEXT,
-            mid TEXT, steel_ratio REAL DEFAULT 1.0, non_steel_ratio REAL DEFAULT 0.0, last_updated TEXT
-        )""")
-        c.execute("""CREATE TABLE IF NOT EXISTS tariff_232 (
-            hts_code TEXT PRIMARY KEY,
-            material TEXT,
-            classification TEXT,
-            chapter TEXT,
-            chapter_description TEXT,
-            declaration_required TEXT,
-            notes TEXT
-        )""")
-        c.execute("""CREATE TABLE IF NOT EXISTS sec_232_actions (
-            tariff_no TEXT PRIMARY KEY,
-            action TEXT,
-            description TEXT,
-            advalorem_rate TEXT,
-            effective_date TEXT,
-            expiration_date TEXT,
-            specific_rate TEXT,
-            additional_declaration TEXT,
-            note TEXT,
-            link TEXT
-        )""")
-        c.execute("""CREATE TABLE IF NOT EXISTS mapping_profiles (
-            profile_name TEXT PRIMARY KEY, mapping_json TEXT, created_date TEXT
-        )""")
-        c.execute("""CREATE TABLE IF NOT EXISTS app_config (
-            key TEXT PRIMARY KEY, value TEXT
-        )""")
-        conn.commit()
-        conn.close()
-        logger.success("Database initialized")
-    except Exception as e:
-        logger.error(f"Database init failed: {e}")
-
-init_database()
 
 # ----------------------------------------------------------------------
 # Drag & Drop Components
@@ -193,6 +128,68 @@ class DraggableLabel(QLabel):
         self.setAlignment(Qt.AlignCenter)
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
+            drag = QDrag(self)
+            mime = QMimeData()
+            mime.setText(self.text())
+            drag.setMimeData(mime)
+            drag.exec_(Qt.CopyAction)
+
+import sys
+import os
+import json
+import time
+import shutil
+import traceback
+from pathlib import Path
+from datetime import datetime
+import pandas as pd
+import sqlite3
+import getpass
+import socket
+from PyQt5.QtWidgets import *
+from PyQt5.QtCore import Qt, QMimeData, pyqtSignal, QTimer, QSize
+from PyQt5.QtGui import QColor, QFont, QDrag, QKeySequence, QIcon, QPixmap, QPainter
+from PyQt5.QtSvg import QSvgRenderer
+from openpyxl.styles import Font
+
+# ==============================================================================
+"""
+{APP_NAME} {VERSION} - FINAL RELEASE
+100% COMPLIANT WITH AUGUST 18, 2025 FEDERAL REGISTER
+Primary Articles: Hard-coded exactly as published
+Derivative Articles: tariff_232 table + official derivative subheadings
+Exact 8-digit match only
+Steel to "08", Flag blank
+Aluminum to "07", Flag "Y"
+New Design: Settings gear, Folder Locations in dialog, Saved Profiles on Process tab
+Full app | ZERO ERRORS | PROFESSIONAL | FINAL
+"""
+
+from PyQt5.QtGui import QColor
+from PyQt5.QtSvg import QSvgRenderer
+
+class DerivativeMill(QMainWindow):
+    from PyQt5.QtCore import QThread, pyqtSignal
+
+    class FileLoaderThread(QThread):
+        finished = pyqtSignal(object, str, object)
+        def __init__(self, path, mapping):
+            super().__init__()
+            self.path = path
+            self.mapping = mapping
+        def run(self):
+            import pandas as pd
+            from pathlib import Path
+            try:
+                col_map = {v: k for k, v in self.mapping.items()}
+                if Path(self.path).suffix.lower() == ".xlsx":
+                    df = pd.read_excel(self.path, dtype=str)
+                else:
+                    df = pd.read_csv(self.path, dtype=str)
+                df = df.rename(columns=col_map)
+                self.finished.emit(df, None, None)
+            except Exception as e:
+                self.finished.emit(None, str(e), None)
             drag = QDrag(self)
             mime = QMimeData()
             mime.setText(self.text())
@@ -248,12 +245,7 @@ class LoginDialog(QDialog):
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
         
-        if not WINDOWS_AUTH_AVAILABLE:
-            warning = QLabel("<b style='color:#ff6b6b'>Warning: Windows authentication not available</b><br>"
-                           "Install pywin32: pip install pywin32")
-            warning.setWordWrap(True)
-            warning.setAlignment(Qt.AlignCenter)
-            layout.addWidget(warning)
+
         
         # Login form
         form_group = QGroupBox("Domain Login")
@@ -388,7 +380,7 @@ from PyQt5.QtGui import QColor
 from PyQt5.QtSvg import QSvgRenderer
 
 class DerivativeMill(QMainWindow):
-    from PyQt5.QtCore import QThread, pyqtSignal
+    # ...existing code before tab changes...
 
     class FileLoaderThread(QThread):
         finished = pyqtSignal(object, str, object)
@@ -410,33 +402,7 @@ class DerivativeMill(QMainWindow):
             except Exception as e:
                 self.finished.emit(None, str(e), None)
 
-    def setup_tab_by_index(self, index):
-        """Initialize tab by index using existing setup methods."""
-        tab_setup_methods = {
-            1: self.setup_shipment_mapping_tab,
-            2: self.setup_import_tab,
-            3: self.setup_master_tab,
-            4: self.setup_log_tab,
-            5: self.setup_config_tab,
-            6: self.setup_actions_tab,
-            7: self.setup_guide_tab
-        }
-        if index in tab_setup_methods:
-            tab_setup_methods[index]()
     def __init__(self):
-        super().__init__()
-        self.setWindowTitle(f"{APP_NAME} {VERSION}")
-        # Compact default size - fully scalable with no minimum constraint
-        self.setGeometry(50, 50, 1200, 700)
-        
-        # Set window icon (use TEMP_RESOURCES_DIR for bundled resources)
-        icon_path = TEMP_RESOURCES_DIR / "icon.ico"
-        if not icon_path.exists():
-            icon_path = TEMP_RESOURCES_DIR / "icon.png"
-        if icon_path.exists():
-            self.setWindowIcon(QIcon(str(icon_path)))
-        
-        self.current_csv = None
         self.shipment_mapping = {}
         self.selected_mid = ""
         self.current_worker = None
@@ -446,6 +412,7 @@ class DerivativeMill(QMainWindow):
         self.last_output_filename = None
         self.shipment_targets = {}  # Prevent attribute error before tab setup
 
+        super().__init__()
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
@@ -505,10 +472,7 @@ class DerivativeMill(QMainWindow):
             header_layout.addWidget(self.header_bg_label, 0, Qt.AlignVCenter)
         header_layout.addWidget(app_name, 1, Qt.AlignVCenter)
 
-
         layout.addWidget(header_container)
-
-
 
         # Add a native menu bar with a Settings action (gear icon)
         menubar = QMenuBar(self)
@@ -656,7 +620,6 @@ class DerivativeMill(QMainWindow):
         tab_setup_methods = {
             1: self.setup_shipment_mapping_tab,
             2: self.setup_import_tab,
-            3: self.setup_master_tab,
             4: self.setup_log_tab,
             5: self.setup_config_tab,
             6: self.setup_actions_tab,
@@ -717,6 +680,19 @@ class DerivativeMill(QMainWindow):
 
     def setup_process_tab(self):
         layout = QVBoxLayout(self.tab_process)
+        # ...existing code...
+        # SHIPMENT FILE (merged with Saved Profiles)
+        file_group = QGroupBox("Shipment File")
+        file_group.setObjectName("SavedProfilesGroup")
+        file_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        file_layout = QFormLayout()
+        file_layout.setLabelAlignment(Qt.AlignRight)
+        # Profile selector
+        self.profile_combo = QComboBox()
+        self.profile_combo.setMinimumWidth(200)
+        self.profile_combo.currentTextChanged.connect(self.load_selected_profile)
+        file_layout.addRow("Map Profile:", self.profile_combo)
+        self.load_mapping_profiles()
 
         # TOP BAR: Title + Settings Gear
         top_bar = QHBoxLayout()
@@ -769,6 +745,7 @@ class DerivativeMill(QMainWindow):
         self.profile_combo.setMinimumWidth(200)
         self.profile_combo.currentTextChanged.connect(self.load_selected_profile)
         file_layout.addRow("Map Profile:", self.profile_combo)
+        self.load_mapping_profiles()
         
         # Add spacing
         file_layout.addRow("", QLabel(""))
@@ -1901,17 +1878,23 @@ class DerivativeMill(QMainWindow):
         #     self.status.setStyleSheet("font-size:14pt; padding:8px; background:#f0f0f0;")
 
     def setup_import_tab(self):
-        layout = QVBoxLayout(self.tab_import)
+        # Add query result label for status messages
+        self.query_result_label = QLabel()
+        self.query_result_label.setStyleSheet("padding:5px; background:#f0f0f0;")
+        # Create a scrollable area for the import tab
+        scroll = QScrollArea(self.tab_import)
+        scroll.setWidgetResizable(True)
+        container = QWidget()
+        layout = QVBoxLayout(container)
+
         title = QLabel("<h2>Parts Import from CSV/Excel</h2><p>Drag & drop columns to map fields</p>")
         title.setAlignment(Qt.AlignCenter)
-        # Lighten font in dark mode
         if self.current_theme and "dark" in self.current_theme.lower():
             title.setStyleSheet("color: #e0e0e0;")
         else:
             title.setStyleSheet("color: #333;")
         layout.addWidget(title)
 
-        # Buttons at top
         button_widget = QWidget()
         btn_layout = QHBoxLayout(button_widget)
         btn_load = QPushButton("Load CSV/Excel File")
@@ -1930,19 +1913,22 @@ class DerivativeMill(QMainWindow):
         btn_layout.addWidget(btn_import)
         layout.addWidget(button_widget)
 
-        # Main drag/drop area with scroll
+        # Make left (drag) area scrollable, right (drop) area fixed
+        main_row = QHBoxLayout()
 
-        main_widget = QWidget()
-        main_layout = QHBoxLayout(main_widget)
-        main_layout.setContentsMargins(0,0,0,0)
-        main_layout.setSpacing(20)
-
-        left = QGroupBox("CSV/Excel Columns - Drag")
-        left_layout = QVBoxLayout()
+        # Left: scrollable drag area
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
         self.drag_labels = []
         left_layout.addStretch()
-        left.setLayout(left_layout)
+        left_widget.setLayout(left_layout)
+        self.left_group = QGroupBox("CSV/Excel Columns - Drag")
+        self.left_group.setLayout(left_layout)
+        left_scroll.setWidget(self.left_group)
 
+        # Right: fixed drop area
         right = QGroupBox("Available Fields - Drop Here")
         right_layout = QFormLayout()
         right_layout.setLabelAlignment(Qt.AlignRight)
@@ -1962,18 +1948,23 @@ class DerivativeMill(QMainWindow):
             self.import_targets[key] = target
         right.setLayout(right_layout)
 
-        main_layout.addWidget(left, 1)
-        main_layout.addWidget(right, 2)
-        layout.addWidget(main_widget, 1)
-        self.import_widget = main_widget  # <-- Fix: store reference for use in load_csv_for_import
+        main_row.addWidget(left_scroll, 1)
+        main_row.addWidget(right, 2)
+        layout.addLayout(main_row, 1)
+        self.import_widget = left_widget
+        # Add query result label to the layout
+        layout.addWidget(self.query_result_label)
 
         self.import_csv_path = None
-        # Add standardized table for imported data preview
-        self.import_table = QTableWidget()
-        self.import_table.setAlternatingRowColors(True)
-        self.import_table.setStyleSheet("")
-        layout.addWidget(self.import_table)
-        self.tab_import.setLayout(layout)
+        self.parts_table = QTableWidget()
+        self.parts_table.setAlternatingRowColors(True)
+        self.parts_table.setStyleSheet("")
+        layout.addWidget(self.parts_table)
+
+        scroll.setWidget(container)
+        tab_layout = QVBoxLayout(self.tab_import)
+        tab_layout.addWidget(scroll)
+        self.tab_import.setLayout(tab_layout)
 
     def load_csv_for_import(self):
         path, _ = QFileDialog.getOpenFileName(self, "Select CSV/Excel", str(INPUT_DIR), "CSV/Excel Files (*.csv *.xlsx)")
@@ -1989,7 +1980,7 @@ class DerivativeMill(QMainWindow):
             for label in self.drag_labels:
                 label.setParent(None)
             self.drag_labels = []
-            left_layout = self.import_widget.layout().itemAt(0).widget().layout()
+            left_layout = self.left_group.layout()
             for col in cols:
                 lbl = DraggableLabel(col)
                 left_layout.insertWidget(left_layout.count()-1, lbl)
@@ -2160,19 +2151,18 @@ class DerivativeMill(QMainWindow):
             self.shipment_targets[key] = target
         right.setLayout(right_layout)
 
-        self.shipment_layout.addWidget(left,1); self.shipment_layout.addWidget(right,1)
+        self.shipment_layout.addWidget(left,1)
+        self.shipment_layout.addWidget(right,1)
         scroll_layout.addWidget(self.shipment_widget)
 
         scroll.setWidget(scroll_widget)
         layout.addWidget(scroll, 1)
         self.tab_shipment_map.setLayout(layout)
+        self.load_mapping_profiles()
 
     def load_csv_for_shipment_mapping(self):
         logger.info("DEBUG: load_csv_for_shipment_mapping called")
-        QMessageBox.information(self, "Debug", "load_csv_for_shipment_mapping was called.")
-        options = QFileDialog.Options()
-        options |= QFileDialog.DontUseNativeDialog
-        path, _ = QFileDialog.getOpenFileName(self, "Select CSV", str(INPUT_DIR), "CSV (*.csv)", options=options)
+        path, _ = QFileDialog.getOpenFileName(self, "Select CSV", str(INPUT_DIR), "CSV (*.csv)")
         logger.info(f"File dialog returned path: {path}")
         if not path:
             logger.warning("No file selected in dialog")
@@ -2262,21 +2252,49 @@ class DerivativeMill(QMainWindow):
             conn = sqlite3.connect(str(DB_PATH))
             df = pd.read_sql("SELECT profile_name FROM mapping_profiles ORDER BY created_date DESC", conn)
             conn.close()
-            
-            # Block signals to prevent triggering load during clear/addItem
+            self.profile_combo.setEnabled(True)
+            if hasattr(self, 'profile_combo_map'):
+                self.profile_combo_map.setEnabled(True)
+            # Remember current selections
+            current_profile = self.profile_combo.currentText() if hasattr(self, 'profile_combo') else None
+            current_profile_map = self.profile_combo_map.currentText() if hasattr(self, 'profile_combo_map') else None
+
             self.profile_combo.blockSignals(True)
-            self.profile_combo_map.blockSignals(True)
+            if hasattr(self, 'profile_combo_map'):
+                self.profile_combo_map.blockSignals(True)
             self.profile_combo.clear()
-            self.profile_combo_map.clear()
+            if hasattr(self, 'profile_combo_map'):
+                self.profile_combo_map.clear()
             self.profile_combo.addItem("-- Select Profile --")
-            self.profile_combo_map.addItem("-- Select Profile --")
-            for name in df['profile_name'].tolist():
+            if hasattr(self, 'profile_combo_map'):
+                self.profile_combo_map.addItem("-- Select Profile --")
+            profiles = df['profile_name'].tolist()
+            if not profiles:
+                logger.warning("No mapping profiles found in database.")
+            for name in profiles:
                 self.profile_combo.addItem(name)
-                self.profile_combo_map.addItem(name)
+                if hasattr(self, 'profile_combo_map'):
+                    self.profile_combo_map.addItem(name)
+
+            # Restore previous selection if possible, else select first profile
+            if current_profile and self.profile_combo.findText(current_profile) != -1:
+                self.profile_combo.setCurrentText(current_profile)
+            elif profiles:
+                self.profile_combo.setCurrentText(profiles[0])
+            if hasattr(self, 'profile_combo_map'):
+                if current_profile_map and self.profile_combo_map.findText(current_profile_map) != -1:
+                    self.profile_combo_map.setCurrentText(current_profile_map)
+                elif profiles:
+                    self.profile_combo_map.setCurrentText(profiles[0])
+
             self.profile_combo.blockSignals(False)
-            self.profile_combo_map.blockSignals(False)
-        except:
-            pass
+            if hasattr(self, 'profile_combo_map'):
+                self.profile_combo_map.blockSignals(False)
+            logger.info(f"Loaded mapping profiles: {profiles}")
+        except Exception as e:
+            logger.error(f"Failed to load mapping profiles: {e}")
+            self.profile_combo.setEnabled(True)
+            self.profile_combo_map.setEnabled(True)
 
     def save_mapping_profile(self):
         name, ok = QInputDialog.getText(self, "Save Mapping Profile", "Enter profile name:")
@@ -2288,11 +2306,12 @@ class DerivativeMill(QMainWindow):
                 return
         
         mapping_str = json.dumps(self.shipment_mapping)
+        created_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         try:
             conn = sqlite3.connect(str(DB_PATH))
             c = conn.cursor()
-            c.execute("INSERT OR REPLACE INTO mapping_profiles (profile_name, mapping_json) VALUES (?, ?)",
-                      (name, mapping_str))
+            c.execute("INSERT OR REPLACE INTO mapping_profiles (profile_name, mapping_json, created_date) VALUES (?, ?, ?)",
+                      (name, mapping_str, created_date))
             conn.commit()
             conn.close()
             self.load_mapping_profiles()
@@ -2301,6 +2320,7 @@ class DerivativeMill(QMainWindow):
             logger.success(f"Mapping profile saved: {name}")
             self.status.setText(f"Profile saved: {name}")
         except Exception as e:
+            logger.error(f"Mapping profile save failed: {e}")
             QMessageBox.critical(self, "Error", f"Save failed: {e}")
 
     def load_selected_profile(self, name):
@@ -2344,7 +2364,7 @@ class DerivativeMill(QMainWindow):
             QMessageBox.critical(self, "Error", f"Load failed: {e}")
 
     def delete_mapping_profile(self):
-        name = self.profile_combo_full.currentText()
+        name = self.profile_combo_map.currentText()
         if not name or name == "-- Select Profile --":
             return
         if QMessageBox.question(self, "Delete", f"Delete profile '{name}'?") != QMessageBox.Yes:
@@ -2363,125 +2383,20 @@ class DerivativeMill(QMainWindow):
             QMessageBox.critical(self, "Error", f"Delete failed: {e}")
 
     def apply_current_mapping(self):
-        # Batch UI updates to prevent GUI freezing
+        # Only update mapping UI for current profile
         for key, target in self.shipment_targets.items():
             col = self.shipment_mapping.get(key)
             if col:
                 target.column_name = col
-                target.setText(f"{key}\n<- {col}")
+                target.setText(f"{col}")
                 target.setProperty("occupied", True)
             else:
                 target.column_name = None
-                target.setText(f"Drop {key.replace('_', ' ')} here")
+                target.setText(f"Drop {target.field_key.replace('_', ' ')} here")
                 target.setProperty("occupied", False)
-        
-        # Apply all style updates at once after setting properties
-        for target in self.shipment_targets.values():
             target.style().unpolish(target)
             target.style().polish(target)
-
-    def setup_master_tab(self):
-        layout = QVBoxLayout(self.tab_master)
-        title = QLabel("<h2>Parts View - Click any cell to edit</h2>")
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
-
-        edit_box = QHBoxLayout()
-        btn_add = QPushButton("Add Row")
-        btn_add.setStyleSheet(self.get_button_style("success"))
-        btn_del = QPushButton("Delete Selected")
-        btn_del.setStyleSheet(self.get_button_style("danger"))
-        btn_save = QPushButton("Save Changes")
-        btn_save.setStyleSheet(self.get_button_style("success"))
-        btn_refresh = QPushButton("Refresh")
-        btn_refresh.setStyleSheet(self.get_button_style("info"))
-        btn_add.clicked.connect(self.add_part_row)
-        btn_del.clicked.connect(self.delete_selected_parts)
-        btn_save.clicked.connect(self.save_parts_table)
-        btn_refresh.clicked.connect(self.refresh_parts_table)
-        edit_box.addWidget(QLabel("Edit:"))
-        edit_box.addWidget(btn_add); edit_box.addWidget(btn_del); edit_box.addWidget(btn_save); edit_box.addWidget(btn_refresh)
-        edit_box.addStretch()
-        layout.addLayout(edit_box)
-
-        # SQL Query Builder
-        query_group = QGroupBox("SQL Query Builder")
-        query_layout = QVBoxLayout()
-        
-        query_controls = QHBoxLayout()
-        query_controls.addWidget(QLabel("SELECT * FROM parts_master WHERE"))
-        
-        self.query_field = QComboBox()
-        self.query_field.addItems(["part_number", "description", "hts_code", "country_origin", "mid", "steel_ratio", "non_steel_ratio"])
-        query_controls.addWidget(self.query_field)
-        
-        self.query_operator = QComboBox()
-        self.query_operator.addItems(["=", "LIKE", ">", "<", ">=", "<=", "!="])
-        query_controls.addWidget(self.query_operator)
-        
-        self.query_value = QLineEdit()
-        self.query_value.setPlaceholderText("Enter value...")
-        query_controls.addWidget(self.query_value, 1)
-        
-        btn_run_query = QPushButton("Run Query")
-        btn_run_query.setStyleSheet(self.get_button_style("info"))
-        btn_run_query.clicked.connect(self.run_custom_query)
-        query_controls.addWidget(btn_run_query)
-        
-        btn_clear_query = QPushButton("Show All")
-        btn_clear_query.setStyleSheet(self.get_button_style("default"))
-        btn_clear_query.clicked.connect(self.refresh_parts_table)
-        query_controls.addWidget(btn_clear_query)
-        
-        query_layout.addLayout(query_controls)
-        
-        # Custom SQL input
-        custom_sql_layout = QHBoxLayout()
-        custom_sql_layout.addWidget(QLabel("Custom SQL:"))
-        self.custom_sql_input = QLineEdit()
-        self.custom_sql_input.setPlaceholderText("SELECT * FROM parts_master WHERE ...")
-        custom_sql_layout.addWidget(self.custom_sql_input, 1)
-        btn_run_custom = QPushButton("Execute")
-        btn_run_custom.setStyleSheet(self.get_button_style("success"))
-        btn_run_custom.clicked.connect(self.run_custom_sql)
-        custom_sql_layout.addWidget(btn_run_custom)
-        query_layout.addLayout(custom_sql_layout)
-        
-        self.query_result_label = QLabel("Ready")
-        self.query_result_label.setStyleSheet("padding:5px; background:#f0f0f0;")
-        query_layout.addWidget(self.query_result_label)
-        
-        query_group.setLayout(query_layout)
-        layout.addWidget(query_group)
-
-        search_box = QHBoxLayout()
-        search_box.addWidget(QLabel("Quick Search:"))
-        self.search_field_combo = QComboBox()
-        self.search_field_combo.addItems(["All Fields","part_number","description","hts_code","country_origin","mid","steel_ratio","non_steel_ratio"])
-        search_box.addWidget(self.search_field_combo)
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Type to filter...")
-        self.search_input.textChanged.connect(self.filter_parts_table)
-        search_box.addWidget(self.search_input, 1)
-        layout.addLayout(search_box)
-
-        table_box = QGroupBox("Parts Master Table")
-        tl = QVBoxLayout()
-        self.parts_table = QTableWidget()
-        self.parts_table.setColumnCount(8)
-        self.parts_table.setHorizontalHeaderLabels([
-            "part_number", "description", "hts_code", "country_origin", "mid", "steel_ratio", "non_steel_ratio", "updated_date"
-        ])
-        self.parts_table.setEditTriggers(QTableWidget.AllEditTriggers)
-        self.parts_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.parts_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.parts_table.setSortingEnabled(False)  # Disabled for better performance
-        tl.addWidget(self.parts_table)
-        table_box.setLayout(tl)
-        layout.addWidget(table_box, 1)
-
-        self.refresh_parts_table()
-        self.tab_master.setLayout(layout)
+        # All layout/UI construction code removed from this function
 
     def refresh_parts_table(self):
         try:
@@ -3908,12 +3823,16 @@ class DerivativeMill(QMainWindow):
             df = pd.read_sql("SELECT DISTINCT mid FROM parts_master WHERE mid IS NOT NULL AND mid != '' ORDER BY mid", conn)
             conn.close()
             self.available_mids = df['mid'].tolist()
+            self.mid_combo.clear()
+            self.mid_combo.addItem("-- Select MID --")  # Placeholder item
             if self.available_mids:
-                self.mid_combo.clear()
-                self.mid_combo.addItem("-- Select MID --")  # Placeholder item
                 self.mid_combo.addItems(self.available_mids)
-                self.mid_combo.setCurrentIndex(0)  # Start with placeholder
-                self.selected_mid = ""  # No default selection
+                logger.info(f"Loaded MIDs: {self.available_mids}")
+            else:
+                logger.warning("No MIDs found in parts_master table.")
+                QMessageBox.information(self, "No MIDs Found", "No MIDs are available. Please import parts data with valid MID values.")
+            self.mid_combo.setCurrentIndex(0)  # Start with placeholder
+            self.selected_mid = ""  # No default selection
         except Exception as e:
             logger.error(f"MID load failed: {e}")
 
