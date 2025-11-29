@@ -763,6 +763,7 @@ class DerivativeMill(QMainWindow):
         # MID selector (moved above Invoice Check)
         self.mid_label = QLabel("MID:")
         self.mid_combo = QComboBox()
+        self.mid_combo.setFocusPolicy(Qt.StrongFocus)  # Ensure combo accepts keyboard focus
         self.mid_combo.currentTextChanged.connect(self.on_mid_changed)
         values_layout.addRow(self.mid_label, self.mid_combo)
 
@@ -1118,6 +1119,71 @@ class DerivativeMill(QMainWindow):
         viewer_group.setLayout(viewer_layout)
         layout.addWidget(viewer_group)
 
+        # Preview Table Colors Group
+        colors_group = QGroupBox("Preview Table Row Colors")
+        colors_layout = QFormLayout()
+
+        # Helper function to create color picker button
+        def create_color_button(config_key, default_color):
+            """Create a color picker button with saved color"""
+            button = QPushButton()
+            button.setFixedSize(100, 30)
+
+            # Load saved color or use default
+            saved_color = default_color
+            try:
+                conn = sqlite3.connect(str(DB_PATH))
+                c = conn.cursor()
+                c.execute("SELECT value FROM app_config WHERE key = ?", (config_key,))
+                row = c.fetchone()
+                conn.close()
+                if row:
+                    saved_color = row[0]
+            except:
+                pass
+
+            # Set button style with current color
+            button.setStyleSheet(f"background-color: {saved_color}; border: 1px solid #999;")
+
+            def pick_color():
+                color = QColorDialog.getColor(QColor(saved_color), dialog, "Choose Color")
+                if color.isValid():
+                    color_hex = color.name()
+                    button.setStyleSheet(f"background-color: {color_hex}; border: 1px solid #999;")
+                    # Save to database
+                    try:
+                        conn = sqlite3.connect(str(DB_PATH))
+                        c = conn.cursor()
+                        c.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)",
+                                  (config_key, color_hex))
+                        conn.commit()
+                        conn.close()
+                        logger.info(f"Saved color preference {config_key}: {color_hex}")
+                        # Refresh the preview table if it exists
+                        if hasattr(self, 'table') and self.table.rowCount() > 0:
+                            self.refresh_preview_colors()
+                    except Exception as e:
+                        logger.error(f"Failed to save color preference: {e}")
+
+            button.clicked.connect(pick_color)
+            return button
+
+        # 232 Steel rows color picker
+        steel_color_btn = create_color_button('preview_steel_color', '#4a4a4a')
+        colors_layout.addRow("Section 232 Rows:", steel_color_btn)
+
+        # Non-232 rows color picker
+        non232_color_btn = create_color_button('preview_non232_color', '#ff0000')
+        colors_layout.addRow("Non-232 Rows:", non232_color_btn)
+
+        colors_info = QLabel("<small>Choose font colors for different row types in the preview table.</small>")
+        colors_info.setWordWrap(True)
+        colors_info.setStyleSheet("color:#666; padding:5px;")
+        colors_layout.addRow("", colors_info)
+
+        colors_group.setLayout(colors_layout)
+        layout.addWidget(colors_group)
+
         group = QGroupBox("Folder Locations")
         glayout = QFormLayout()
         
@@ -1318,6 +1384,57 @@ class DerivativeMill(QMainWindow):
                 border: 2px solid #228B22;
             }
         """)
+
+    def get_preview_row_color(self, is_steel_row):
+        """Get the color for preview table rows based on steel content"""
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+            if is_steel_row:
+                c.execute("SELECT value FROM app_config WHERE key = 'preview_steel_color'")
+                row = c.fetchone()
+                conn.close()
+                return QColor(row[0]) if row else QColor("#4a4a4a")
+            else:
+                c.execute("SELECT value FROM app_config WHERE key = 'preview_non232_color'")
+                row = c.fetchone()
+                conn.close()
+                return QColor(row[0]) if row else QColor("#ff0000")
+        except:
+            # Return defaults if database query fails
+            return QColor("#4a4a4a") if is_steel_row else QColor("#ff0000")
+
+    def refresh_preview_colors(self):
+        """Refresh all row colors in the preview table based on current settings"""
+        if not hasattr(self, 'table') or self.table.rowCount() == 0:
+            return
+
+        try:
+            # Temporarily disconnect itemChanged signal to avoid triggering edits
+            self.table.blockSignals(True)
+
+            for row in range(self.table.rowCount()):
+                # Get the steel ratio from the table's 232% column (index 10)
+                steel_item = self.table.item(row, 10)
+                if steel_item:
+                    steel_text = steel_item.text().replace('%', '')
+                    try:
+                        steel_ratio = float(steel_text) / 100.0
+                        is_steel_row = steel_ratio > 0.0
+                        row_color = self.get_preview_row_color(is_steel_row)
+
+                        # Update color for all items in this row
+                        for col in range(self.table.columnCount()):
+                            item = self.table.item(row, col)
+                            if item:
+                                item.setForeground(row_color)
+                    except ValueError:
+                        pass  # Skip if can't parse percentage
+
+            self.table.blockSignals(False)
+        except Exception as e:
+            logger.error(f"Error refreshing preview colors: {e}")
+            self.table.blockSignals(False)
 
     def refresh_button_styles(self):
         """Refresh all button styles to match current theme"""
@@ -1792,6 +1909,40 @@ class DerivativeMill(QMainWindow):
         This matches the provided working script for derivatives.
         """
         df = df.copy()
+
+        # Steel/NonSteel ratios BEFORE calculating weight
+        df['SteelRatio'] = pd.to_numeric(df.get('steel_ratio', 1.0), errors='coerce').fillna(1.0)
+        df['NonSteelRatio'] = pd.to_numeric(df.get('non_steel_ratio', 0.0), errors='coerce').fillna(0.0)
+
+        # Split rows by steel/non-steel content BEFORE calculating CalcWtNet
+        original_row_count = len(df)
+        expanded_rows = []
+        for _, row in df.iterrows():
+            steel_ratio = row['SteelRatio']
+            non_steel_ratio = row['NonSteelRatio']
+            original_value = row['value_usd']
+
+            # Create non-steel portion row (if non_steel_ratio > 0)
+            if non_steel_ratio > 0:
+                non_steel_row = row.copy()
+                non_steel_row['value_usd'] = original_value * non_steel_ratio
+                non_steel_row['SteelRatio'] = 0.0  # 0% steel in this portion
+                non_steel_row['NonSteelRatio'] = non_steel_ratio  # Keep original non-steel ratio
+                expanded_rows.append(non_steel_row)
+
+            # Create steel portion row (if steel_ratio > 0)
+            if steel_ratio > 0:
+                steel_row = row.copy()
+                steel_row['value_usd'] = original_value * steel_ratio
+                steel_row['SteelRatio'] = steel_ratio  # Keep original steel ratio
+                steel_row['NonSteelRatio'] = non_steel_ratio  # Keep original non-steel ratio
+                expanded_rows.append(steel_row)
+
+        # Rebuild dataframe from expanded rows
+        df = pd.DataFrame(expanded_rows).reset_index(drop=True)
+        logger.info(f"Row expansion: {original_row_count} → {len(expanded_rows)} rows")
+
+        # Now calculate CalcWtNet based on expanded rows
         total_value = df['value_usd'].sum()
         if total_value == 0:
             df['CalcWtNet'] = 0.0
@@ -1803,10 +1954,6 @@ class DerivativeMill(QMainWindow):
         mid = self.selected_mid if hasattr(self, 'selected_mid') else ''
         df['MID'] = mid
         melt = str(mid)[:2] if mid else ''
-
-        # Steel/NonSteel ratios
-        df['SteelRatio'] = pd.to_numeric(df.get('steel_ratio', 1.0), errors='coerce').fillna(1.0)
-        df['NonSteelRatio'] = pd.to_numeric(df.get('non_steel_ratio', 0.0), errors='coerce').fillna(0.0)
 
         # Derivative fields (exact 8-digit match, flag logic)
         dec_type_list = []
@@ -2047,19 +2194,29 @@ class DerivativeMill(QMainWindow):
             value_item = QTableWidgetItem(f"{r['ValueUSD']:,.2f}")
             value_item.setData(Qt.UserRole, r['ValueUSD'])
 
+            # For steel rows (SteelRatio > 0), show 0.0% in NonSteelRatio column
+            steel_ratio_val = r.get('SteelRatio', 0.0) or 0.0
+            non_steel_ratio_val = r.get('NonSteelRatio', 0.0) or 0.0
+            is_steel_row = steel_ratio_val > 0.0
+
+            if is_steel_row and non_steel_ratio_val > 0:
+                non_steel_display = "0.0%"  # Show 0.0% for steel rows
+            else:
+                non_steel_display = f"{non_steel_ratio_val*100:.1f}%" if non_steel_ratio_val > 0 else ""
+
             items = [
                 QTableWidgetItem(str(r['Product No'])),
                 value_item,
                 QTableWidgetItem(r.get('HTSCode','')),
                 QTableWidgetItem(r.get('MID','')),
-                QTableWidgetItem(str(r['CalcWtNet'])),
+                QTableWidgetItem(str(int(round(r['CalcWtNet'])))),
                 QTableWidgetItem(r.get('DecTypeCd','')),
                 QTableWidgetItem(r.get('CountryofMelt','')),
                 QTableWidgetItem(r.get('CountryOfCast','')),
                 QTableWidgetItem(r.get('PrimCountryOfSmelt','')),
                 QTableWidgetItem(r.get('PrimSmeltFlag','')),
-                QTableWidgetItem(f"{r['SteelRatio']*100:.1f}%"),
-                QTableWidgetItem(f"{r['NonSteelRatio']*100:.1f}%" if r['NonSteelRatio']>0 else ""),
+                QTableWidgetItem(f"{steel_ratio_val*100:.1f}%"),
+                QTableWidgetItem(non_steel_display),
                 QTableWidgetItem(flag)
             ]
 
@@ -2069,13 +2226,13 @@ class DerivativeMill(QMainWindow):
                     item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable)
 
             # Set font colors: 232 content rows charcoal gray, non-232 rows red
-            is_steel_row = (r.get('SteelRatio', 0.0) or 0.0) > 0.0
-            row_color = QColor("#4a4a4a") if is_steel_row else QColor("red")  # Medium charcoal gray for better visibility
+            row_color = self.get_preview_row_color(is_steel_row)
             for item in items:
                 item.setForeground(row_color)
                 f = item.font()
                 f.setBold(False)
                 item.setFont(f)
+                item.setTextAlignment(Qt.AlignCenter)  # Center text in all columns
 
             for j, it in enumerate(items):
                 self.table.setItem(i, j, it)
@@ -2445,10 +2602,14 @@ class DerivativeMill(QMainWindow):
         self.tab_shipment_map.setLayout(layout)
 
     def load_csv_for_shipment_mapping(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Select CSV", str(INPUT_DIR), "CSV (*.csv)")
+        path, _ = QFileDialog.getOpenFileName(self, "Select CSV/Excel", str(INPUT_DIR), "CSV/Excel Files (*.csv *.xlsx)")
         if not path: return
         try:
-            df = pd.read_csv(path, nrows=0, dtype=str)
+            # Handle both CSV and Excel files
+            if path.lower().endswith('.xlsx'):
+                df = pd.read_excel(path, nrows=0, dtype=str)
+            else:
+                df = pd.read_csv(path, nrows=0, dtype=str)
             cols = list(df.columns)
             for label in self.shipment_drag_labels:
                 label.setParent(None)
@@ -2458,10 +2619,10 @@ class DerivativeMill(QMainWindow):
                 lbl = DraggableLabel(col)
                 left_layout.insertWidget(left_layout.count()-1, lbl)
                 self.shipment_drag_labels.append(lbl)
-            logger.info(f"Shipment CSV loaded for mapping: {Path(path).name}")
-            self.status.setText(f"Shipment CSV loaded: {Path(path).name}")
+            logger.info(f"Shipment file loaded for mapping: {Path(path).name}")
+            self.status.setText(f"Shipment file loaded: {Path(path).name}")
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Cannot read CSV:\n{e}")
+            QMessageBox.critical(self, "Error", f"Cannot read file:\n{e}")
 
     def on_shipment_drop(self, field_key, column_name):
         for k, t in self.shipment_targets.items():
@@ -4059,9 +4220,9 @@ class DerivativeMill(QMainWindow):
                     # Apply Arial font to all cells and red font to non-steel rows
                     t_format_start = time.time()
                     ws = next(iter(writer.sheets.values()))
-                    
+
                     # Set Arial font for all cells (including header)
-                    arial_font = ExcelFont(name='Arial', size=11)
+                    arial_font = ExcelFont(name='Arial', size=11, color="00000000")  # Explicit black
                     red_arial_font = ExcelFont(name='Arial', size=11, color="00FF0000")
                     
                     # Apply font to header row
@@ -4115,7 +4276,7 @@ class DerivativeMill(QMainWindow):
 
                     # Create font and alignment styles
                     red_font = ExcelFont(name="Arial", color="00FF0000")
-                    normal_font = ExcelFont(name="Arial")
+                    normal_font = ExcelFont(name="Arial", color="00000000")  # Explicit black color
                     center_alignment = Alignment(horizontal="center", vertical="center")
 
                     # Apply red font to rows where NonSteelRatio > 0, normal font to others
