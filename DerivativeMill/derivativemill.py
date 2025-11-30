@@ -93,10 +93,11 @@ INPUT_DIR = BASE_DIR / "Input"
 OUTPUT_DIR = BASE_DIR / "Output"
 PROCESSED_DIR = INPUT_DIR / "Processed"
 OUTPUT_PROCESSED_DIR = OUTPUT_DIR / "Processed"
+PROCESSED_PDF_DIR = BASE_DIR / "ProcessedPDFs"
 MAPPING_FILE = BASE_DIR / "column_mapping.json"
 SHIPMENT_MAPPING_FILE = BASE_DIR / "shipment_mapping.json"
 
-for p in (RESOURCES_DIR, INPUT_DIR, OUTPUT_DIR, PROCESSED_DIR, OUTPUT_PROCESSED_DIR):
+for p in (RESOURCES_DIR, INPUT_DIR, OUTPUT_DIR, PROCESSED_DIR, OUTPUT_PROCESSED_DIR, PROCESSED_PDF_DIR):
     p.mkdir(exist_ok=True)
 
 DB_PATH = RESOURCES_DIR / DB_NAME
@@ -1249,7 +1250,24 @@ class DerivativeMill(QMainWindow):
         output_btn.clicked.connect(lambda: self.select_output_folder(output_path_label))
         glayout.addRow("Output Folder:", output_path_label)
         glayout.addRow("", output_btn)
-        
+
+        # Processed PDF folder display and button
+        global PROCESSED_PDF_DIR
+        processed_pdf_dir_str = str(PROCESSED_PDF_DIR) if 'PROCESSED_PDF_DIR' in globals() and PROCESSED_PDF_DIR else "(not set)"
+        processed_pdf_path_label = QLabel(processed_pdf_dir_str)
+        processed_pdf_path_label.setWordWrap(True)
+
+        # Apply theme-aware styling
+        if is_dark:
+            processed_pdf_path_label.setStyleSheet("background:#2d2d2d; padding:5px; border:1px solid #555; color:#e0e0e0;")
+        else:
+            processed_pdf_path_label.setStyleSheet("background:#f0f0f0; padding:5px; border:1px solid #ccc; color:#000000;")
+
+        processed_pdf_btn = QPushButton("Change Processed PDF Folder")
+        processed_pdf_btn.clicked.connect(lambda: self.select_processed_pdf_folder(processed_pdf_path_label))
+        glayout.addRow("Processed PDF Folder:", processed_pdf_path_label)
+        glayout.addRow("", processed_pdf_btn)
+
         group.setLayout(glayout)
         layout.addWidget(group)
 
@@ -1830,6 +1848,59 @@ class DerivativeMill(QMainWindow):
             conn.close()
             self.status.setText(f"Output folder: {OUTPUT_DIR}")
             self.refresh_exported_files()
+
+    def select_processed_pdf_folder(self, label=None):
+        global PROCESSED_PDF_DIR
+        folder = QFileDialog.getExistingDirectory(self, "Select Processed PDF Folder", str(PROCESSED_PDF_DIR))
+        if folder:
+            PROCESSED_PDF_DIR = Path(folder)
+            PROCESSED_PDF_DIR.mkdir(exist_ok=True)
+            if label:
+                label.setText(str(PROCESSED_PDF_DIR))
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+            c.execute("INSERT OR REPLACE INTO app_config VALUES ('processed_pdf_dir', ?)", (str(PROCESSED_PDF_DIR),))
+            conn.commit()
+            conn.close()
+            self.status.setText(f"Processed PDF folder: {PROCESSED_PDF_DIR}")
+            logger.info(f"Processed PDF folder changed to: {PROCESSED_PDF_DIR}")
+
+    def move_pdf_to_processed(self, pdf_path):
+        """
+        Move a processed PDF file to the Processed PDF folder.
+
+        Args:
+            pdf_path (str or Path): Path to the PDF file to move
+
+        Returns:
+            bool: True if move was successful, False otherwise
+        """
+        try:
+            pdf_file = Path(pdf_path)
+            if not pdf_file.exists():
+                logger.warning(f"PDF file not found for processing: {pdf_path}")
+                return False
+
+            # Get destination path
+            dest_path = PROCESSED_PDF_DIR / pdf_file.name
+
+            # Handle duplicate filenames
+            if dest_path.exists():
+                base_name = pdf_file.stem
+                ext = pdf_file.suffix
+                counter = 1
+                while dest_path.exists():
+                    dest_path = PROCESSED_PDF_DIR / f"{base_name}_{counter}{ext}"
+                    counter += 1
+
+            # Move the file
+            shutil.move(str(pdf_file), str(dest_path))
+            logger.info(f"Moved processed PDF to: {dest_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to move PDF to processed folder: {e}")
+            return False
 
     def load_file_as_dataframe(self, file_path):
         """Load CSV or Excel file and return as DataFrame"""
@@ -2714,10 +2785,14 @@ class DerivativeMill(QMainWindow):
                             f"Note: Please review the extracted data carefully as OCR accuracy may vary.\n"
                             f"You can adjust the column mappings before processing."
                         )
+                        # Move PDF to processed folder after successful OCR extraction
+                        self.move_pdf_to_processed(path)
                 else:
                     # Digital PDF: use pdfplumber table extraction
                     df = self.extract_pdf_table(path)
                     logger.info(f"Digital PDF detected: {Path(path).name} - using table extraction")
+                    # Move PDF to processed folder after successful extraction
+                    self.move_pdf_to_processed(path)
             elif file_ext == '.xlsx':
                 df = pd.read_excel(path, nrows=0, dtype=str)
             else:  # .csv
