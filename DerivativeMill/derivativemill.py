@@ -5110,6 +5110,12 @@ class DerivativeMill(QMainWindow):
         help_btn.clicked.connect(self.show_pattern_help)
         patterns_layout.addWidget(help_btn)
 
+        # Create scrollable area for patterns
+        patterns_scroll = QScrollArea()
+        patterns_scroll.setWidgetResizable(True)
+        patterns_scroll_widget = QWidget()
+        patterns_scroll_layout = QVBoxLayout(patterns_scroll_widget)
+
         # Pattern fields with descriptions
         self.ocr_patterns = {}
         pattern_descriptions = {
@@ -5166,10 +5172,14 @@ class DerivativeMill(QMainWindow):
             pattern_edit.setFixedHeight(40)
             self.ocr_patterns[key] = pattern_edit
             pattern_layout.addWidget(pattern_edit)
-            patterns_layout.addLayout(pattern_layout)
+            patterns_scroll_layout.addLayout(pattern_layout)
+
+        patterns_scroll_layout.addStretch()
+        patterns_scroll.setWidget(patterns_scroll_widget)
+        patterns_layout.addWidget(patterns_scroll)
 
         patterns_group.setLayout(patterns_layout)
-        right_layout.addWidget(patterns_group)
+        right_layout.addWidget(patterns_group, 1)  # Give patterns proportional space
 
         # Results display
         results_group = QGroupBox("Extraction Results")
@@ -5190,7 +5200,7 @@ class DerivativeMill(QMainWindow):
         results_layout.addWidget(self.ocr_results_text)
 
         results_group.setLayout(results_layout)
-        right_layout.addWidget(results_group)
+        right_layout.addWidget(results_group, 1)  # Give results proportional space
 
         splitter.addWidget(right_widget)
         splitter.setSizes([300, 500])
