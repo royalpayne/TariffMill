@@ -5175,6 +5175,13 @@ class DerivativeMill(QMainWindow):
         template_btn_layout.addWidget(btn_delete)
 
         supplier_layout.addLayout(template_btn_layout)
+
+        # Generate patterns from selections button
+        btn_gen_patterns = QPushButton("🤖 Generate Patterns from Selections")
+        btn_gen_patterns.setStyleSheet(self.get_button_style("warning"))
+        btn_gen_patterns.setToolTip("Auto-generate regex patterns from your highlighted text selections")
+        btn_gen_patterns.clicked.connect(self.generate_patterns_from_selections)
+        supplier_layout.addWidget(btn_gen_patterns)
         supplier_group.setLayout(supplier_layout)
         left_layout.addWidget(supplier_group)
 
@@ -5486,6 +5493,79 @@ class DerivativeMill(QMainWindow):
         except Exception as e:
             logger.error(f"Error loading template: {e}")
             QMessageBox.warning(self, "Error", f"Failed to load template: {str(e)}")
+
+    def generate_patterns_from_selections(self):
+        """Generate regex patterns from highlighted text selections in OCR results"""
+        try:
+            # Get the named selections from the highlightable text widget
+            selections = self.ocr_results_text.get_named_selections()
+
+            if not selections:
+                QMessageBox.warning(self, "No Selections", "Please highlight and name some data elements first")
+                return
+
+            # Map selection names to pattern field keys
+            selection_to_pattern = {
+                'part number': 'part_number_value',
+                'part_number': 'part_number_value',
+                'price': 'value_pattern',
+                'value': 'value_pattern',
+                'qty': 'quantity_pattern',
+                'quantity': 'quantity_pattern',
+            }
+
+            # Generate patterns for each selection type
+            message = "Generated patterns from your selections:\n\n"
+            for name, examples in selections.items():
+                name_lower = name.lower()
+                pattern_key = None
+
+                # Find matching pattern key
+                for sel_name, key in selection_to_pattern.items():
+                    if sel_name in name_lower:
+                        pattern_key = key
+                        break
+
+                if pattern_key and pattern_key in self.ocr_patterns:
+                    # Generate regex from examples
+                    pattern = self._generate_regex_from_examples(examples)
+                    self.ocr_patterns[pattern_key].setPlainText(pattern)
+                    message += f"✓ {name}: {pattern[:50]}...\n"
+
+            QMessageBox.information(self, "Patterns Generated", message)
+            logger.success(f"Generated patterns from {len(selections)} selections")
+
+        except Exception as e:
+            logger.error(f"Error generating patterns: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to generate patterns: {str(e)}")
+
+    def _generate_regex_from_examples(self, examples):
+        """Generate a regex pattern from examples"""
+        if not examples:
+            return ""
+
+        # For simple cases, create a pattern that matches similar strings
+        # This is a basic implementation - can be enhanced
+        if len(examples) == 1:
+            example = examples[0].strip()
+            # Escape special regex characters
+            import re as regex_module
+            escaped = regex_module.escape(example)
+            return f"({escaped})"
+
+        # For multiple examples, try to find common pattern
+        example = examples[0].strip()
+
+        # Detect pattern type based on content
+        if any(char.isdigit() for char in example) and any(char.isalpha() for char in example):
+            # Mix of letters and numbers - like part numbers
+            return r"([A-Z0-9\-_\.]{3,25})"
+        elif all(char.isdigit() or char in '.,- ' for char in example):
+            # Mostly numbers - like prices or quantities
+            return r"(\d+(?:[,\.]?\d{1,3})*(?:\.\d{2})?)"
+        else:
+            # Default text pattern
+            return f"({regex_module.escape(example)})"
 
     def save_ocr_template(self):
         """Save OCR template"""
