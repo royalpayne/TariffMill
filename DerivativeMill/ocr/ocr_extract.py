@@ -48,17 +48,24 @@ def extract_from_scanned_invoice(pdf_path, supplier_name='default', progress_cal
         if progress_callback:
             progress_callback("Converting PDF to images...")
 
-        # Step 2: Convert PDF to images (first page only for MVP)
-        images = pdf_to_images(pdf_path, dpi=150, first_page=1, last_page=1)
+        # Step 2: Convert PDF to images (all pages to capture multi-page invoices)
+        images = pdf_to_images(pdf_path, dpi=150)
 
         if not images:
             raise ValueError("Could not convert PDF to images")
 
         if progress_callback:
-            progress_callback("Running OCR on invoice image...")
+            progress_callback(f"Running OCR on {len(images)} page(s)...")
 
-        # Step 3: Extract text using pytesseract
-        raw_text = pytesseract.image_to_string(images[0], lang='eng')
+        # Step 3: Extract text using pytesseract (from all pages)
+        raw_text = ""
+        for i, image in enumerate(images):
+            if progress_callback and len(images) > 1:
+                progress_callback(f"Processing page {i+1} of {len(images)}...")
+
+            page_text = pytesseract.image_to_string(image, lang='eng')
+            if page_text:
+                raw_text += page_text + "\n\n--- PAGE BREAK ---\n\n"
 
         if not raw_text or not raw_text.strip():
             raise ValueError("OCR found no text in image. Check image quality and DPI.")
@@ -168,24 +175,31 @@ def preview_extraction(pdf_path, max_lines=20):
     Preview OCR results before full extraction.
 
     Useful for debugging and verifying OCR accuracy.
+    Shows results from all pages of the PDF.
 
     Args:
         pdf_path (str): Path to PDF
-        max_lines (int): Maximum lines of text to show
+        max_lines (int): Maximum lines of text to show per page
 
     Returns:
         dict: {
             'is_scanned': bool,
             'text_preview': str,
             'line_count': int,
-            'char_count': int
+            'char_count': int,
+            'page_count': int
         }
     """
     try:
         is_scanned = is_scanned_pdf(pdf_path)
 
-        images = pdf_to_images(pdf_path, dpi=150, first_page=1, last_page=1)
-        raw_text = pytesseract.image_to_string(images[0], lang='eng')
+        images = pdf_to_images(pdf_path, dpi=150)
+        raw_text = ""
+
+        for image in images:
+            page_text = pytesseract.image_to_string(image, lang='eng')
+            if page_text:
+                raw_text += page_text + "\n\n--- PAGE BREAK ---\n\n"
 
         lines = raw_text.split('\n')
         preview_lines = lines[:max_lines]
@@ -199,6 +213,7 @@ def preview_extraction(pdf_path, max_lines=20):
             'text_preview': preview_text,
             'line_count': len(lines),
             'char_count': len(raw_text),
+            'page_count': len(images),
         }
 
     except Exception as e:
@@ -207,4 +222,5 @@ def preview_extraction(pdf_path, max_lines=20):
             'text_preview': f'Error: {str(e)}',
             'line_count': 0,
             'char_count': 0,
+            'page_count': 0,
         }
