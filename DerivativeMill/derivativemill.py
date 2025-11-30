@@ -538,6 +538,98 @@ class PDFDrawingCanvas(QLabel):
         self.drawing = False
         self.current_rect = None
 
+    def contextMenuEvent(self, event):
+        """Handle right-click context menu"""
+        point = event.pos()
+        idx = self.get_annotation_at_point(point)
+
+        if idx is None:
+            return
+
+        # Create context menu
+        menu = QMenu(self)
+
+        edit_action = menu.addAction("Edit Box Dimensions...")
+        rename_action = menu.addAction("Rename Element...")
+        delete_action = menu.addAction("Delete Element")
+
+        action = menu.exec_(self.mapToGlobal(point))
+
+        if action == edit_action:
+            self.show_edit_box_dialog(idx)
+        elif action == rename_action:
+            self.show_rename_dialog(idx)
+        elif action == delete_action:
+            self.delete_annotation(idx)
+
+    def show_edit_box_dialog(self, idx):
+        """Show dialog to edit box dimensions precisely"""
+        rect, name = self.annotations[idx]
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Edit Box - {name}")
+        dialog.setModal(True)
+        layout = QVBoxLayout(dialog)
+
+        # Create form layout
+        form = QFormLayout()
+
+        x_input = QSpinBox()
+        x_input.setRange(-5000, 5000)
+        x_input.setValue(rect.x())
+        form.addRow("X Position:", x_input)
+
+        y_input = QSpinBox()
+        y_input.setRange(-5000, 5000)
+        y_input.setValue(rect.y())
+        form.addRow("Y Position:", y_input)
+
+        width_input = QSpinBox()
+        width_input.setRange(20, 5000)
+        width_input.setValue(rect.width())
+        form.addRow("Width:", width_input)
+
+        height_input = QSpinBox()
+        height_input.setRange(20, 5000)
+        height_input.setValue(rect.height())
+        form.addRow("Height:", height_input)
+
+        layout.addLayout(form)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        ok_btn = QPushButton("OK")
+        cancel_btn = QPushButton("Cancel")
+        button_layout.addWidget(ok_btn)
+        button_layout.addWidget(cancel_btn)
+        layout.addLayout(button_layout)
+
+        ok_btn.clicked.connect(dialog.accept)
+        cancel_btn.clicked.connect(dialog.reject)
+
+        if dialog.exec_() == QDialog.Accepted:
+            new_rect = QRect(x_input.value(), y_input.value(), width_input.value(), height_input.value())
+            self.annotations[idx] = (new_rect, name)
+            self.redraw()
+
+    def show_rename_dialog(self, idx):
+        """Show dialog to rename an element"""
+        rect, old_name = self.annotations[idx]
+
+        name, ok = QInputDialog.getText(
+            self, "Rename Element", "Enter new name:",
+            QLineEdit.Normal, old_name
+        )
+
+        if ok and name:
+            self.annotations[idx] = (rect, name)
+            self.redraw()
+
+    def delete_annotation(self, idx):
+        """Delete an annotation"""
+        del self.annotations[idx]
+        self.redraw()
+
     def redraw(self):
         """Redraw pixmap with annotations and current rectangle"""
         self.current_pixmap = self.base_pixmap.copy()
