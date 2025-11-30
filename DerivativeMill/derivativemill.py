@@ -4665,6 +4665,10 @@ class DerivativeMill(QMainWindow):
 
             self.ocr_supplier_combo.blockSignals(False)
 
+            # Ensure the input field is enabled since we start with "(Create New)"
+            self.ocr_new_supplier_input.setEnabled(True)
+            self.ocr_new_supplier_input.setText("")
+
         except Exception as e:
             logger.error(f"Error loading templates: {e}")
 
@@ -4673,9 +4677,10 @@ class DerivativeMill(QMainWindow):
         if supplier_name == "(Create New)":
             self.ocr_new_supplier_input.setEnabled(True)
             self.ocr_new_supplier_input.setText("")
-            # Clear pattern fields
-            for pattern_edit in self.ocr_patterns.values():
-                pattern_edit.setPlainText("")
+            # Clear pattern fields if they exist
+            if hasattr(self, 'ocr_patterns'):
+                for pattern_edit in self.ocr_patterns.values():
+                    pattern_edit.setPlainText("")
         else:
             self.ocr_new_supplier_input.setEnabled(False)
             self.load_ocr_template()
