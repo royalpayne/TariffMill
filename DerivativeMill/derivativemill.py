@@ -2411,10 +2411,27 @@ class DerivativeMill(QMainWindow):
                 lbl = DraggableLabel(col)
                 self.import_left_layout.addWidget(lbl)
                 self.drag_labels.append(lbl)
-            
+
             # Add stretch at the end to push labels to the top
             self.import_left_layout.addStretch()
-            
+
+            # Try to restore saved mappings if they match columns in the new file
+            if MAPPING_FILE.exists():
+                try:
+                    saved_mapping = json.loads(MAPPING_FILE.read_text())
+                    # Restore mappings only if the column exists in the new file
+                    for field_key, column_name in saved_mapping.items():
+                        if column_name in cols and field_key in self.import_targets:
+                            target = self.import_targets[field_key]
+                            target.column_name = column_name
+                            target.setText(f"{field_key}\n<- {column_name}")
+                            target.setProperty("occupied", True)
+                            target.style().unpolish(target)
+                            target.style().polish(target)
+                            logger.info(f"Restored mapping: {field_key} <- {column_name}")
+                except Exception as e:
+                    logger.warning(f"Failed to restore saved mappings: {e}")
+
             logger.info(f"Loaded CSV for import (drag-drop): {Path(path).name}")
             self.bottom_status.setText(f"CSV loaded: {Path(path).name}")
         except Exception as e:
@@ -2542,7 +2559,8 @@ class DerivativeMill(QMainWindow):
                 hts = str(r['hts_code']).strip()
                 origin = str(r.get('country_origin', '')).strip().upper()[:2]
                 mid = str(r.get('mid', '')).strip()
-                client_code = str(r.get('client_code', '')).strip()
+                # Get client_code if it was mapped, otherwise empty string
+                client_code = str(r.get('client_code', '')).strip() if 'client_code' in df.columns else ""
                 steel_str = str(r.get('steel_ratio', r.get('Sec 232 Content Ratio', r.get('Steel %', '1.0')))).strip()
                 try:
                     steel_ratio = float(steel_str)
