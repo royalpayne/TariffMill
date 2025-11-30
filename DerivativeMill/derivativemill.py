@@ -1017,8 +1017,15 @@ class DerivativeMill(QMainWindow):
     def show_settings_dialog(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("Settings")
-        dialog.setFixedSize(500, 650)
+        dialog.resize(700, 750)  # Increased size for better layout
         layout = QVBoxLayout(dialog)
+
+        # Create tab widget for better organization
+        tabs = QTabWidget()
+
+        # ===== TAB 1: APPEARANCE =====
+        appearance_widget = QWidget()
+        appearance_layout = QVBoxLayout(appearance_widget)
 
         # Theme Settings Group
         theme_group = QGroupBox("Appearance")
@@ -1095,7 +1102,7 @@ class DerivativeMill(QMainWindow):
         theme_layout.addRow("Font Size:", font_size_layout)
 
         theme_group.setLayout(theme_layout)
-        layout.addWidget(theme_group)
+        appearance_layout.addWidget(theme_group)
 
         # Excel Viewer Settings Group
         viewer_group = QGroupBox("Excel File Viewer")
@@ -1146,7 +1153,7 @@ class DerivativeMill(QMainWindow):
         viewer_layout.addRow("", viewer_info)
 
         viewer_group.setLayout(viewer_layout)
-        layout.addWidget(viewer_group)
+        appearance_layout.addWidget(viewer_group)
 
         # Preview Table Colors Group
         colors_group = QGroupBox("Preview Table Row Colors")
@@ -1211,7 +1218,15 @@ class DerivativeMill(QMainWindow):
         colors_layout.addRow("", colors_info)
 
         colors_group.setLayout(colors_layout)
-        layout.addWidget(colors_group)
+        appearance_layout.addWidget(colors_group)
+
+        # Add stretch to appearance tab
+        appearance_layout.addStretch()
+        tabs.addTab(appearance_widget, "Appearance")
+
+        # ===== TAB 2: FOLDER LOCATIONS =====
+        folders_widget = QWidget()
+        folders_layout = QVBoxLayout(folders_widget)
 
         group = QGroupBox("Folder Locations")
         glayout = QFormLayout()
@@ -1264,9 +1279,13 @@ class DerivativeMill(QMainWindow):
         glayout.addRow("", processed_pdf_btn)
 
         group.setLayout(glayout)
-        layout.addWidget(group)
+        folders_layout.addWidget(group)
 
-        layout.addStretch()
+        folders_layout.addStretch()
+        tabs.addTab(folders_widget, "Folders")
+
+        # Add tabs to main dialog layout
+        layout.addWidget(tabs)
         dialog.exec_()
     
     def apply_theme(self, theme_name):
