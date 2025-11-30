@@ -2751,6 +2751,7 @@ class DerivativeMill(QMainWindow):
         Extract tabular data from PDF invoices using pdfplumber.
 
         Attempts to find and extract the first valid table from the PDF.
+        If no table found, tries text-based extraction as fallback.
         Returns a DataFrame with the extracted data.
 
         Args:
@@ -2793,12 +2794,62 @@ class DerivativeMill(QMainWindow):
                                 logger.info(f"PDF table extracted from page {page_idx + 1}: {df.shape}")
                                 return df
 
-                raise ValueError("No valid table found in PDF")
+                # No table found - try text-based extraction as fallback
+                logger.info("No structured table found in PDF, attempting text-based extraction")
+                return self._extract_pdf_text_fallback(pdf_path)
 
         except ValueError as ve:
             raise Exception(f"PDF extraction error: {str(ve)}")
         except Exception as e:
             raise Exception(f"PDF processing error: {str(e)}")
+
+    def _extract_pdf_text_fallback(self, pdf_path):
+        """
+        Fallback method to extract text-based data from PDFs without tables.
+
+        Extracts all text, creates generic columns, and returns as DataFrame.
+        This allows users to manually map columns if no table structure exists.
+
+        Args:
+            pdf_path (str): Path to PDF file
+
+        Returns:
+            pd.DataFrame: DataFrame with extracted text lines
+
+        Raises:
+            Exception: If PDF cannot be read
+        """
+        try:
+            import pdfplumber
+        except ImportError:
+            raise Exception("PDF support requires: pip install pdfplumber")
+
+        try:
+            with pdfplumber.open(pdf_path) as pdf:
+                all_text = []
+
+                # Extract text from all pages
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        # Split by lines and filter empty lines
+                        lines = [line.strip() for line in text.split('\n') if line.strip()]
+                        all_text.extend(lines)
+
+                if not all_text:
+                    raise ValueError("No text found in PDF")
+
+                # Create a simple DataFrame with text lines
+                # User will need to manually specify which columns to use
+                df = pd.DataFrame({
+                    'text_line': all_text
+                })
+
+                logger.info(f"PDF text extracted: {len(all_text)} lines")
+                return df
+
+        except Exception as e:
+            raise Exception(f"PDF text extraction failed: {str(e)}")
 
     def on_shipment_drop(self, field_key, column_name):
         for k, t in self.shipment_targets.items():
