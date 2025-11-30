@@ -410,8 +410,10 @@ class PDFDrawingCanvas(QLabel):
         self.EDGE_SIZE = 8  # Size of edge handles
 
     def get_annotation_at_point(self, point):
-        """Find annotation box at given point"""
-        for idx, (rect, name) in enumerate(self.annotations):
+        """Find annotation box at given point (returns topmost/last one if overlapping)"""
+        # Iterate in reverse to get the topmost (most recently drawn) annotation
+        for idx in range(len(self.annotations) - 1, -1, -1):
+            rect, name = self.annotations[idx]
             if rect.contains(point):
                 return idx
         return None
