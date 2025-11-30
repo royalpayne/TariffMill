@@ -396,8 +396,14 @@ class ElementNameDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
-        # Label
+        # Label with explicit styling for dark mode
         label = QLabel(prompt)
+        label.setStyleSheet("""
+            QLabel {
+                color: black;
+                font-weight: bold;
+            }
+        """)
         layout.addWidget(label)
 
         # Text input
