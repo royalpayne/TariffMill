@@ -5568,7 +5568,7 @@ class DerivativeMill(QMainWindow):
             return f"({regex_module.escape(example)})"
 
     def save_ocr_template(self):
-        """Save OCR template"""
+        """Save OCR template with patterns and learned selections"""
         try:
             from ocr.field_detector import SupplierTemplate, get_template_manager
 
@@ -5585,13 +5585,21 @@ class DerivativeMill(QMainWindow):
             for key, pattern_edit in self.ocr_patterns.items():
                 patterns[key] = pattern_edit.toPlainText().strip()
 
-            # Create and save template
-            template = SupplierTemplate(supplier_name, patterns=patterns)
+            # Collect learned selections from highlighted text
+            learned_selections = {}
+            if hasattr(self, 'ocr_results_text'):
+                learned_selections = self.ocr_results_text.get_named_selections()
+
+            # Create template with patterns and learned examples
+            template = SupplierTemplate(supplier_name, patterns=patterns, field_positions=learned_selections)
             manager = get_template_manager()
             manager.save_template(template)
 
             logger.success(f"Saved OCR template: {supplier_name}")
-            QMessageBox.information(self, "Success", f"Template '{supplier_name}' saved successfully")
+            message = f"Template '{supplier_name}' saved successfully\n\n"
+            message += f"Patterns configured: {len([p for p in patterns.values() if p])}\n"
+            message += f"Learned examples: {len(learned_selections)}"
+            QMessageBox.information(self, "Success", message)
 
             # Refresh template list
             self.refresh_ocr_templates()
