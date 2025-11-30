@@ -5177,7 +5177,16 @@ class DerivativeMill(QMainWindow):
 
         self.ocr_results_text = QPlainTextEdit()
         self.ocr_results_text.setReadOnly(True)
-        self.ocr_results_text.setFixedHeight(150)
+        self.ocr_results_text.setMinimumHeight(200)  # Minimum height instead of fixed
+        self.ocr_results_text.setStyleSheet("""
+            QPlainTextEdit {
+                font-family: monospace;
+                font-size: 10px;
+                background-color: #f5f5f5;
+                border: 1px solid #ccc;
+                padding: 5px;
+            }
+        """)
         results_layout.addWidget(self.ocr_results_text)
 
         results_group.setLayout(results_layout)
