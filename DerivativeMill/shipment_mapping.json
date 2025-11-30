@@ -1,3 +1,4 @@
 {
-  "part_number": "text_line"
+  "part_number": "part_number",
+  "value_usd": "value"
 }

@@ -1,0 +1,12 @@
+{
+  "supplier_name": "RB AGARWALLA",
+  "patterns": {
+    "part_number_header": "",
+    "part_number_value": "",
+    "value_header": "",
+    "value_pattern": "",
+    "quantity_pattern": "",
+    "description": ""
+  },
+  "field_positions": {}
+}

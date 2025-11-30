@@ -404,20 +404,124 @@ class PDFDrawingCanvas(QLabel):
         self.colors = [Qt.red, Qt.blue, Qt.green, Qt.magenta, Qt.yellow, Qt.cyan]
         self.color_index = 0
 
+        # Editing state
+        self.editing_index = None
+        self.editing_edge = None  # Which edge is being dragged: 'top', 'bottom', 'left', 'right', 'move'
+        self.EDGE_SIZE = 8  # Size of edge handles
+
+    def get_annotation_at_point(self, point):
+        """Find annotation box at given point"""
+        for idx, (rect, name) in enumerate(self.annotations):
+            if rect.contains(point):
+                return idx
+        return None
+
+    def get_edge_at_point(self, rect, point):
+        """Determine which edge of rectangle is at point (for resizing)"""
+        edges = {
+            'top': QRect(rect.x(), rect.y() - self.EDGE_SIZE, rect.width(), self.EDGE_SIZE * 2),
+            'bottom': QRect(rect.x(), rect.bottom() - self.EDGE_SIZE, rect.width(), self.EDGE_SIZE * 2),
+            'left': QRect(rect.x() - self.EDGE_SIZE, rect.y(), self.EDGE_SIZE * 2, rect.height()),
+            'right': QRect(rect.right() - self.EDGE_SIZE, rect.y(), self.EDGE_SIZE * 2, rect.height()),
+        }
+
+        for edge_name, edge_rect in edges.items():
+            if edge_rect.contains(point):
+                return edge_name
+
+        # Check if in center for moving
+        inner_rect = rect.adjusted(self.EDGE_SIZE, self.EDGE_SIZE, -self.EDGE_SIZE, -self.EDGE_SIZE)
+        if inner_rect.contains(point):
+            return 'move'
+
+        return None
+
     def mousePressEvent(self, event):
-        """Start drawing rectangle"""
+        """Start drawing or editing"""
+        point = event.pos()
+
+        # Check if clicking on existing annotation
+        idx = self.get_annotation_at_point(point)
+        if idx is not None:
+            rect, name = self.annotations[idx]
+            edge = self.get_edge_at_point(rect, point)
+            if edge:
+                self.editing_index = idx
+                self.editing_edge = edge
+                self.start_point = point
+                return
+
+        # Otherwise, start drawing new rectangle
         self.drawing = True
-        self.start_point = event.pos()
+        self.start_point = point
         self.current_rect = None
 
     def mouseMoveEvent(self, event):
-        """Update rectangle while dragging"""
+        """Update rectangle while dragging or resize, and update cursor"""
+        point = event.pos()
+
+        # Editing mode
+        if self.editing_index is not None and self.editing_edge:
+            rect, name = self.annotations[self.editing_index]
+            delta_x = point.x() - self.start_point.x()
+            delta_y = point.y() - self.start_point.y()
+
+            if self.editing_edge == 'top':
+                rect.setTop(rect.top() + delta_y)
+                self.setCursor(Qt.SizeVerCursor)
+            elif self.editing_edge == 'bottom':
+                rect.setBottom(rect.bottom() + delta_y)
+                self.setCursor(Qt.SizeVerCursor)
+            elif self.editing_edge == 'left':
+                rect.setLeft(rect.left() + delta_x)
+                self.setCursor(Qt.SizeHorCursor)
+            elif self.editing_edge == 'right':
+                rect.setRight(rect.right() + delta_x)
+                self.setCursor(Qt.SizeHorCursor)
+            elif self.editing_edge == 'move':
+                rect.translate(delta_x, delta_y)
+                self.setCursor(Qt.OpenHandCursor)
+
+            # Ensure minimum size
+            if rect.width() < 20:
+                rect.setWidth(20)
+            if rect.height() < 20:
+                rect.setHeight(20)
+
+            self.annotations[self.editing_index] = (rect, name)
+            self.start_point = point
+            self.redraw()
+            return
+
+        # Drawing mode
         if self.drawing and self.start_point:
             self.current_rect = QRect(self.start_point, event.pos()).normalized()
             self.redraw()
+            return
+
+        # Hover feedback: show cursor when hovering over resizable areas
+        idx = self.get_annotation_at_point(point)
+        if idx is not None:
+            rect, name = self.annotations[idx]
+            edge = self.get_edge_at_point(rect, point)
+            if edge == 'top' or edge == 'bottom':
+                self.setCursor(Qt.SizeVerCursor)
+            elif edge == 'left' or edge == 'right':
+                self.setCursor(Qt.SizeHorCursor)
+            elif edge == 'move':
+                self.setCursor(Qt.OpenHandCursor)
+            else:
+                self.setCursor(Qt.ArrowCursor)
+        else:
+            self.setCursor(Qt.ArrowCursor)
 
     def mouseReleaseEvent(self, event):
         """Finish drawing and ask for element name"""
+        if self.editing_index is not None:
+            self.editing_index = None
+            self.editing_edge = None
+            return
+
         if self.drawing and self.current_rect and self.current_rect.width() > 10 and self.current_rect.height() > 10:
             # Ask user to name this element
             name, ok = QInputDialog.getText(
