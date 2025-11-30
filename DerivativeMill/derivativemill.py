@@ -2807,40 +2807,42 @@ class DerivativeMill(QMainWindow):
         """
         Fallback method to extract text-based data from PDFs without tables.
 
-        Extracts all text, creates generic columns, and returns as DataFrame.
-        This allows users to manually map columns if no table structure exists.
+        Attempts supplier-specific extraction (e.g., AROMATE invoices).
+        Falls back to generic text extraction if no supplier pattern matches.
 
         Args:
             pdf_path (str): Path to PDF file
 
         Returns:
-            pd.DataFrame: DataFrame with extracted text lines
+            pd.DataFrame: DataFrame with extracted data or text lines
 
         Raises:
             Exception: If PDF cannot be read
         """
         try:
             import pdfplumber
+            import re
         except ImportError:
             raise Exception("PDF support requires: pip install pdfplumber")
 
         try:
             with pdfplumber.open(pdf_path) as pdf:
-                all_text = []
+                if not pdf.pages:
+                    raise ValueError("PDF is empty")
 
-                # Extract text from all pages
-                for page in pdf.pages:
-                    text = page.extract_text()
-                    if text:
-                        # Split by lines and filter empty lines
-                        lines = [line.strip() for line in text.split('\n') if line.strip()]
-                        all_text.extend(lines)
-
-                if not all_text:
+                text = pdf.pages[0].extract_text()
+                if not text:
                     raise ValueError("No text found in PDF")
 
-                # Create a simple DataFrame with text lines
-                # User will need to manually specify which columns to use
+                # Try AROMATE invoice extraction (SKU# based)
+                if "AROMATE" in text or "SKU#" in text:
+                    logger.info("Detected AROMATE-style invoice, using regex extraction")
+                    return self._extract_aromate_invoice(text)
+
+                # Fallback: generic text extraction
+                logger.info("Using generic text extraction")
+                all_text = [line.strip() for line in text.split('\n') if line.strip()]
+
                 df = pd.DataFrame({
                     'text_line': all_text
                 })
@@ -2850,6 +2852,46 @@ class DerivativeMill(QMainWindow):
 
         except Exception as e:
             raise Exception(f"PDF text extraction failed: {str(e)}")
+
+    def _extract_aromate_invoice(self, text):
+        """
+        Extract AROMATE invoice data using regex pattern matching.
+
+        Extracts SKU, quantity, unit price, and total price from AROMATE invoices.
+
+        Args:
+            text (str): Extracted PDF text
+
+        Returns:
+            pd.DataFrame: DataFrame with part_number, quantity, unit_price, total_price
+        """
+        import re
+
+        # Pattern matches both formats:
+        # Format 1: SKU# 1562485 76,080 PCS USD 0.6580 USD 50,060.64
+        # Format 2: SKU# 2641486 15,120 PCS 0.7140 10,795.68
+        pattern = r'SKU#\s*(\d+)\s+(\d+(?:,\d{3})*)\s+PCS\s+(?:USD\s+)?([\d.]+)\s+(?:USD\s+)?([\d,]+\.\d{2})'
+
+        matches = re.findall(pattern, text)
+
+        if not matches:
+            logger.warning("AROMATE pattern not found, falling back to generic text extraction")
+            all_text = [line.strip() for line in text.split('\n') if line.strip()]
+            return pd.DataFrame({'text_line': all_text})
+
+        # Convert matches to DataFrame
+        data = []
+        for sku, qty, unit_price, total_price in matches:
+            data.append({
+                'part_number': sku,
+                'quantity': int(qty.replace(',', '')),
+                'unit_price': float(unit_price),
+                'total_price': float(total_price.replace(',', ''))
+            })
+
+        df = pd.DataFrame(data)
+        logger.info(f"AROMATE invoice extraction successful: {len(df)} items extracted")
+        return df
 
     def on_shipment_drop(self, field_key, column_name):
         for k, t in self.shipment_targets.items():
