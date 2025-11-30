@@ -30,10 +30,13 @@ Input/
 └── ...
 
 Output/
-├── AROMATE_extracted_2025-01-15_14-30-22.csv
-├── [Supplier Name]_extracted_2025-01-15_14-30-22.csv
+├── invoice_1_extracted_2025-01-15_14-30-22.csv
+├── invoice_2_extracted_2025-01-15_14-30-23.csv
+├── other_invoice_extracted_2025-01-15_14-30-24.csv
 └── ...
 ```
+
+**Note**: Each PDF is extracted individually and saved as a separate CSV file with its own timestamp.
 
 ### 2. User Interface Changes
 
@@ -78,20 +81,20 @@ def get_supplier_folders():
 ```python
 def process_supplier_pdfs(supplier_name):
     """
-    Process all PDFs in supplier folder and create single CSV output.
+    Process all PDFs in supplier folder - extract each PDF individually.
 
     Flow:
     1. Get folder: INPUT_DIR / supplier_name
     2. Find all .pdf files
     3. For each PDF:
        - Extract using _extract_aromate_invoice() or appropriate extractor
-       - Collect results
-    4. Combine results into single DataFrame
-    5. Save to OUTPUT_DIR with timestamp
-    6. Return results and status
+       - Save extracted data to individual CSV file with timestamp
+       - Track success/error for this PDF
+    4. Move processed PDF to Processed folder
+    5. Return results and status with list of all output files
     """
     supplier_folder = INPUT_DIR / supplier_name
-    results = []
+    output_files = []
     errors = []
 
     pdf_files = list(supplier_folder.glob("*.pdf"))
@@ -99,34 +102,27 @@ def process_supplier_pdfs(supplier_name):
     for pdf_file in pdf_files:
         try:
             df = extract_pdf_data(pdf_file)  # Use existing extraction
-            results.append(df)
+
+            # Save extracted data to individual CSV file
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            pdf_name = pdf_file.stem  # filename without .pdf extension
+            output_file = OUTPUT_DIR / f"{pdf_name}_extracted_{timestamp}.csv"
+            df.to_csv(output_file, index=False)
+            output_files.append(output_file)
+
+            # Move processed PDF to Processed folder
+            self.move_pdf_to_processed(pdf_file)
+
         except Exception as e:
             errors.append((pdf_file.name, str(e)))
 
-    # Combine all results
-    if results:
-        combined_df = pd.concat(results, ignore_index=True)
-
-        # Save with timestamp
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        output_file = OUTPUT_DIR / f"{supplier_name}_extracted_{timestamp}.csv"
-        combined_df.to_csv(output_file, index=False)
-
-        return {
-            'success': True,
-            'output_file': output_file,
-            'files_processed': len(results),
-            'files_skipped': len(errors),
-            'errors': errors
-        }
-    else:
-        return {
-            'success': False,
-            'output_file': None,
-            'files_processed': 0,
-            'files_skipped': len(errors),
-            'errors': errors
-        }
+    return {
+        'success': len(output_files) > 0,
+        'output_files': output_files,
+        'files_processed': len(output_files),
+        'files_skipped': len(errors),
+        'errors': errors
+    }
 ```
 
 #### C. UI Components
@@ -187,13 +183,13 @@ Batch Processing Flow:
 5. Scans Input/[Supplier Name]/ for all .pdf files
 6. For each PDF:
    - Extract data using appropriate method
-   - Accumulate rows in results list
-7. Combine all rows into single DataFrame
-8. Save to Output/[Supplier Name]_extracted_TIMESTAMP.csv
-9. Update UI with results:
+   - Save extracted data to individual CSV file
+   - Move PDF to Processed folder
+   - Track success/error for this PDF
+7. Update UI with results:
    - Show files processed count
-   - Show any errors
-   - List output file for viewing/export
+   - Show any errors/skipped files
+   - List all output files created
 ```
 
 ### 6. Settings Dialog Changes
@@ -233,8 +229,13 @@ Batch Processing Flow:
 │                                      │
 │ Last Result:                         │
 │ ✓ 5 files processed                  │
-│ ✓ Output: AROMATE_extracted_...csv   │
-│ ⚠ 1 file skipped (extraction error) │
+│ ✓ Output files created:              │
+│   - invoice_1_extracted_...csv       │
+│   - invoice_2_extracted_...csv       │
+│   - invoice_3_extracted_...csv       │
+│   - invoice_4_extracted_...csv       │
+│   - invoice_5_extracted_...csv       │
+│ ⚠ 0 files skipped                    │
 └──────────────────────────────────────┘
 ```
 
@@ -265,16 +266,16 @@ Batch Processing Flow:
 4. Show progress dialog with file count
 5. For each PDF:
    a. Extract data (with error handling)
-   b. Update progress
-   c. Log result
-6. Combine all results
-7. Save CSV with timestamp
-8. Show completion dialog:
-   - Files processed count
-   - Output file path (clickable to open)
-   - Any errors/skipped files
-9. Update Exported Files list
-10. Update batch processing status display
+   b. Save extracted data to individual CSV file with timestamp
+   c. Move PDF to Processed folder
+   d. Update progress
+   e. Log result
+6. Show completion dialog:
+   - Total files processed count
+   - List of all output CSV files created
+   - Any errors/skipped files with reasons
+7. Update Exported Files list with all new output files
+8. Update batch processing status display with results
 ```
 
 ### 10. Error Handling
