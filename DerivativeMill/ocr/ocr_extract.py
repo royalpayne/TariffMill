@@ -49,13 +49,20 @@ def extract_from_scanned_invoice(pdf_path, supplier_name='default', progress_cal
             progress_callback("Converting PDF to images...")
 
         # Step 2: Convert PDF to images (all pages to capture multi-page invoices)
-        images = pdf_to_images(pdf_path, dpi=150)
+        # Explicitly pass first_page and last_page as None to get all pages
+        from .scanned_pdf import get_pdf_page_count
+        try:
+            page_count = get_pdf_page_count(pdf_path)
+        except:
+            page_count = "unknown"
+
+        images = pdf_to_images(pdf_path, dpi=150, first_page=1, last_page=None)
 
         if not images:
             raise ValueError("Could not convert PDF to images")
 
         if progress_callback:
-            progress_callback(f"Running OCR on {len(images)} page(s)...")
+            progress_callback(f"Running OCR on {len(images)} page(s) (PDF has {page_count} pages)...")
 
         # Step 3: Extract text using pytesseract (from all pages)
         raw_text = ""
@@ -87,6 +94,11 @@ def extract_from_scanned_invoice(pdf_path, supplier_name='default', progress_cal
             df['part_number'] = ''
         if 'value' not in df.columns:
             df['value'] = ''
+
+        # Format value column to preserve decimal places
+        # Convert to float, then format with 2 decimal places
+        if 'value' in df.columns and len(df) > 0:
+            df['value'] = pd.to_numeric(df['value'], errors='coerce')
 
         metadata = {
             'columns': ['part_number', 'value'],
@@ -193,13 +205,14 @@ def preview_extraction(pdf_path, max_lines=20):
     try:
         is_scanned = is_scanned_pdf(pdf_path)
 
-        images = pdf_to_images(pdf_path, dpi=150)
+        # Explicitly request all pages
+        images = pdf_to_images(pdf_path, dpi=150, first_page=1, last_page=None)
         raw_text = ""
 
-        for image in images:
+        for i, image in enumerate(images, 1):
             page_text = pytesseract.image_to_string(image, lang='eng')
             if page_text:
-                raw_text += page_text + "\n\n--- PAGE BREAK ---\n\n"
+                raw_text += f"[PAGE {i}]\n{page_text}\n\n--- PAGE BREAK ---\n\n"
 
         lines = raw_text.split('\n')
         preview_lines = lines[:max_lines]

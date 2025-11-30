@@ -149,6 +149,8 @@ class SupplierTemplate:
 
         For invoice lines, the actual price/total is usually AFTER the part number
         and NEAR THE END of the line, not at the beginning (which often has dates).
+
+        Returns the value as a float, preserving decimal precision.
         """
         pattern = self.patterns.get('value_pattern', '')
 
@@ -162,29 +164,32 @@ class SupplierTemplate:
             if matches:
                 # Find numeric values that look like prices
                 # Skip values that look like dates (4 digits like 2025)
-                # or years/years-months patterns
-                valid_values = []
+                # Keep track of both the float value and original string
+                valid_values = []  # List of (float_value, original_string) tuples
 
                 for i, match in enumerate(matches):
-                    value_str = match.replace(',', '').replace(' ', '')
+                    # Keep original for later reconstruction of decimals
+                    original = match
+                    cleaned = match.replace(',', '').replace(' ', '')
 
                     # Skip if this looks like a date/year (4-digit number at start of text)
-                    if re.match(r'^\d{4}$', value_str):
+                    if re.match(r'^\d{4}$', cleaned):
                         continue  # Skip year-like values (2025, etc.)
 
                     try:
-                        val = float(value_str)
+                        val = float(cleaned)
                         # Only consider values that look like prices
                         # Avoid tiny quantities (< 1) and suspicious date-like patterns
                         if val > 1.0 and val < 1000000:  # Reasonable price range
-                            valid_values.append(val)
+                            valid_values.append((val, original))
                     except ValueError:
                         continue
 
                 if valid_values:
-                    # Return the LAST (rightmost) valid value, which is usually the total
-                    # This is more reliable than max(), as prices are typically ordered
-                    return valid_values[-1]
+                    # Return the LAST (rightmost) valid value
+                    # Convert back to float to ensure numeric consistency
+                    # The float will preserve decimal places when converted to string
+                    return float(valid_values[-1][1].replace(',', '').replace(' ', ''))
 
         except (IndexError, AttributeError, re.error):
             return None

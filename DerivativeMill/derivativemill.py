@@ -3796,7 +3796,15 @@ class DerivativeMill(QMainWindow):
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                 pdf_name = pdf_file.stem
                 output_file = INPUT_DIR / f"{pdf_name}_extracted_{timestamp}.csv"
-                df.to_csv(output_file, index=False)
+
+                # Format value column to 2 decimal places before saving
+                df_export = df.copy()
+                if 'value' in df_export.columns:
+                    df_export['value'] = df_export['value'].apply(
+                        lambda x: f"{float(x):.2f}" if pd.notna(x) and x != '' else x
+                    )
+
+                df_export.to_csv(output_file, index=False)
                 output_files.append(output_file)
 
                 # Move PDF to processed folder
