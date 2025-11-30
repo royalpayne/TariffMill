@@ -32,7 +32,7 @@ import pandas as pd
 import sqlite3
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QMimeData, pyqtSignal, QTimer, QSize, QEventLoop
-from PyQt5.QtGui import QColor, QFont, QDrag, QKeySequence, QIcon, QPixmap, QPainter, QDoubleValidator
+from PyQt5.QtGui import QColor, QFont, QDrag, QKeySequence, QIcon, QPixmap, QPainter, QDoubleValidator, QCursor
 from PyQt5.QtSvg import QSvgRenderer
 from openpyxl.styles import Font as ExcelFont, Alignment
 import tempfile
@@ -193,15 +193,23 @@ init_database()
 class DraggableLabel(QLabel):
     def __init__(self, text):
         super().__init__(text)
-        self.setStyleSheet("background:#6b6b6b;border:2px solid #aaa;border-radius:8px;padding:12px;font-weight:bold;color:#ffffff;")
+        self.setStyleSheet("background:#6b6b6b;border:2px solid #aaa;border-radius:8px;padding:12px;font-weight:bold;color:#ffffff;cursor:hand;")
         self.setAlignment(Qt.AlignCenter)
+        self.setCursor(QCursor(Qt.OpenHandCursor))  # Show hand cursor
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
             drag = QDrag(self)
             mime = QMimeData()
             mime.setText(self.text())
             drag.setMimeData(mime)
+            pixmap = QPixmap(self.size())
+            pixmap.fill(Qt.transparent)
+            drag.setPixmap(pixmap)
             drag.exec_(Qt.CopyAction)
+    def mouseMoveEvent(self, e):
+        if e.buttons() == Qt.LeftButton:
+            # This helps with drag detection
+            pass
 
 class DropTarget(QLabel):
     dropped = pyqtSignal(str, str)
