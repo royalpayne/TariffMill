@@ -2875,6 +2875,7 @@ class DerivativeMill(QMainWindow):
         self.query_value.setPlaceholderText("Enter value...")
         self.query_value.setReadOnly(False)
         self.query_value.setEnabled(True)
+        self.query_value.setStyleSheet("QLineEdit { color: white; background-color: #333333; padding: 5px; border: 1px solid #555; }")
         query_controls.addWidget(self.query_value, 1)
         
         btn_run_query = QPushButton("Run Query")
@@ -2896,6 +2897,7 @@ class DerivativeMill(QMainWindow):
         self.custom_sql_input.setPlaceholderText("SELECT * FROM parts_master WHERE ...")
         self.custom_sql_input.setReadOnly(False)
         self.custom_sql_input.setEnabled(True)
+        self.custom_sql_input.setStyleSheet("QLineEdit { color: white; background-color: #333333; padding: 5px; border: 1px solid #555; }")
         custom_sql_layout.addWidget(self.custom_sql_input, 1)
         btn_run_custom = QPushButton("Execute")
         btn_run_custom.setStyleSheet(self.get_button_style("success"))
@@ -2919,6 +2921,7 @@ class DerivativeMill(QMainWindow):
         self.search_input.setPlaceholderText("Type to filter...")
         self.search_input.setReadOnly(False)
         self.search_input.setEnabled(True)
+        self.search_input.setStyleSheet("QLineEdit { color: white; background-color: #333333; padding: 5px; border: 1px solid #555; }")
         self.search_input.textChanged.connect(self.filter_parts_table)
         search_box.addWidget(self.search_input, 1)
         layout.addLayout(search_box)
