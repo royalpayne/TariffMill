@@ -2708,19 +2708,21 @@ class DerivativeMill(QMainWindow):
             self.status.setText("Import failed")
 
     def setup_shipment_mapping_tab(self):
+        logger.debug(f"setup_shipment_mapping_tab called - tab_shipment_map={self.tab_shipment_map}")
         layout = QVBoxLayout(self.tab_shipment_map)
         title = QLabel("<h2>Invoice Mapping Profiles</h2><p>Save and load column mappings</p>")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
-        # Buttons at top
-        top_bar = QHBoxLayout()
+        # Buttons at top - wrap in widget for proper rendering
+        top_bar_widget = QWidget()
+        top_bar = QHBoxLayout(top_bar_widget)
         self.profile_combo_map = QComboBox()
         self.profile_combo_map.setMinimumWidth(300)
         self.profile_combo_map.currentTextChanged.connect(self.load_selected_profile_full)
         top_bar.addWidget(QLabel("Saved Profiles:"))
         top_bar.addWidget(self.profile_combo_map)
-        
+
         # Load profiles immediately after creating the combo box
         self.load_mapping_profiles()
 
@@ -2741,7 +2743,7 @@ class DerivativeMill(QMainWindow):
         top_bar.addWidget(btn_save)
         top_bar.addWidget(btn_delete)
         top_bar.addStretch()
-        layout.addLayout(top_bar)
+        layout.addWidget(top_bar_widget)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
