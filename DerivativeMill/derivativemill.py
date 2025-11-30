@@ -383,91 +383,178 @@ class FileDropZone(QLabel):
 
 
 # ----------------------------------------------------------------------
-# VISUAL PDF PATTERN TRAINER
+# VISUAL PDF PATTERN TRAINER WITH DRAWING CANVAS
 # ----------------------------------------------------------------------
+class PDFDrawingCanvas(QLabel):
+    """Custom label that allows drawing rectangles and naming elements"""
+
+    def __init__(self, pixmap):
+        super().__init__()
+        self.base_pixmap = pixmap
+        self.current_pixmap = pixmap.copy()
+        self.setPixmap(self.current_pixmap)
+        self.setAlignment(Qt.AlignCenter)
+        self.setStyleSheet("border: 1px solid #ccc; background: white;")
+
+        # Drawing state
+        self.drawing = False
+        self.start_point = None
+        self.current_rect = None
+        self.annotations = []  # List of (rect, name) tuples
+        self.colors = [Qt.red, Qt.blue, Qt.green, Qt.magenta, Qt.yellow, Qt.cyan]
+        self.color_index = 0
+
+    def mousePressEvent(self, event):
+        """Start drawing rectangle"""
+        self.drawing = True
+        self.start_point = event.pos()
+        self.current_rect = None
+
+    def mouseMoveEvent(self, event):
+        """Update rectangle while dragging"""
+        if self.drawing and self.start_point:
+            self.current_rect = QRect(self.start_point, event.pos()).normalized()
+            self.redraw()
+
+    def mouseReleaseEvent(self, event):
+        """Finish drawing and ask for element name"""
+        if self.drawing and self.current_rect and self.current_rect.width() > 10 and self.current_rect.height() > 10:
+            # Ask user to name this element
+            name, ok = QInputDialog.getText(
+                self, "Name Element", "Enter name for this data element:\n(e.g., Part Number, Price, Qty)",
+                QLineEdit.Normal, ""
+            )
+
+            if ok and name:
+                self.annotations.append((self.current_rect, name))
+                self.redraw()
+
+        self.drawing = False
+        self.current_rect = None
+
+    def redraw(self):
+        """Redraw pixmap with annotations and current rectangle"""
+        self.current_pixmap = self.base_pixmap.copy()
+
+        painter = QPainter(self.current_pixmap)
+        painter.setFont(QFont("Arial", 8, QFont.Bold))
+
+        # Draw existing annotations
+        for idx, (rect, name) in enumerate(self.annotations):
+            color = self.colors[idx % len(self.colors)]
+            pen = QPen(color, 2)
+            painter.setPen(pen)
+            painter.drawRect(rect)
+
+            # Draw label
+            painter.fillRect(rect.x(), rect.y() - 20, len(name) * 7 + 6, 18, QColor(color).lighter())
+            painter.setPen(QPen(Qt.black))
+            painter.drawText(rect.x() + 3, rect.y() - 5, name)
+
+        # Draw current rectangle being drawn
+        if self.current_rect:
+            pen = QPen(Qt.gray, 2, Qt.DashLine)
+            painter.setPen(pen)
+            painter.drawRect(self.current_rect)
+
+        painter.end()
+        self.setPixmap(self.current_pixmap)
+
+    def get_annotations(self):
+        """Return list of annotated elements"""
+        return self.annotations
+
+    def clear_annotations(self):
+        """Clear all annotations"""
+        self.annotations = []
+        self.redraw()
+
+
 class PDFPatternTrainerDialog(QDialog):
-    """Interactive PDF viewer for visual OCR pattern training"""
+    """Interactive PDF viewer for visual OCR pattern training with drawing"""
 
     def __init__(self, pdf_path, parent=None):
         super().__init__(parent)
         self.pdf_path = pdf_path
         self.setWindowTitle(f"Visual Pattern Trainer - {Path(pdf_path).name}")
-        self.resize(1500, 1000)  # Larger window for high-quality PDF display
+        self.resize(1500, 1000)
 
         layout = QVBoxLayout(self)
 
         # Instructions
         instructions = QLabel(
-            "Click and drag to select data elements on the invoice.\n"
-            "Selected text will be extracted. Use this to understand your invoice format."
+            "Draw boxes around data elements and name them.\n"
+            "Click and drag to create rectangles. You'll be asked to name each element."
         )
         instructions.setWordWrap(True)
         instructions.setStyleSheet("background: #f0f0f0; padding: 10px; border-radius: 3px;")
         layout.addWidget(instructions)
 
-        # PDF display
+        # PDF display with drawing capability
         try:
             import pdfplumber
             with pdfplumber.open(pdf_path) as pdf:
-                # Get first page
                 page = pdf.pages[0]
-                page_height = page.height
-                page_width = page.width
 
                 # Render page to image with HIGH quality (300 DPI)
-                # This ensures text is readable when displayed
                 import io
                 from PIL import Image
                 pil_image = page.to_image(resolution=300).original
 
-                # Convert to QPixmap with high quality
+                # Convert to QPixmap
                 image_data = io.BytesIO()
                 pil_image.save(image_data, format='PNG', quality=95)
                 image_data.seek(0)
 
                 self.pixmap = QPixmap()
                 self.pixmap.loadFromData(image_data.read())
-
-                # Scale to fit window - use 1400 pixels for better readability
-                # High resolution render scaled to 1400px maintains quality
                 self.pixmap = self.pixmap.scaledToWidth(1400, Qt.SmoothTransformation)
+
+                # Create drawing canvas
+                self.canvas = PDFDrawingCanvas(self.pixmap)
 
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Could not load PDF: {str(e)}")
-            self.pixmap = QPixmap()
-
-        # PDF Image label with selection capability
-        self.pdf_label = QLabel()
-        self.pdf_label.setPixmap(self.pixmap)
-        self.pdf_label.setAlignment(Qt.AlignCenter)
-        self.pdf_label.setStyleSheet("border: 1px solid #ccc; background: white;")
+            self.canvas = PDFDrawingCanvas(QPixmap())
 
         scroll = QScrollArea()
-        scroll.setWidget(self.pdf_label)
+        scroll.setWidget(self.canvas)
         scroll.setWidgetResizable(True)
         layout.addWidget(scroll, 1)
 
-        # Selected text display
-        selected_group = QGroupBox("Selected Text from PDF")
-        selected_layout = QVBoxLayout()
-        self.selected_text = QPlainTextEdit()
-        self.selected_text.setReadOnly(True)
-        self.selected_text.setMaximumHeight(100)
-        selected_layout.addWidget(self.selected_text)
-        selected_group.setLayout(selected_layout)
-        layout.addWidget(selected_group)
+        # Annotations display
+        annotations_group = QGroupBox("Marked Elements")
+        annotations_layout = QVBoxLayout()
 
-        # Instructions for pattern creation
+        self.annotations_list = QListWidget()
+        self.annotations_list.setMaximumHeight(120)
+        annotations_layout.addWidget(self.annotations_list)
+
+        # Buttons for annotations
+        annotation_btn_layout = QHBoxLayout()
+        btn_refresh = QPushButton("Refresh List")
+        btn_refresh.setStyleSheet(self.get_button_style("info"))
+        btn_refresh.clicked.connect(self.refresh_annotations_list)
+        annotation_btn_layout.addWidget(btn_refresh)
+
+        btn_clear = QPushButton("Clear All")
+        btn_clear.setStyleSheet(self.get_button_style("danger"))
+        btn_clear.clicked.connect(self.clear_all_annotations)
+        annotation_btn_layout.addWidget(btn_clear)
+
+        annotations_layout.addLayout(annotation_btn_layout)
+        annotations_group.setLayout(annotations_layout)
+        layout.addWidget(annotations_group)
+
+        # Instructions
         pattern_instructions = QLabel(
             "<b>How to use:</b><br>"
-            "1. Look at your invoice and identify repeating patterns<br>"
-            "2. For Part Numbers: Select one complete part number from the data<br>"
-            "3. For Prices: Select one price value<br>"
-            "4. Study the selected text to understand the format<br>"
-            "5. Use this information to create regex patterns<br>"
-            "<br>"
-            "<b>Example:</b> If part numbers look like 'ABC-123' or 'XYZ-456',"
-            " the pattern might be: [A-Z]{{3}}-[0-9]{{3}}"
+            "1. Draw a box around a data element (e.g., one part number)<br>"
+            "2. Enter a name for it (e.g., 'Part Number', 'Price', 'Qty')<br>"
+            "3. Box will appear with color-coded label<br>"
+            "4. Repeat for other data elements<br>"
+            "5. Use the marked elements to understand invoice format<br>"
+            "6. Create regex patterns based on what you learn"
         )
         pattern_instructions.setWordWrap(True)
         pattern_instructions.setStyleSheet("background: #fffbea; padding: 10px; border-radius: 3px; font-size: 9pt;")
@@ -481,41 +568,33 @@ class PDFPatternTrainerDialog(QDialog):
         btn_layout.addWidget(btn_close)
         layout.addLayout(btn_layout)
 
-        # Enable text selection
-        self.setup_selection()
+        # Initialize annotations list
+        self.refresh_annotations_list()
 
-    def setup_selection(self):
-        """Setup mouse selection on PDF"""
-        self.selection_start = None
-        self.selection_end = None
-        self.pdf_label.mousePressEvent = self.on_mouse_press
-        self.pdf_label.mouseMoveEvent = self.on_mouse_move
-        self.pdf_label.mouseReleaseEvent = self.on_mouse_release
+    def get_button_style(self, style_type):
+        """Return button style (simplified)"""
+        styles = {
+            "info": "background: #2196F3; color: white; padding: 5px; border-radius: 3px;",
+            "danger": "background: #f44336; color: white; padding: 5px; border-radius: 3px;",
+        }
+        return styles.get(style_type, "")
 
-    def on_mouse_press(self, event):
-        self.selection_start = event.pos()
+    def refresh_annotations_list(self):
+        """Update the list of marked elements"""
+        self.annotations_list.clear()
+        for idx, (rect, name) in enumerate(self.canvas.get_annotations(), 1):
+            self.annotations_list.addItem(f"{idx}. {name} (at x={rect.x()}, y={rect.y()})")
 
-    def on_mouse_move(self, event):
-        # Could add visual feedback here (draw rectangle)
-        pass
-
-    def on_mouse_release(self, event):
-        if self.selection_start:
-            # Simple extraction: get OCR text from PDF and show a sample
-            try:
-                import pdfplumber
-                with pdfplumber.open(self.pdf_path) as pdf:
-                    page = pdf.pages[0]
-                    text = page.extract_text()
-
-                    # Show extracted text for analysis
-                    self.selected_text.setPlainText(
-                        "Invoice Text (first 500 characters):\n\n" + text[:500] + "\n...\n\n"
-                        "Use this to understand your invoice format and create patterns.\n"
-                        "Look for repeating text patterns that mark field boundaries."
-                    )
-            except Exception as e:
-                self.selected_text.setPlainText(f"Error: {str(e)}")
+    def clear_all_annotations(self):
+        """Clear all annotations"""
+        reply = QMessageBox.question(
+            self, "Clear All",
+            "Remove all marked elements?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.canvas.clear_annotations()
+            self.refresh_annotations_list()
 
 # ----------------------------------------------------------------------
 # MAIN APPLICATION — FINAL DESIGN
