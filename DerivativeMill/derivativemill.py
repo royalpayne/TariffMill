@@ -644,9 +644,11 @@ class PDFDrawingCanvas(QLabel):
             painter.setPen(pen)
             painter.drawRect(rect)
 
-            # Draw label
-            painter.fillRect(rect.x(), rect.y() - 20, len(name) * 7 + 6, 18, QColor(color).lighter())
-            painter.setPen(QPen(Qt.black))
+            # Draw label with solid background and black text for contrast
+            label_bg = QColor(color)
+            label_bg.setAlpha(220)  # Make slightly transparent
+            painter.fillRect(rect.x(), rect.y() - 20, len(name) * 7 + 6, 18, label_bg)
+            painter.setPen(QPen(Qt.black, 1))
             painter.drawText(rect.x() + 3, rect.y() - 5, name)
 
         # Draw current rectangle being drawn
