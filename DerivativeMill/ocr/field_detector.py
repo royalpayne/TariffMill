@@ -115,17 +115,39 @@ class SupplierTemplate:
             match = re.search(pattern, text)
             if match:
                 # Handle patterns with or without capturing groups
+                part_num = None
                 if match.groups():
-                    return match.group(1).strip()
+                    part_num = match.group(1).strip()
                 else:
-                    return match.group(0).strip()
+                    part_num = match.group(0).strip()
+
+                # Additional validation: part numbers in invoices usually:
+                # 1. Contain BOTH letters AND numbers (or special chars)
+                # 2. Are at least 4 characters (filters out short abbreviations)
+                # 3. Are NOT just dates (YYYY-MMDD format)
+                if part_num and len(part_num) >= 4:
+                    has_letter = any(c.isalpha() for c in part_num)
+                    has_number = any(c.isdigit() for c in part_num)
+                    has_special = any(c in '-_.' for c in part_num)
+
+                    # Must have letters (not just numbers or dates)
+                    # And must have special chars or numbers (to make it look like a part code)
+                    is_likely_date = re.match(r'^\d{4}-\d{2,4}$', part_num)
+
+                    if has_letter and (has_special or has_number) and not is_likely_date:
+                        return part_num
+
         except (IndexError, AttributeError, re.error):
             pass
 
         return None
 
     def _extract_value(self, text):
-        """Extract numeric value (price/amount) from text."""
+        """Extract numeric value (price/amount) from text.
+
+        For invoice lines, the actual price/total is usually AFTER the part number
+        and NEAR THE END of the line, not at the beginning (which often has dates).
+        """
         pattern = self.patterns.get('value_pattern', '')
 
         # Skip extraction if pattern is empty
@@ -136,22 +158,43 @@ class SupplierTemplate:
             matches = re.findall(pattern, text)
 
             if matches:
-                # Return the first numeric value found
-                value_str = matches[0]
-                # Remove commas and spaces
-                value_str = value_str.replace(',', '').replace(' ', '')
+                # Find numeric values that look like prices
+                # Skip values that look like dates (4 digits like 2025)
+                # or years/years-months patterns
+                valid_values = []
 
-                try:
-                    return float(value_str)
-                except ValueError:
-                    return None
+                for i, match in enumerate(matches):
+                    value_str = match.replace(',', '').replace(' ', '')
+
+                    # Skip if this looks like a date/year (4-digit number at start of text)
+                    if re.match(r'^\d{4}$', value_str):
+                        continue  # Skip year-like values (2025, etc.)
+
+                    try:
+                        val = float(value_str)
+                        # Only consider values that look like prices
+                        # Avoid tiny quantities (< 1) and suspicious date-like patterns
+                        if val > 1.0 and val < 1000000:  # Reasonable price range
+                            valid_values.append(val)
+                    except ValueError:
+                        continue
+
+                if valid_values:
+                    # Return the LAST (rightmost) valid value, which is usually the total
+                    # This is more reliable than max(), as prices are typically ordered
+                    return valid_values[-1]
+
         except (IndexError, AttributeError, re.error):
             return None
 
         return None
 
     def _extract_without_header(self, text):
-        """Fallback extraction without header detection."""
+        """Fallback extraction without header detection.
+
+        For invoices without clear headers, intelligently filter to extract
+        only actual line item data, not metadata/header information.
+        """
         lines = text.split('\n')
         extracted_data = []
 
@@ -161,18 +204,44 @@ class SupplierTemplate:
             if not line or len(line) < 5:
                 continue
 
+            # Skip lines that are clearly metadata/headers
+            if self._is_metadata_line(line):
+                continue
+
             part_num = self._extract_part_number(line)
             value = self._extract_value(line)
 
-            # Only add lines that have at least a part number or value
+            # Only add lines that have BOTH a part number AND a value
+            # AND the value is reasonably formatted (not just a random number)
             if part_num and value:
-                extracted_data.append({
-                    'part_number': part_num,
-                    'value': value,
-                    'raw_line': line
-                })
+                # Additional check: value should look like a price (typically >= 1.0)
+                # This filters out invoice numbers, postal codes, etc.
+                if value >= 1.0:
+                    extracted_data.append({
+                        'part_number': part_num,
+                        'value': value,
+                        'raw_line': line
+                    })
 
         return extracted_data
+
+    def _is_metadata_line(self, line):
+        """Check if a line is metadata/header, not actual data."""
+        line_lower = line.lower()
+
+        # Lines that are definitely metadata
+        metadata_patterns = [
+            'invoice', 'shipper', 'consignee', 'buyer', 'supplier',
+            'date:', 'no.:', 'address', 'road', 'street', 'gstin',
+            'country', 'port', 'container', 'total', 'page',
+            'thank you', 'payment', 'terms', 'destination',
+            'origin', 'loading', 'discharge', 'declaration',
+            'agarwalla', 'masonry', 'kolkata', 'norfolk',
+            'sarat', 'anderson', 'carolina', 'selma',
+            'shipper iec', 'for r.', 'stuff', 'hilton'
+        ]
+
+        return any(pattern in line_lower for pattern in metadata_patterns)
 
     def to_dict(self):
         """Serialize template to dict for JSON storage."""
