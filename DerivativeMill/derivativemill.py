@@ -4651,7 +4651,7 @@ class DerivativeMill(QMainWindow):
     def refresh_ocr_templates(self):
         """Load and display available OCR templates"""
         try:
-            from DerivativeMill.ocr.field_detector import get_template_manager
+            from ocr.field_detector import get_template_manager
             manager = get_template_manager()
             templates = manager.list_templates()
 
@@ -4682,7 +4682,7 @@ class DerivativeMill(QMainWindow):
     def load_ocr_template(self):
         """Load selected OCR template"""
         try:
-            from DerivativeMill.ocr.field_detector import get_template_manager
+            from ocr.field_detector import get_template_manager
             supplier_name = self.ocr_supplier_combo.currentText()
 
             if supplier_name == "(Create New)":
@@ -4705,7 +4705,7 @@ class DerivativeMill(QMainWindow):
     def save_ocr_template(self):
         """Save OCR template"""
         try:
-            from DerivativeMill.ocr.field_detector import SupplierTemplate, get_template_manager
+            from ocr.field_detector import SupplierTemplate, get_template_manager
 
             supplier_name = self.ocr_supplier_combo.currentText()
 
@@ -4753,7 +4753,7 @@ class DerivativeMill(QMainWindow):
 
             if reply == QMessageBox.Yes:
                 from pathlib import Path
-                from DerivativeMill.ocr.field_detector import get_template_manager
+                from ocr.field_detector import get_template_manager
                 manager = get_template_manager()
                 template_file = manager.templates_dir / f"{supplier_name}.json"
 
@@ -4790,8 +4790,8 @@ class DerivativeMill(QMainWindow):
             return
 
         try:
-            from DerivativeMill.ocr.ocr_extract import extract_from_scanned_invoice
-            from DerivativeMill.ocr.field_detector import SupplierTemplate
+            from ocr.ocr_extract import extract_from_scanned_invoice
+            from ocr.field_detector import SupplierTemplate
 
             # Get supplier name and patterns
             supplier_name = self.ocr_supplier_combo.currentText()
