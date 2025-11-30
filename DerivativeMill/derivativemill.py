@@ -3772,7 +3772,7 @@ class DerivativeMill(QMainWindow):
                 <li><b>Description</b> (Optional) - Part description</li>
                 <li><b>Sec 232 Content Ratio</b> (Optional) - Section 232 tariff content percentage (Steel, Aluminum, Wood, Copper)</li>
             </ul>
-            <b>Step 4:</b> Click <b>"IMPORT NOW"</b> to load parts into database<br>
+            <br><b>Step 4:</b> Click <b>"IMPORT NOW"</b> to load parts into database<br>
         </div>
         <div class="note">
             <b>Note:</b> Column mappings are automatically saved for future imports from the same source.
@@ -3784,7 +3784,6 @@ class DerivativeMill(QMainWindow):
             • Click <b>"Import Section 232 Tariffs (CSV/Excel)"</b><br>
             • Select the official CBP Excel file<br>
             • System imports Section 232 tariff codes automatically (Steel, Aluminum, Wood, Copper)<br><br>
-            
             <b>Option B - CSV Import:</b><br>
             • Click <b>"Import from CSV"</b><br>
             • Map the HTS Code column<br>
@@ -3803,7 +3802,7 @@ class DerivativeMill(QMainWindow):
             <b>Step 3:</b> Drag CSV columns to required fields:<br>
             &nbsp;&nbsp;&nbsp;&nbsp;• <b>Part Number</b> - Maps to your parts database<br>
             &nbsp;&nbsp;&nbsp;&nbsp;• <b>Value USD</b> - Invoice line item value<br>
-            <b>Step 4:</b> Click <b>"Save Current Mapping As..."</b><br>
+            <br><b>Step 4:</b> Click <b>"Save Current Mapping As..."</b><br>
             <b>Step 5:</b> Enter a profile name (e.g., "Supplier ABC")<br>
         </div>
         <div class="note">
