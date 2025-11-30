@@ -666,7 +666,7 @@ class DerivativeMill(QMainWindow):
         """Initialize tabs lazily when they are first accessed"""
         if index in self.tabs_initialized:
             return
-        
+
         # Map tab index to setup method
         tab_setup_methods = {
             1: self.setup_shipment_mapping_tab,
@@ -674,7 +674,8 @@ class DerivativeMill(QMainWindow):
             3: self.setup_master_tab,
             4: self.setup_log_tab,
             5: self.setup_config_tab,
-            6: self.setup_guide_tab
+            6: self.setup_actions_tab,
+            7: self.setup_guide_tab
         }
         
         # Initialize the tab
@@ -3927,11 +3928,32 @@ class DerivativeMill(QMainWindow):
         btn_import.setStyleSheet(self.get_button_style("info"))
         btn_import.clicked.connect(self.import_actions_csv)
         btn_layout.addWidget(btn_import)
-        
+
         btn_refresh = QPushButton("Refresh View")
         btn_refresh.setStyleSheet(self.get_button_style("default"))
         btn_refresh.clicked.connect(self.refresh_actions_view)
         btn_layout.addWidget(btn_refresh)
+
+        # Edit mode toggle
+        self.actions_edit_mode = False
+        self.btn_edit_actions = QPushButton("Enable Edit Mode")
+        self.btn_edit_actions.setStyleSheet(self.get_button_style("warning"))
+        self.btn_edit_actions.clicked.connect(self.toggle_actions_edit_mode)
+        btn_layout.addWidget(self.btn_edit_actions)
+
+        # Save/Cancel buttons (hidden by default)
+        self.btn_save_actions = QPushButton("Save Changes")
+        self.btn_save_actions.setStyleSheet(self.get_button_style("success"))
+        self.btn_save_actions.clicked.connect(self.save_actions_changes)
+        self.btn_save_actions.setVisible(False)
+        btn_layout.addWidget(self.btn_save_actions)
+
+        self.btn_cancel_actions = QPushButton("Cancel")
+        self.btn_cancel_actions.setStyleSheet(self.get_button_style("default"))
+        self.btn_cancel_actions.clicked.connect(self.cancel_actions_edit)
+        self.btn_cancel_actions.setVisible(False)
+        btn_layout.addWidget(self.btn_cancel_actions)
+
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
         
@@ -4111,10 +4133,17 @@ class DerivativeMill(QMainWindow):
                     QTableWidgetItem(str(row['link']))
                 ]
                 
-                # Make all items read-only
-                for item in items:
-                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                
+                # Make items editable/read-only based on edit mode
+                # Columns that can be edited: Action (1), Description (2), Note (8), Link (9)
+                editable_columns = {1, 2, 8, 9}
+                for col_idx, item in enumerate(items):
+                    if col_idx in editable_columns and self.actions_edit_mode:
+                        # Enable editing
+                        item.setFlags(item.flags() | Qt.ItemIsEditable)
+                    else:
+                        # Read-only
+                        item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+
                 # Apply color coding if toggle is enabled
                 if self.actions_color_toggle.isChecked():
                     material_colors = {
@@ -4158,6 +4187,99 @@ class DerivativeMill(QMainWindow):
         except Exception as e:
             logger.error(f"Filter actions table failed: {e}")
             self.actions_table.setRowCount(0)
+
+    def toggle_actions_edit_mode(self):
+        """Toggle edit mode for Section 232 Actions table"""
+        self.actions_edit_mode = not self.actions_edit_mode
+
+        if self.actions_edit_mode:
+            # Entering edit mode
+            self.btn_edit_actions.setText("Disable Edit Mode")
+            self.btn_edit_actions.setStyleSheet(self.get_button_style("danger"))
+            self.btn_save_actions.setVisible(True)
+            self.btn_cancel_actions.setVisible(True)
+            self.actions_filter.setEnabled(False)
+            self.actions_material_filter.setEnabled(False)
+            self.actions_color_toggle.setEnabled(False)
+
+            # Store original data for cancel functionality
+            if hasattr(self, 'actions_full_data'):
+                self.actions_original_data = self.actions_full_data.copy()
+
+            # Re-render table with editable cells
+            self.filter_actions_table()
+        else:
+            # Exiting edit mode (cancel)
+            self.cancel_actions_edit()
+
+    def save_actions_changes(self):
+        """Save changes made to Section 232 Actions table to database"""
+        if not hasattr(self, 'actions_full_data'):
+            QMessageBox.warning(self, "No Data", "No actions data to save")
+            return
+
+        try:
+            # Collect all current table data
+            updated_rows = []
+            for row_idx in range(self.actions_table.rowCount()):
+                row_data = []
+                for col_idx in range(self.actions_table.columnCount()):
+                    item = self.actions_table.item(row_idx, col_idx)
+                    row_data.append(item.text() if item else "")
+                updated_rows.append(row_data)
+
+            # Create DataFrame from updated rows
+            columns = ['tariff_no', 'action', 'description', 'advalorem_rate',
+                      'effective_date', 'expiration_date', 'specific_rate',
+                      'additional_declaration', 'note', 'link']
+            df_updated = pd.DataFrame(updated_rows, columns=columns)
+
+            # Update database
+            conn = sqlite3.connect(str(DB_PATH))
+            df_updated.to_sql('sec_232_actions', conn, if_exists='replace', index=False)
+            conn.close()
+
+            # Update internal data
+            self.actions_full_data = df_updated
+
+            # Exit edit mode
+            self.actions_edit_mode = False
+            self.btn_edit_actions.setText("Enable Edit Mode")
+            self.btn_edit_actions.setStyleSheet(self.get_button_style("warning"))
+            self.btn_save_actions.setVisible(False)
+            self.btn_cancel_actions.setVisible(False)
+            self.actions_filter.setEnabled(True)
+            self.actions_material_filter.setEnabled(True)
+            self.actions_color_toggle.setEnabled(True)
+
+            # Refresh display
+            self.filter_actions_table()
+
+            QMessageBox.information(self, "Success", f"Saved {len(df_updated)} actions to database")
+            logger.success(f"Saved {len(df_updated)} Section 232 actions to database")
+
+        except Exception as e:
+            logger.error(f"Save actions failed: {e}")
+            QMessageBox.critical(self, "Save Failed", f"Error saving changes:\n{str(e)}")
+
+    def cancel_actions_edit(self):
+        """Cancel edit mode and discard changes"""
+        self.actions_edit_mode = False
+        self.btn_edit_actions.setText("Enable Edit Mode")
+        self.btn_edit_actions.setStyleSheet(self.get_button_style("warning"))
+        self.btn_save_actions.setVisible(False)
+        self.btn_cancel_actions.setVisible(False)
+        self.actions_filter.setEnabled(True)
+        self.actions_material_filter.setEnabled(True)
+        self.actions_color_toggle.setEnabled(True)
+
+        # Restore original data if available
+        if hasattr(self, 'actions_original_data'):
+            self.actions_full_data = self.actions_original_data.copy()
+            del self.actions_original_data
+
+        # Refresh display
+        self.filter_actions_table()
 
     def setup_guide_tab(self):
         layout = QVBoxLayout(self.tab_guide)
