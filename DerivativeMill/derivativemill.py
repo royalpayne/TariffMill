@@ -3184,10 +3184,10 @@ class DerivativeMill(QMainWindow):
                     logger.info(f"Digital PDF detected: {pdf_file.name}")
                     df = self.extract_pdf_table(str(pdf_file))
 
-                # Save to individual CSV file with timestamp
+                # Save to individual CSV file with timestamp in Input folder for further processing
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                 pdf_name = pdf_file.stem
-                output_file = OUTPUT_DIR / f"{pdf_name}_extracted_{timestamp}.csv"
+                output_file = INPUT_DIR / f"{pdf_name}_extracted_{timestamp}.csv"
                 df.to_csv(output_file, index=False)
                 output_files.append(output_file)
 
