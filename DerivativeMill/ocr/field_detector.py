@@ -80,10 +80,12 @@ class SupplierTemplate:
                 part_num = self._extract_part_number(line)
                 value = self._extract_value(line)
 
-                if part_num or value:
+                # Only include if BOTH part number AND value are present
+                # Also validate that value looks like a price (>= 1.0)
+                if part_num and value and value >= 1.0:
                     extracted_data.append({
-                        'part_number': part_num or '',
-                        'value': value or '',
+                        'part_number': part_num,
+                        'value': value,
                         'raw_line': line
                     })
 
@@ -226,22 +228,46 @@ class SupplierTemplate:
         return extracted_data
 
     def _is_metadata_line(self, line):
-        """Check if a line is metadata/header, not actual data."""
+        """Check if a line is metadata/header, not actual data.
+
+        Very conservative approach - only filter obvious header/footer lines,
+        not product descriptions that might contain certain keywords.
+        """
         line_lower = line.lower()
 
-        # Lines that are definitely metadata
-        metadata_patterns = [
-            'invoice', 'shipper', 'consignee', 'buyer', 'supplier',
-            'date:', 'no.:', 'address', 'road', 'street', 'gstin',
-            'country', 'port', 'container', 'total', 'page',
-            'thank you', 'payment', 'terms', 'destination',
-            'origin', 'loading', 'discharge', 'declaration',
-            'agarwalla', 'masonry', 'kolkata', 'norfolk',
-            'sarat', 'anderson', 'carolina', 'selma',
-            'shipper iec', 'for r.', 'stuff', 'hilton'
+        # Only filter lines that are CLEARLY metadata headers/footers
+        # Avoid filtering product descriptions that happen to contain common words
+        strict_metadata_patterns = [
+            # Invoice headers
+            r'^\s*commercial invoice',
+            r'^\s*invoice no:?',
+            r'^\s*shipper\s*:',
+            r'^\s*consignee\s*:',
+            r'^\s*buyer\s*:',
+            r'^\s*destination\s*:',
+            r'^\s*country of',
+            r'^\s*port of',
+            # Company names (too specific, usually at start of lines)
+            r'^\s*r\.\s*b\.\s*agarwalla',
+            r'^\s*masonry supply',
+            # Address components
+            r'^\s*\d+\s*,\s*[a-z\s]+\s*road',
+            r'^\s*[a-z\s]+\s*,\s*\d+',
+            # Footer/declaration lines
+            r'^\s*we\s*(?:declare|certify)',
+            r'^\s*(?:for|on behalf of)',
+            r'^\s*stuffing point',
+            r'^\s*iec number',
+            r'^\s*total\s*(?:packages|weight)',
+            r'^\s*bill of lading',
         ]
 
-        return any(pattern in line_lower for pattern in metadata_patterns)
+        # Check strict patterns with regex
+        for pattern in strict_metadata_patterns:
+            if re.search(pattern, line_lower):
+                return True
+
+        return False
 
     def to_dict(self):
         """Serialize template to dict for JSON storage."""
