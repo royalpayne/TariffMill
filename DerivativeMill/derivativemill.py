@@ -422,10 +422,30 @@ class ElementNameDialog(QDialog):
         """)
         layout.addWidget(self.text_input)
 
-        # Buttons
+        # Buttons with explicit styling for dark mode
         button_layout = QHBoxLayout()
         ok_btn = QPushButton("OK")
         cancel_btn = QPushButton("Cancel")
+
+        button_style = """
+            QPushButton {
+                background-color: #0078d7;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                padding: 5px 15px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1084d9;
+            }
+            QPushButton:pressed {
+                background-color: #005a9e;
+            }
+        """
+        ok_btn.setStyleSheet(button_style)
+        cancel_btn.setStyleSheet(button_style)
+
         button_layout.addWidget(ok_btn)
         button_layout.addWidget(cancel_btn)
         layout.addLayout(button_layout)
