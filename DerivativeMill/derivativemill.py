@@ -139,7 +139,7 @@ def init_database():
         c = conn.cursor()
         c.execute("""CREATE TABLE IF NOT EXISTS parts_master (
             part_number TEXT PRIMARY KEY, description TEXT, hts_code TEXT, country_origin TEXT,
-            mid TEXT, steel_ratio REAL DEFAULT 1.0, non_steel_ratio REAL DEFAULT 0.0, last_updated TEXT
+            mid TEXT, client_code TEXT, steel_ratio REAL DEFAULT 1.0, non_steel_ratio REAL DEFAULT 0.0, last_updated TEXT
         )""")
         c.execute("""CREATE TABLE IF NOT EXISTS tariff_232 (
             hts_code TEXT PRIMARY KEY,
@@ -168,6 +168,17 @@ def init_database():
         c.execute("""CREATE TABLE IF NOT EXISTS app_config (
             key TEXT PRIMARY KEY, value TEXT
         )""")
+
+        # Migration: Add client_code column to parts_master if it doesn't exist
+        try:
+            c.execute("PRAGMA table_info(parts_master)")
+            columns = [col[1] for col in c.fetchall()]
+            if 'client_code' not in columns:
+                c.execute("ALTER TABLE parts_master ADD COLUMN client_code TEXT")
+                logger.info("Added client_code column to parts_master")
+        except Exception as e:
+            logger.warning(f"Failed to check/add client_code column: {e}")
+
         conn.commit()
         conn.close()
         logger.success("Database initialized")
@@ -194,8 +205,10 @@ class DraggableLabel(QLabel):
 
 class DropTarget(QLabel):
     dropped = pyqtSignal(str, str)
-    def __init__(self, field_key, field_name):
-        super().__init__(f"Drop {field_name} here")
+    def __init__(self, field_key, field_name, drop_label=None):
+        # Use custom drop_label if provided, otherwise use field_name
+        label_text = drop_label if drop_label else field_name
+        super().__init__(f"Drop {label_text} here")
         self.field_key = field_key
         # Unified style, proportional sizing
         self.setStyleSheet("font-size: 12pt; padding: 8px; background: #f8f8f8; border: 2px solid #bbb; border-radius: 8px; color: #222;")
@@ -2335,13 +2348,22 @@ class DerivativeMill(QMainWindow):
             "part_number": "Part Number *",
             "hts_code": "HTS Code *",
             "mid": "MID *",
-            "steel_ratio": "Sec 232 Content Ratio *"
+            "steel_ratio": "Sec 232 Content Ratio *",
+            "client_code": "Client Code"
+        }
+        drop_labels = {
+            "steel_ratio": "Sec232 ratio"
         }
         for key, name in fields.items():
-            target = DropTarget(key, name)
+            drop_label = drop_labels.get(key)
+            target = DropTarget(key, name, drop_label)
             target.dropped.connect(self.on_import_drop)
+            is_required = "*" in name
             label_text = name.replace(" *", "")
-            label = QLabel(f"{label_text}: <span style='color:red;'>*</span>")
+            if is_required:
+                label = QLabel(f"{label_text}: <span style='color:red;'>*</span>")
+            else:
+                label = QLabel(f"{label_text}:")
             right_layout.addRow(label, target)
             self.import_targets[key] = target
         
@@ -2369,7 +2391,15 @@ class DerivativeMill(QMainWindow):
             else:
                 df = pd.read_csv(path, nrows=0, dtype=str)
             cols = list(df.columns)
-            
+
+            # Clear previous mappings when loading new file
+            for target in self.import_targets.values():
+                target.column_name = None
+                target.setText(f"Drop {target.field_key} here")
+                target.setProperty("occupied", False)
+                target.style().unpolish(target)
+                target.style().polish(target)
+
             # Clear existing labels
             for label in self.drag_labels:
                 label.setParent(None)
@@ -2453,6 +2483,14 @@ class DerivativeMill(QMainWindow):
                 t.setText(f"Drop {t.field_key} here")
                 t.setProperty("occupied", False)
                 t.style().unpolish(t); t.style().polish(t)
+
+        # Update the target that received the drop
+        target = self.import_targets[field_key]
+        target.column_name = column_name
+        target.setText(f"{field_key}\n<- {column_name}")
+        target.setProperty("occupied", True)
+        target.style().unpolish(target); target.style().polish(target)
+
         self.current_mapping = getattr(self, 'current_mapping', {})
         self.current_mapping[field_key] = column_name
         MAPPING_FILE.write_text(json.dumps(self.current_mapping, indent=2))
@@ -2504,6 +2542,7 @@ class DerivativeMill(QMainWindow):
                 hts = str(r['hts_code']).strip()
                 origin = str(r.get('country_origin', '')).strip().upper()[:2]
                 mid = str(r.get('mid', '')).strip()
+                client_code = str(r.get('client_code', '')).strip()
                 steel_str = str(r.get('steel_ratio', r.get('Sec 232 Content Ratio', r.get('Steel %', '1.0')))).strip()
                 try:
                     steel_ratio = float(steel_str)
@@ -2513,13 +2552,13 @@ class DerivativeMill(QMainWindow):
                 except:
                     steel_ratio = 1.0
                     non_steel_ratio = 0.0
-                c.execute("""INSERT INTO parts_master VALUES (?,?,?,?,?,?,?,?)
+                c.execute("""INSERT INTO parts_master VALUES (?,?,?,?,?,?,?,?,?)
                           ON CONFLICT(part_number) DO UPDATE SET
                           description=excluded.description, hts_code=excluded.hts_code,
                           country_origin=excluded.country_origin, mid=excluded.mid,
-                          steel_ratio=excluded.steel_ratio, non_steel_ratio=excluded.non_steel_ratio,
-                          last_updated=excluded.last_updated""",
-                          (part, desc, hts, origin, mid, steel_ratio, non_steel_ratio, now))
+                          client_code=excluded.client_code, steel_ratio=excluded.steel_ratio,
+                          non_steel_ratio=excluded.non_steel_ratio, last_updated=excluded.last_updated""",
+                          (part, desc, hts, origin, mid, client_code, steel_ratio, non_steel_ratio, now))
                 if c.rowcount:
                     inserted += 1 if conn.total_changes > updated+inserted else 0
                     updated += 1 if conn.total_changes == updated+inserted else 0
@@ -2825,7 +2864,7 @@ class DerivativeMill(QMainWindow):
         query_controls.addWidget(QLabel("SELECT * FROM parts_master WHERE"))
         
         self.query_field = QComboBox()
-        self.query_field.addItems(["part_number", "description", "hts_code", "country_origin", "mid", "steel_ratio", "non_steel_ratio"])
+        self.query_field.addItems(["part_number", "description", "hts_code", "country_origin", "mid", "client_code", "steel_ratio", "non_steel_ratio"])
         query_controls.addWidget(self.query_field)
         
         self.query_operator = QComboBox()
@@ -2834,6 +2873,8 @@ class DerivativeMill(QMainWindow):
         
         self.query_value = QLineEdit()
         self.query_value.setPlaceholderText("Enter value...")
+        self.query_value.setReadOnly(False)
+        self.query_value.setEnabled(True)
         query_controls.addWidget(self.query_value, 1)
         
         btn_run_query = QPushButton("Run Query")
@@ -2853,6 +2894,8 @@ class DerivativeMill(QMainWindow):
         custom_sql_layout.addWidget(QLabel("Custom SQL:"))
         self.custom_sql_input = QLineEdit()
         self.custom_sql_input.setPlaceholderText("SELECT * FROM parts_master WHERE ...")
+        self.custom_sql_input.setReadOnly(False)
+        self.custom_sql_input.setEnabled(True)
         custom_sql_layout.addWidget(self.custom_sql_input, 1)
         btn_run_custom = QPushButton("Execute")
         btn_run_custom.setStyleSheet(self.get_button_style("success"))
@@ -2870,10 +2913,12 @@ class DerivativeMill(QMainWindow):
         search_box = QHBoxLayout()
         search_box.addWidget(QLabel("Quick Search:"))
         self.search_field_combo = QComboBox()
-        self.search_field_combo.addItems(["All Fields","part_number","description","hts_code","country_origin","mid","steel_ratio","non_steel_ratio"])
+        self.search_field_combo.addItems(["All Fields","part_number","description","hts_code","country_origin","mid","client_code","steel_ratio","non_steel_ratio"])
         search_box.addWidget(self.search_field_combo)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Type to filter...")
+        self.search_input.setReadOnly(False)
+        self.search_input.setEnabled(True)
         self.search_input.textChanged.connect(self.filter_parts_table)
         search_box.addWidget(self.search_input, 1)
         layout.addLayout(search_box)
@@ -2881,9 +2926,9 @@ class DerivativeMill(QMainWindow):
         table_box = QGroupBox("Parts Master Table")
         tl = QVBoxLayout()
         self.parts_table = QTableWidget()
-        self.parts_table.setColumnCount(8)
+        self.parts_table.setColumnCount(9)
         self.parts_table.setHorizontalHeaderLabels([
-            "part_number", "description", "hts_code", "country_origin", "mid", "steel_ratio", "non_steel_ratio", "updated_date"
+            "part_number", "description", "hts_code", "country_origin", "mid", "client_code", "steel_ratio", "non_steel_ratio", "updated_date"
         ])
         self.parts_table.setEditTriggers(QTableWidget.AllEditTriggers)
         self.parts_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -2939,26 +2984,27 @@ class DerivativeMill(QMainWindow):
             now = datetime.now().isoformat()
             saved = 0
             for row in range(self.parts_table.rowCount()):
-                items = [self.parts_table.item(row, col) for col in range(8)]
+                items = [self.parts_table.item(row, col) for col in range(9)]
                 if not items[0] or not items[0].text().strip(): continue
                 part = items[0].text().strip()
                 desc = items[1].text() if items[1] else ""
                 hts = items[2].text() if items[2] else ""
                 origin = (items[3].text() or "").upper()[:2]
                 mid = items[4].text() if items[4] else ""
+                client_code = items[5].text() if items[5] else ""
                 try:
-                    steel = float(items[5].text())
+                    steel = float(items[6].text())
                     steel = max(0.0, min(1.0, steel))
                     non_steel = 1.0 - steel
                 except:
                     steel = 1.0; non_steel = 0.0
-                c.execute("""INSERT INTO parts_master VALUES (?,?,?,?,?,?,?,?)
+                c.execute("""INSERT INTO parts_master VALUES (?,?,?,?,?,?,?,?,?)
                           ON CONFLICT(part_number) DO UPDATE SET
                           description=excluded.description, hts_code=excluded.hts_code,
                           country_origin=excluded.country_origin, mid=excluded.mid,
-                          steel_ratio=excluded.steel_ratio, non_steel_ratio=excluded.non_steel_ratio,
-                          last_updated=excluded.last_updated""",
-                          (part, desc, hts, origin, mid, steel, non_steel, now))
+                          client_code=excluded.client_code, steel_ratio=excluded.steel_ratio,
+                          non_steel_ratio=excluded.non_steel_ratio, last_updated=excluded.last_updated""",
+                          (part, desc, hts, origin, mid, client_code, steel, non_steel, now))
                 if c.rowcount: saved += 1
             conn.commit(); conn.close()
             QMessageBox.information(self, "Success", f"Saved {saved} parts!")
