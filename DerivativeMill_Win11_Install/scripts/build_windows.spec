@@ -3,18 +3,21 @@
 # This file configures how PyInstaller builds the executable
 
 import sys
+import os
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 block_cipher = None
 
+# Get the project root directory (parent of the scripts directory)
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+
 a = Analysis(
-    ['DerivativeMill/derivativemill.py'],
-    pathex=[],
+    [os.path.join(project_root, 'DerivativeMill', 'derivativemill.py').replace('\\', '/')],
+    pathex=[project_root],
     binaries=[],
     datas=[
-        ('DerivativeMill/Resources', 'DerivativeMill/Resources'),
-        ('README.md', '.'),
-        ('QUICKSTART.md', '.'),
+        (os.path.join(project_root, 'DerivativeMill', 'Resources'), 'DerivativeMill/Resources'),
+        (os.path.join(project_root, 'README.md'), '.'),
     ],
     hiddenimports=[
         'PyQt5',
@@ -58,7 +61,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='DerivativeMill/Resources/derivativemill.ico' if sys.platform == 'win32' else None,
+    icon=os.path.join(project_root, 'DerivativeMill', 'Resources', 'derivativemill.ico').replace('\\', '/') if sys.platform == 'win32' else None,
 )
 
 # Uncomment for one-dir bundle (development)

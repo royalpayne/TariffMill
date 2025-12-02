@@ -3,7 +3,7 @@
 # APPLICATION CONFIGURATION - CHANGE THESE TO RENAME THE APPLICATION
 # ==============================================================================
 APP_NAME = "Derivative Mill"
-VERSION = "v1.08"
+VERSION = "v0.6"
 DB_NAME = "derivativemill.db"  # Database filename (will be created in Resources folder)
 
 # ==============================================================================
@@ -87,11 +87,10 @@ INPUT_DIR = BASE_DIR / "Input"
 OUTPUT_DIR = BASE_DIR / "Output"
 PROCESSED_DIR = INPUT_DIR / "Processed"
 OUTPUT_PROCESSED_DIR = OUTPUT_DIR / "Processed"
-PROCESSED_PDF_DIR = BASE_DIR / "ProcessedPDFs"
 MAPPING_FILE = BASE_DIR / "column_mapping.json"
 SHIPMENT_MAPPING_FILE = BASE_DIR / "shipment_mapping.json"
 
-for p in (RESOURCES_DIR, INPUT_DIR, OUTPUT_DIR, PROCESSED_DIR, OUTPUT_PROCESSED_DIR, PROCESSED_PDF_DIR):
+for p in (RESOURCES_DIR, INPUT_DIR, OUTPUT_DIR, PROCESSED_DIR, OUTPUT_PROCESSED_DIR):
     p.mkdir(exist_ok=True)
 
 DB_PATH = RESOURCES_DIR / DB_NAME
@@ -407,8 +406,7 @@ class DerivativeMill(QMainWindow):
             3: self.setup_master_tab,
             4: self.setup_log_tab,
             5: self.setup_config_tab,
-            6: self.setup_actions_tab,
-            7: self.setup_guide_tab
+            6: self.setup_actions_tab
         }
         if index in tab_setup_methods:
             tab_setup_methods[index]()
@@ -537,7 +535,6 @@ class DerivativeMill(QMainWindow):
         self.tab_log = QWidget()
         self.tab_config = QWidget()
         self.tab_actions = QWidget()
-        self.tab_guide = QWidget()
         self.tabs.addTab(self.tab_process, "Process Shipment")
         self.tabs.addTab(self.tab_shipment_map, "Invoice Mapping Profiles")
         self.tabs.addTab(self.tab_import, "Parts Import")
@@ -545,7 +542,6 @@ class DerivativeMill(QMainWindow):
         self.tabs.addTab(self.tab_log, "Log View")
         self.tabs.addTab(self.tab_config, "Customs Config")
         self.tabs.addTab(self.tab_actions, "Section 232 Actions")
-        self.tabs.addTab(self.tab_guide, "User Guide")
         
         # Only tabs (no settings icon here)
         tabs_container = QWidget()
@@ -665,8 +661,7 @@ class DerivativeMill(QMainWindow):
             3: self.setup_master_tab,
             4: self.setup_log_tab,
             5: self.setup_config_tab,
-            6: self.setup_actions_tab,
-            8: self.setup_guide_tab
+            6: self.setup_actions_tab
         }
         
         # Initialize the tab
@@ -1262,83 +1257,11 @@ class DerivativeMill(QMainWindow):
         glayout.addRow("Output Folder:", output_path_display)
         glayout.addRow("", output_btn)
 
-        # Processed PDF folder display and button
-        global PROCESSED_PDF_DIR
-        processed_pdf_dir_str = str(PROCESSED_PDF_DIR) if 'PROCESSED_PDF_DIR' in globals() and PROCESSED_PDF_DIR else "(not set)"
-        processed_pdf_path_display = create_path_display(processed_pdf_dir_str)
-
-        processed_pdf_btn = QPushButton("Change Processed PDF Folder")
-        processed_pdf_btn.clicked.connect(lambda: self.select_processed_pdf_folder(processed_pdf_path_display))
-        glayout.addRow("Processed PDF Folder:", processed_pdf_path_display)
-        glayout.addRow("", processed_pdf_btn)
-
         group.setLayout(glayout)
         folders_layout.addWidget(group)
 
         folders_layout.addStretch()
         tabs.addTab(folders_widget, "Folders")
-
-        # ===== TAB 3: SUPPLIER FOLDERS =====
-        suppliers_widget = QWidget()
-        suppliers_layout = QVBoxLayout(suppliers_widget)
-
-        # Info box
-        info_box = QGroupBox("Supplier Folder Management")
-        info_layout = QVBoxLayout()
-        info_text = QLabel(
-            "Manage supplier folders in your Input directory. Create new suppliers or remove existing ones."
-        )
-        info_text.setWordWrap(True)
-        info_layout.addWidget(info_text)
-        info_box.setLayout(info_layout)
-        suppliers_layout.addWidget(info_box)
-
-        # Suppliers list group
-        suppliers_group = QGroupBox("Suppliers in Input Folder")
-        suppliers_group_layout = QVBoxLayout()
-
-        # List widget showing suppliers
-        self.settings_suppliers_list = QListWidget()
-        self.settings_suppliers_list.setMinimumHeight(200)
-        suppliers_group_layout.addWidget(self.settings_suppliers_list)
-
-        # Buttons layout
-        suppliers_btn_layout = QHBoxLayout()
-
-        btn_add_supplier = QPushButton("+ Add New Supplier")
-        btn_add_supplier.setStyleSheet(self.get_button_style("success"))
-        btn_add_supplier.clicked.connect(self.add_new_supplier_dialog)
-        suppliers_btn_layout.addWidget(btn_add_supplier)
-
-        btn_remove_supplier = QPushButton("- Remove Selected")
-        btn_remove_supplier.setStyleSheet(self.get_button_style("danger"))
-        btn_remove_supplier.clicked.connect(lambda: self.remove_selected_supplier(self.settings_suppliers_list))
-        suppliers_btn_layout.addWidget(btn_remove_supplier)
-
-        btn_open_supplier = QPushButton("Open Folder")
-        btn_open_supplier.setStyleSheet(self.get_button_style("default"))
-        btn_open_supplier.clicked.connect(lambda: self.open_supplier_folder(self.settings_suppliers_list))
-        suppliers_btn_layout.addWidget(btn_open_supplier)
-
-        btn_refresh_suppliers = QPushButton("Refresh List")
-        btn_refresh_suppliers.setStyleSheet(self.get_button_style("info"))
-        btn_refresh_suppliers.clicked.connect(self.refresh_suppliers_list)
-        suppliers_btn_layout.addWidget(btn_refresh_suppliers)
-
-        suppliers_group_layout.addLayout(suppliers_btn_layout)
-        suppliers_group.setLayout(suppliers_group_layout)
-        suppliers_layout.addWidget(suppliers_group)
-
-        # Status label
-        self.suppliers_count_label = QLabel("Loading suppliers...")
-        self.suppliers_count_label.setStyleSheet("font-weight:bold; padding:5px;")
-        suppliers_layout.addWidget(self.suppliers_count_label)
-
-        suppliers_layout.addStretch()
-        tabs.addTab(suppliers_widget, "Suppliers")
-
-        # Load suppliers list when dialog opens
-        self.refresh_suppliers_list()
 
         # Add tabs to main dialog layout
         layout.addWidget(tabs)
@@ -1924,25 +1847,6 @@ class DerivativeMill(QMainWindow):
             conn.close()
             self.status.setText(f"Output folder: {OUTPUT_DIR}")
             self.refresh_exported_files()
-
-    def select_processed_pdf_folder(self, display_widget=None):
-        global PROCESSED_PDF_DIR
-        folder = QFileDialog.getExistingDirectory(self, "Select Processed PDF Folder", str(PROCESSED_PDF_DIR))
-        if folder:
-            PROCESSED_PDF_DIR = Path(folder)
-            PROCESSED_PDF_DIR.mkdir(exist_ok=True)
-            if display_widget:
-                if isinstance(display_widget, QPlainTextEdit):
-                    display_widget.setPlainText(str(PROCESSED_PDF_DIR))
-                else:
-                    display_widget.setText(str(PROCESSED_PDF_DIR))
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("INSERT OR REPLACE INTO app_config VALUES ('processed_pdf_dir', ?)", (str(PROCESSED_PDF_DIR),))
-            conn.commit()
-            conn.close()
-            self.status.setText(f"Processed PDF folder: {PROCESSED_PDF_DIR}")
-            logger.info(f"Processed PDF folder changed to: {PROCESSED_PDF_DIR}")
 
     def move_pdf_to_processed(self, pdf_path):
         """
@@ -3029,159 +2933,6 @@ class DerivativeMill(QMainWindow):
         df = pd.DataFrame(data)
         logger.info(f"AROMATE invoice extraction successful: {len(df)} items extracted")
         return df
-
-    def get_supplier_folders(self):
-        """Get list of supplier folders in Input directory"""
-        suppliers = []
-        try:
-            if INPUT_DIR.exists():
-                for folder in INPUT_DIR.iterdir():
-                    if folder.is_dir() and folder.name != "Processed":
-                        suppliers.append(folder.name)
-        except Exception as e:
-            logger.error(f"Error scanning supplier folders: {e}")
-        return sorted(suppliers)
-
-    def refresh_suppliers_list(self):
-        """Refresh the suppliers list in Settings dialog"""
-        if not hasattr(self, 'settings_suppliers_list'):
-            return
-
-        try:
-            suppliers = self.get_supplier_folders()
-            self.settings_suppliers_list.blockSignals(True)
-            self.settings_suppliers_list.clear()
-
-            for supplier in suppliers:
-                supplier_path = INPUT_DIR / supplier
-                pdf_count = len(list(supplier_path.glob("*.pdf")))
-                display_text = f"{supplier} ({pdf_count} PDFs)"
-                self.settings_suppliers_list.addItem(display_text)
-
-            self.suppliers_count_label.setText(f"Total: {len(suppliers)} suppliers")
-            self.settings_suppliers_list.blockSignals(False)
-
-        except Exception as e:
-            logger.error(f"Error refreshing suppliers list: {e}")
-            self.suppliers_count_label.setText("Error loading suppliers")
-
-    def add_new_supplier_dialog(self):
-        """Show dialog to create a new supplier folder"""
-        text, ok = QInputDialog.getText(
-            self, "Add New Supplier", "Enter supplier name:",
-            text="NEW_SUPPLIER"
-        )
-
-        if ok and text:
-            self.create_supplier_folder(text)
-
-    def create_supplier_folder(self, supplier_name):
-        """Create a new supplier folder in the Input directory"""
-        if not supplier_name or not supplier_name.strip():
-            QMessageBox.warning(self, "Invalid Name", "Supplier name cannot be empty")
-            return
-
-        # Sanitize folder name
-        supplier_name = supplier_name.strip()
-
-        try:
-            supplier_path = INPUT_DIR / supplier_name
-
-            if supplier_path.exists():
-                QMessageBox.warning(self, "Folder Exists", f"Supplier folder '{supplier_name}' already exists")
-                return
-
-            # Create folder
-            supplier_path.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Created supplier folder: {supplier_path}")
-
-            # Refresh displays
-            self.refresh_suppliers_list()
-
-            QMessageBox.information(self, "Success", f"Created supplier folder: {supplier_name}")
-
-        except Exception as e:
-            logger.error(f"Error creating supplier folder: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to create supplier folder:\n{str(e)}")
-
-    def remove_selected_supplier(self, list_widget):
-        """Remove selected supplier folder (empty folders only)"""
-        current_item = list_widget.currentItem()
-        if not current_item:
-            QMessageBox.warning(self, "No Selection", "Please select a supplier to remove")
-            return
-
-        # Extract supplier name from display text (remove PDF count)
-        display_text = current_item.text()
-        supplier_name = display_text.split(" (")[0]
-
-        try:
-            supplier_path = INPUT_DIR / supplier_name
-
-            if not supplier_path.exists():
-                QMessageBox.warning(self, "Not Found", f"Supplier folder '{supplier_name}' not found")
-                self.refresh_suppliers_list()
-                return
-
-            # Check if folder is empty (excluding hidden files)
-            items = [item for item in supplier_path.iterdir() if not item.name.startswith('.')]
-            if items:
-                QMessageBox.warning(
-                    self, "Folder Not Empty",
-                    f"Cannot remove '{supplier_name}' - folder contains {len(items)} file(s).\n\n"
-                    "Please remove all files first or move them to a different location."
-                )
-                return
-
-            # Confirm deletion
-            reply = QMessageBox.question(
-                self, "Confirm Deletion",
-                f"Remove supplier folder '{supplier_name}'?\n\nThis action cannot be undone.",
-                QMessageBox.Yes | QMessageBox.No
-            )
-
-            if reply == QMessageBox.Yes:
-                supplier_path.rmdir()
-                logger.info(f"Removed supplier folder: {supplier_path}")
-                self.refresh_suppliers_list()
-                QMessageBox.information(self, "Success", f"Removed supplier folder: {supplier_name}")
-
-        except Exception as e:
-            logger.error(f"Error removing supplier folder: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to remove supplier folder:\n{str(e)}")
-
-    def open_supplier_folder(self, list_widget):
-        """Open selected supplier folder in file explorer"""
-        current_item = list_widget.currentItem()
-        if not current_item:
-            QMessageBox.warning(self, "No Selection", "Please select a supplier folder to open")
-            return
-
-        # Extract supplier name from display text
-        display_text = current_item.text()
-        supplier_name = display_text.split(" (")[0]
-
-        try:
-            supplier_path = INPUT_DIR / supplier_name
-
-            if not supplier_path.exists():
-                QMessageBox.warning(self, "Not Found", f"Supplier folder '{supplier_name}' not found")
-                self.refresh_suppliers_list()
-                return
-
-            # Open folder in file explorer
-            if sys.platform == 'linux':
-                subprocess.run(['xdg-open', str(supplier_path)], check=False)
-            elif sys.platform == 'darwin':  # macOS
-                subprocess.run(['open', str(supplier_path)], check=False)
-            elif sys.platform == 'win32':  # Windows
-                subprocess.run(['explorer', str(supplier_path)], check=False)
-
-            logger.info(f"Opened supplier folder: {supplier_path}")
-
-        except Exception as e:
-            logger.error(f"Error opening supplier folder: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to open supplier folder:\n{str(e)}")
 
     def on_shipment_drop(self, field_key, column_name):
         for k, t in self.shipment_targets.items():
@@ -4315,248 +4066,6 @@ class DerivativeMill(QMainWindow):
 
         # Refresh display
         self.filter_actions_table()
-
-    def setup_guide_tab(self):
-        layout = QVBoxLayout(self.tab_guide)
-        
-        # Title
-        title = QLabel(f"<h1>{APP_NAME} User Guide</h1>")
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
-        
-        # Scrollable content area
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll_widget = QWidget()
-        scroll_layout = QVBoxLayout(scroll_widget)
-        
-        # Guide content
-        guide_html = f"""
-        <style>
-            body {{ font-family: Segoe UI, Arial, sans-serif; }}
-            h1 {{ color: #0078D7; text-align: center; border-bottom: 3px solid #0078D7; padding-bottom: 15px; margin-bottom: 30px; }}
-            h2 {{ color: #0078D7; border-left: 5px solid #0078D7; padding-left: 15px; margin-top: 30px; margin-bottom: 15px; font-size: 18px; }}
-            h3 {{ color: #006D77; margin-top: 20px; margin-bottom: 10px; font-size: 16px; }}
-            h4 {{ color: #555; margin-top: 12px; margin-bottom: 8px; font-size: 14px; }}
-            p {{ line-height: 1.6; margin: 10px 0; }}
-
-            .section {{ margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-radius: 5px; }}
-            .step {{ margin-left: 20px; margin-bottom: 12px; line-height: 1.7; }}
-            .workflow {{ background-color: #e7f5ff; padding: 15px; border-left: 5px solid #0078D7; margin: 15px 0; border-radius: 3px; }}
-            .note {{ background-color: #fff3cd; padding: 12px 15px; border-left: 5px solid #ffc107; margin: 15px 0; border-radius: 3px; }}
-            .tip {{ background-color: #d1ecf1; padding: 12px 15px; border-left: 5px solid #0c5460; margin: 15px 0; border-radius: 3px; }}
-            .warning {{ background-color: #f8d7da; padding: 12px 15px; border-left: 5px solid #dc3545; margin: 15px 0; border-radius: 3px; }}
-            .key-field {{ background-color: #e3f2fd; padding: 8px 12px; border-radius: 3px; display: inline-block; margin: 3px 0; font-weight: 500; }}
-            .button-text {{ background-color: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-family: monospace; }}
-
-            ul {{ margin: 10px 0 10px 25px; line-height: 1.8; }}
-            li {{ margin: 5px 0; }}
-
-            .workflow-step {{ margin: 12px 0; padding-left: 25px; }}
-            .workflow-step::before {{ content: "→ "; color: #0078D7; font-weight: bold; margin-left: -20px; margin-right: 8px; }}
-        </style>
-        
-        <h2>🚀 Welcome to {APP_NAME}</h2>
-        <p>A professional customs documentation processing system for streamlining invoice processing, parts management, and Section 232 tariff compliance.</p>
-
-        <h2>📋 Initial Setup (One-Time Configuration)</h2>
-        <p>Complete these steps before your first invoice processing:</p>
-
-        <h3>Step 1: Import Parts Database</h3>
-        <div class="workflow">
-            <b>Location:</b> <span class="button-text">Parts Import</span> tab<br>
-            <div class="workflow-step"><span class="button-text">Load CSV File</span> - Select your parts master CSV</div>
-            <div class="workflow-step">Drag column headers to match required fields:
-                <ul style="margin-top: 8px;">
-                    <li><span class="key-field">Part Number</span> (Required)</li>
-                    <li><span class="key-field">HTS Code</span> (Required)</li>
-                    <li><span class="key-field">Country of Origin</span> (Required)</li>
-                    <li><span class="key-field">MID</span> (Required)</li>
-                    <li><span class="key-field">Description</span> (Optional)</li>
-                    <li><span class="key-field">Sec 232 Content Ratio</span> (Optional)</li>
-                </ul>
-            </div>
-            <div class="workflow-step"><span class="button-text">IMPORT NOW</span> - Load parts into database</div>
-        </div>
-        <div class="note">
-            <b>💡 Note:</b> Column mappings are automatically saved and reused for future imports from the same source.
-        </div>
-
-        <h3>Step 2: Import Section 232 Tariff Codes</h3>
-        <div class="workflow">
-            <b>Location:</b> <span class="button-text">Customs Config</span> tab<br>
-            <h4>Option A: Official CBP Excel File</h4>
-            <div class="workflow-step">Click <span class="button-text">Import Section 232 Tariffs</span></div>
-            <div class="workflow-step">Select the official CBP Excel file - System auto-imports for Steel, Aluminum, Wood, Copper</div>
-
-            <h4 style="margin-top: 15px;">Option B: Custom CSV File</h4>
-            <div class="workflow-step">Click <span class="button-text">Import from CSV</span></div>
-            <div class="workflow-step">Map HTS Code and Material columns</div>
-            <div class="workflow-step">Choose import mode: Add/Update or Replace All</div>
-            <div class="workflow-step">Click <span class="button-text">Import</span></div>
-        </div>
-        <div class="tip">
-            <b>💡 Tip:</b> Use the filter box to quickly search for specific HTS codes or materials.
-        </div>
-
-        <h3>Step 3: Create Invoice Mapping Profiles</h3>
-        <div class="workflow">
-            <b>Location:</b> <span class="button-text">Invoice Mapping Profiles</span> tab<br>
-            <div class="workflow-step"><span class="button-text">Load Invoice File</span> - Select CSV, Excel, or PDF from your supplier
-                <ul style="margin-top: 8px;">
-                    <li><b>CSV/Excel:</b> Auto-detects column headers</li>
-                    <li><b>PDF:</b> Automatically extracts tables (uses the largest table if multiple)</li>
-                </ul>
-            </div>
-            <div class="workflow-step">Drag invoice columns to required fields:
-                <ul style="margin-top: 8px;">
-                    <li><span class="key-field">Part Number</span> - Maps to your parts database</li>
-                    <li><span class="key-field">Value USD</span> - Invoice line item value</li>
-                </ul>
-            </div>
-            <div class="workflow-step"><span class="button-text">Save Current Mapping As...</span> - Save with supplier name</div>
-        </div>
-        <div class="note">
-            <b>💡 Note:</b> Create one profile per supplier for quick format switching. PDF support automatically extracts tables from invoices.
-        </div>
-
-        <h2>📊 Processing Invoices (Main Workflow)</h2>
-        <p><b>Location:</b> <span class="button-text">Process Shipment</span> tab</p>
-        <p>The application uses a <b>two-stage verification workflow</b> to prevent data entry errors.</p>
-
-        <h3>Stage 1: Data Preparation</h3>
-        <div class="workflow">
-            <div class="workflow-step"><b>Select Mapping Profile</b> - Choose the profile matching your supplier's invoice format</div>
-            <div class="workflow-step"><b>Load Invoice File</b> - Browse and select your CSV invoice file</div>
-            <div class="workflow-step"><b>Enter Required Information:</b>
-                <ul style="margin-top: 8px;">
-                    <li><span class="key-field">Total Weight</span> - Shipment weight in kg</li>
-                    <li><span class="key-field">CI Total</span> - Commercial Invoice total value</li>
-                    <li><span class="key-field">MID</span> - Select Manufacturer ID</li>
-                </ul>
-            </div>
-            <div class="workflow-step"><span class="button-text">Process Invoice</span> - Loads raw CSV data for review (2 columns only)</div>
-        </div>
-        <div class="warning">
-            <b>⚠️ Review Stage:</b> Verify the raw data before proceeding. Check for missing parts, incorrect values, or duplicates.
-        </div>
-
-        <h3>Stage 2: Processing & Export</h3>
-        <div class="workflow">
-            <div class="workflow-step"><span class="button-text">Apply Derivatives</span> - Expand to full 13-column data with Section 232 processing</div>
-            <div class="workflow-step"><b>Review & Edit (Optional):</b>
-                <ul style="margin-top: 8px;">
-                    <li>Edit any cell by clicking on it</li>
-                    <li><span class="button-text">Add Row</span> - Add missing items</li>
-                    <li><span class="button-text">Delete Row</span> - Remove unwanted items</li>
-                    <li><span class="button-text">Copy Column</span> - Copy data to clipboard</li>
-                </ul>
-            </div>
-            <div class="workflow-step"><b>Verify Totals Match</b> - Status bar shows green when preview total equals CI Total</div>
-            <div class="workflow-step"><span class="button-text">Export Worksheet</span> - Generates Excel file (Output/Upload_Sheet_YYYYMMDD_HHMM.xlsx)</div>
-        </div>
-        <div class="tip">
-            <b>💡 Tip:</b> Double-click exported files in the list to open directly in Excel.
-        </div>
-
-        <h2>🔧 Managing Parts Database</h2>
-        <p><b>Location:</b> <span class="button-text">Parts View</span> tab</p>
-        <div class="section">
-            <div class="workflow-step"><b>Quick Search</b> - Filter all fields in real-time</div>
-            <div class="workflow-step"><b>SQL Query Builder</b> - Advanced filtering for complex searches</div>
-            <div class="workflow-step"><b>Edit Data</b> - Click any cell to modify part information</div>
-            <div class="workflow-step"><b>Bulk Operations:</b>
-                <ul style="margin-top: 8px;">
-                    <li><span class="button-text">Add Row</span> - Create new parts</li>
-                    <li><span class="button-text">Delete Selected</span> - Remove parts</li>
-                    <li><span class="button-text">Save Changes</span> - Update database</li>
-                </ul>
-            </div>
-        </div>
-
-        <h2>📝 Section 232 Compliance</h2>
-        <p><span class="key-field">Section 232</span> refers to national security tariffs on protected materials (Steel, Aluminum, Wood, Copper).</p>
-        <p>{APP_NAME} automatically:</p>
-        <ul>
-            <li>Identifies Section 232-subject items using HTS codes</li>
-            <li>Marks them with <b>bold formatting</b> in preview tables</li>
-            <li>Calculates percentage breakdowns in exports</li>
-            <li>Highlights non-232 items in <b>red font</b></li>
-        </ul>
-
-        <h2>❓ Troubleshooting</h2>
-        <div class="section">
-            <h4>"Process Invoice" button is disabled</h4>
-            <ul style="margin-top: 8px;">
-                <li>✓ Select a Mapping Profile</li>
-                <li>✓ Load an invoice file (use Browse button)</li>
-                <li>✓ Enter Total Weight</li>
-                <li>✓ Enter CI Total</li>
-                <li>✓ Select a MID</li>
-            </ul>
-
-            <h4>Totals don't match between preview and CI Total</h4>
-            <ul style="margin-top: 8px;">
-                <li>Check for missing or duplicate rows</li>
-                <li>Verify all line items are in the CSV file</li>
-                <li>Edit values directly in the preview table</li>
-                <li>Recalculate to confirm match</li>
-            </ul>
-
-            <h4>Part not found in database</h4>
-            <ul style="margin-top: 8px;">
-                <li>Import the part via <span class="button-text">Parts Import</span> tab</li>
-                <li>Or add manually in <span class="button-text">Parts View</span> tab with required fields</li>
-                <li>Required: Part Number, HTS Code, Country of Origin, MID</li>
-            </ul>
-
-            <h4>Need more details</h4>
-            <p>Check the <span class="button-text">Log View</span> tab for detailed operation logs and error messages.</p>
-        </div>
-
-        <h2>⚡ Keyboard Shortcuts & Features</h2>
-        <div class="section">
-            <ul>
-                <li><b>Ctrl+B</b> - Toggle bold formatting on selected cells</li>
-                <li><b>Click column headers</b> - Select entire column for copying</li>
-                <li><b>Auto-refresh</b> - Active only on Process Shipment tab (optimized)</li>
-                <li><b>File management</b> - Processed files auto-move to Processed folders</li>
-                <li><b>Auto-archive</b> - Exports older than 3 days move to Output/Processed</li>
-            </ul>
-        </div>
-
-        <h2>🎨 Customization</h2>
-        <div class="section">
-            <p><b>Themes:</b> Click <span class="button-text">⚙ Settings</span> to choose your preferred appearance:</p>
-            <ul>
-                <li><b>System Default</b> - Windows theme</li>
-                <li><b>Fusion (Light)</b> - Clean professional light</li>
-                <li><b>Windows</b> - Native Windows appearance</li>
-                <li><b>Fusion (Dark)</b> - Modern dark with blue accents</li>
-                <li><b>Ocean</b> - Deep blue with teal highlights</li>
-                <li><b>Teal Professional</b> - Light with soft teal accents</li>
-            </ul>
-            <p style="margin-top: 10px;"><b>Folders:</b> Configure input/output directories in Settings</p>
-        </div>
-
-        <h2>📞 Support</h2>
-        <p><b>For detailed logs and troubleshooting:</b> Check the <span class="button-text">Log View</span> tab</p>
-        <p><b>Version:</b> {APP_NAME} {VERSION} | <b>Status:</b> Production Ready</p>
-        """
-        
-        guide_text = QLabel(guide_html)
-        guide_text.setWordWrap(True)
-        guide_text.setTextFormat(Qt.RichText)
-        guide_text.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        guide_text.setStyleSheet("padding: 20px; background: white; color: #000000;")
-        
-        scroll_layout.addWidget(guide_text)
-        scroll_layout.addStretch()
-        
-        scroll.setWidget(scroll_widget)
-        layout.addWidget(scroll)
-        
-        self.tab_guide.setLayout(layout)
 
     def on_preview_value_edited(self, item):
         # Only update for Value column edits
