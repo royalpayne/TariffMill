@@ -1717,7 +1717,7 @@ class DerivativeMill(QMainWindow):
         # Professional cyan/teal color scheme inspired by customs management systems
         palette.setColor(QPalette.Window, QColor(159, 200, 212))  # Teal background for panels (#9FC8D4)
         palette.setColor(QPalette.WindowText, QColor(33, 33, 33))  # Dark text for readability
-        palette.setColor(QPalette.Base, QColor(255, 255, 255))  # White base for data entry areas
+        palette.setColor(QPalette.Base, QColor(243, 247, 249))  # Very light grey-blue base for tabbed panels (#F3F7F9)
         palette.setColor(QPalette.AlternateBase, QColor(197, 232, 240))  # Light cyan for alternating rows (#C5E8F0)
         palette.setColor(QPalette.ToolTipBase, QColor(255, 255, 255))
         palette.setColor(QPalette.ToolTipText, QColor(33, 33, 33))
