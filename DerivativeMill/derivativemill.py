@@ -2510,14 +2510,16 @@ class DerivativeMill(QMainWindow):
         #     self.status.setStyleSheet("font-size:14pt; padding:8px; background:#f0f0f0;")
 
     def setup_import_tab(self):
+        from PyQt5.QtGui import QPalette
+
         layout = QVBoxLayout(self.tab_import)
         title = QLabel("<h2>Parts Import from CSV/Excel</h2><p>Drag & drop columns to map fields</p>")
         title.setAlignment(Qt.AlignCenter)
-        # Lighten font in dark mode
-        if self.current_theme and "dark" in self.current_theme.lower():
-            title.setStyleSheet("color: #e0e0e0;")
-        else:
-            title.setStyleSheet("color: #333;")
+        # Use palette text color for consistent title styling
+        app = QApplication.instance()
+        palette = app.palette()
+        text_color = palette.color(QPalette.Text)
+        title.setStyleSheet(f"color: {text_color.name()};")
         layout.addWidget(title)
 
         # Buttons at top
