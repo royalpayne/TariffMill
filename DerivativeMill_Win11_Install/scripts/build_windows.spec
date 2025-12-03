@@ -8,7 +8,6 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 block_cipher = None
 
-# Get the project root directory (parent of the scripts directory)
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 a = Analysis(
