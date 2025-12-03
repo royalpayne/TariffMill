@@ -6,6 +6,7 @@ Enables installation via: pip install -e .
 
 from setuptools import setup, find_packages
 from pathlib import Path
+import sys
 
 # Read requirements
 requirements_path = Path(__file__).parent / "requirements.txt"
@@ -21,9 +22,23 @@ if readme_path.exists():
     with open(readme_path) as f:
         long_description = f.read()
 
+# Read version from version.py
+version = "0.6"
+version_path = Path(__file__).parent / "DerivativeMill" / "version.py"
+if version_path.exists():
+    with open(version_path) as f:
+        for line in f:
+            if line.startswith('__version__'):
+                # Extract version from __version__ = "v0.6"
+                version = line.split('=')[1].strip().strip('"\'')
+                # Remove 'v' prefix if present
+                if version.startswith('v'):
+                    version = version[1:]
+                break
+
 setup(
     name="derivativemill",
-    version="1.08",
+    version=version,
     author="Your Name",
     author_email="your.email@example.com",
     description="Derivative tariff compliance and invoice processing system",

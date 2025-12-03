@@ -15,8 +15,15 @@
 # ==============================================================================
 
 APP_NAME = "Derivative Mill"
-VERSION = "v0.6"
 DB_NAME = "derivativemill.db"
+
+# Import version from version.py
+try:
+    from DerivativeMill.version import get_version
+    VERSION = get_version()
+except ImportError:
+    # Fallback if version.py is not available
+    VERSION = "v0.6"
 
 
 import sys
