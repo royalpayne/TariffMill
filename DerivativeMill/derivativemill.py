@@ -1675,7 +1675,7 @@ class DerivativeMill(QMainWindow):
         # Windows 11 dark theme colors
         palette.setColor(QPalette.Window, QColor(41, 41, 41))  # Main background
         palette.setColor(QPalette.WindowText, QColor(243, 243, 243))  # Primary text
-        palette.setColor(QPalette.Base, QColor(51, 51, 51))  # Secondary background for input fields
+        palette.setColor(QPalette.Base, QColor(90, 94, 96))  # Result preview background (#5A5E60)
         palette.setColor(QPalette.AlternateBase, QColor(115, 115, 115))  # Tertiary background for alternating rows
         palette.setColor(QPalette.ToolTipBase, QColor(45, 45, 45))  # Tertiary background
         palette.setColor(QPalette.ToolTipText, QColor(243, 243, 243))  # Primary text
@@ -1696,7 +1696,7 @@ class DerivativeMill(QMainWindow):
         # Deep ocean blue backgrounds
         palette.setColor(QPalette.Window, QColor(28, 57, 87))  # Deep ocean blue
         palette.setColor(QPalette.WindowText, QColor(230, 245, 255))  # Light blue-white text
-        palette.setColor(QPalette.Base, QColor(15, 35, 55))  # Darker blue for input fields
+        palette.setColor(QPalette.Base, QColor(90, 94, 96))  # Result preview background (#5A5E60)
         palette.setColor(QPalette.AlternateBase, QColor(35, 65, 95))  # Lighter ocean blue
         palette.setColor(QPalette.ToolTipBase, QColor(200, 230, 255))  # Light blue
         palette.setColor(QPalette.ToolTipText, QColor(15, 35, 55))  # Dark blue
