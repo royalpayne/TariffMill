@@ -1745,57 +1745,28 @@ class DerivativeMill(QMainWindow):
     def get_button_style(self, button_type="default"):
         """
         Generate theme-aware button styles using current palette colors.
-        
+
         Args:
             button_type: "default", "primary", "danger", "info", "warning", "success"
-        
+
         Returns:
             CSS stylesheet string that adapts to current theme
         """
         from PyQt5.QtGui import QPalette, QColor
         from PyQt5.QtWidgets import QApplication
-        
+
         palette = QApplication.palette()
-        
+
         # Get base colors from theme
         base_bg = palette.color(QPalette.Button)
         base_text = palette.color(QPalette.ButtonText)
         highlight = palette.color(QPalette.Highlight)
-        
-        # Check if we're in a dark theme
-        is_dark_theme = hasattr(self, 'current_theme') and self.current_theme in ["Fusion (Dark)", "Ocean"]
-        
-        # In dark themes, all buttons use teal
-        if is_dark_theme:
-            bg = QColor(66, 160, 189)  # Teal
-            hover_bg = QColor(53, 128, 151)  # Darker Teal
-            disabled_bg = QColor(160, 160, 160)  # Grey
-        # In light themes, use different colors per button type
-        elif button_type == "primary" or button_type == "success":
-            # Green for success/primary actions
-            bg = QColor(40, 167, 69)  # Green
-            hover_bg = QColor(33, 136, 56)  # Darker green
-            disabled_bg = QColor(160, 160, 160)  # Grey
-        elif button_type == "danger":
-            # Red for destructive actions
-            bg = QColor(220, 53, 69)  # Red
-            hover_bg = QColor(200, 35, 51)  # Darker red
-            disabled_bg = QColor(160, 160, 160)  # Grey
-        elif button_type == "info":
-            # Blue for informational actions
-            bg = QColor(0, 120, 215)  # Blue
-            hover_bg = QColor(0, 95, 184)  # Darker blue
-            disabled_bg = QColor(160, 160, 160)  # Grey
-        elif button_type == "warning":
-            # Orange for warning actions
-            bg = QColor(255, 152, 0)  # Orange
-            hover_bg = QColor(230, 126, 34)  # Darker orange
-            disabled_bg = QColor(160, 160, 160)  # Grey
-        else:  # default - use theme colors
-            bg = base_bg
-            hover_bg = highlight
-            disabled_bg = QColor(160, 160, 160)
-        
+
+        # All buttons use teal color across all themes
+        bg = QColor(78, 174, 205)  # Teal
+        hover_bg = QColor(53, 128, 151)  # Darker Teal
+        disabled_bg = QColor(160, 160, 160)  # Grey
+
         # Text color - white for dark buttons, black for light buttons
         text_color = QColor(255, 255, 255) if bg.lightness() < 128 else QColor(0, 0, 0)
         
