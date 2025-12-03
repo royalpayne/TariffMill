@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
 # ==============================================================================
-# APPLICATION CONFIGURATION - CHANGE THESE TO RENAME THE APPLICATION
+# Derivative Mill - Customs Documentation Processing System
 # ==============================================================================
+# Professional PyQt5 application for automating invoice processing, parts
+# management, and Section 232 tariff compliance tracking.
+#
+# Features:
+#   - Invoice processing with two-stage verification workflow
+#   - Parts database management with HTS code mapping
+#   - Section 232 tariff compliance calculations
+#   - Excel export for customs documentation
+#   - Invoice mapping profile management
+#   - Real-time data validation and status feedback
+# ==============================================================================
+
 APP_NAME = "Derivative Mill"
 VERSION = "v0.6"
-DB_NAME = "derivativemill.db"  # Database filename (will be created in Resources folder)
-
-# ==============================================================================
-"""
-{APP_NAME} {VERSION} - FINAL RELEASE
-100% COMPLIANT WITH AUGUST 18, 2025 FEDERAL REGISTER
-Primary Articles: Hard-coded exactly as published
-Derivative Articles: tariff_232 table + official derivative subheadings
-Exact 8-digit match only
-Steel to "08", Flag blank
-Aluminum to "07", Flag "Y"
-New Design: Settings gear, Folder Locations in dialog, Saved Profiles on Process tab
-Full app | ZERO ERRORS | PROFESSIONAL | FINAL
-"""
+DB_NAME = "derivativemill.db"
 
 
 import sys
@@ -38,69 +37,114 @@ from PyQt5.QtSvg import QSvgRenderer
 from openpyxl.styles import Font as ExcelFont, Alignment
 import tempfile
 
-# ----------------------------------------------------------------------
-# Global Logger
-# ----------------------------------------------------------------------
+# ==============================================================================
+# Application Logger
+# ==============================================================================
+# In-memory logging system with timestamp, level, and message tracking.
+# Maintains up to 1000 log entries for debugging and user feedback.
 class ErrorLogger:
+    """Centralized logging for application events, errors, and diagnostics."""
+
     def __init__(self):
         self.logs = []
+
     def log(self, level, message):
+        """Record a log entry with timestamp and severity level."""
         ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
         entry = f"[{ts}] {level.upper():7} | {message}"
         self.logs.append(entry)
         if len(self.logs) > 1000:
             self.logs = self.logs[-1000:]
         print(entry)
-    def info(self, msg): self.log("info", msg)
-    def debug(self, msg): self.log("debug", msg)
-    def warning(self, msg): self.log("warning", msg)
+
+    def info(self, msg):
+        self.log("info", msg)
+
+    def debug(self, msg):
+        self.log("debug", msg)
+
+    def warning(self, msg):
+        self.log("warning", msg)
+
     def error(self, msg):
         self.log("ERROR", msg)
         if hasattr(sys, 'exc_info') and sys.exc_info()[0]:
             tb = traceback.format_exc()
             for line in tb.splitlines():
                 self.log("TRACE", line)
-    def success(self, msg): self.log("success", msg)
-    def get_logs(self): return "\n".join(self.logs)
+
+    def success(self, msg):
+        self.log("success", msg)
+
+    def get_logs(self):
+        return "\n".join(self.logs)
 
 logger = ErrorLogger()
 
-# ----------------------------------------------------------------------
-# Global Paths
-# ----------------------------------------------------------------------
-# Handle PyInstaller frozen executable
+# ==============================================================================
+# Application Paths
+# ==============================================================================
+# Handles path resolution for both PyInstaller-bundled executables and
+# development/script execution modes. Ensures resource files are found
+# regardless of deployment method.
+
 if getattr(sys, 'frozen', False):
-    # Running as compiled executable
+    # Running as compiled executable (PyInstaller)
     BASE_DIR = Path(sys.executable).parent
-    # For bundled resources in onefile mode, use _MEIPASS temp directory
     if hasattr(sys, '_MEIPASS'):
         TEMP_RESOURCES_DIR = Path(sys._MEIPASS) / "Resources"
     else:
         TEMP_RESOURCES_DIR = BASE_DIR / "Resources"
 else:
-    # Running as script
+    # Running as Python script
     BASE_DIR = Path(__file__).parent
     TEMP_RESOURCES_DIR = BASE_DIR / "Resources"
 
+# Directory structure for application data
 RESOURCES_DIR = BASE_DIR / "Resources"
 INPUT_DIR = BASE_DIR / "Input"
 OUTPUT_DIR = BASE_DIR / "Output"
 PROCESSED_DIR = INPUT_DIR / "Processed"
 OUTPUT_PROCESSED_DIR = OUTPUT_DIR / "Processed"
+
+# Configuration files for data mappings
 MAPPING_FILE = BASE_DIR / "column_mapping.json"
 SHIPMENT_MAPPING_FILE = BASE_DIR / "shipment_mapping.json"
 
+# Create required directories
 for p in (RESOURCES_DIR, INPUT_DIR, OUTPUT_DIR, PROCESSED_DIR, OUTPUT_PROCESSED_DIR):
     p.mkdir(exist_ok=True)
 
+# Database location
 DB_PATH = RESOURCES_DIR / DB_NAME
 
 def get_232_info(hts_code):
+    """
+    Lookup Section 232 tariff information for an HTS code.
+
+    Args:
+        hts_code: HTS code string (with or without dots)
+
+    Returns:
+        Tuple of (material, declaration_code, smelt_flag) where:
+        - material: Material type (e.g., "Steel", "Aluminum") or None
+        - declaration_code: Tariff code (e.g., "08" for Steel)
+        - smelt_flag: "Y" for materials requiring smelting declaration, "" otherwise
+
+    Process:
+        1. Queries tariff_232 table for 10-digit and 8-digit HTS matches
+        2. Falls back to hardcoded HTS prefixes for common materials
+        3. Returns None if material not found
+    """
     if not hts_code:
         return None, "", ""
+
+    # Normalize HTS code: remove dots, strip whitespace, convert to uppercase
     hts_clean = str(hts_code).replace(".", "").strip().upper()
     hts_8 = hts_clean[:8]
     hts_10 = hts_clean[:10]
+
+    # Query tariff database
     try:
         conn = sqlite3.connect(str(DB_PATH))
         c = conn.cursor()
@@ -119,21 +163,33 @@ def get_232_info(hts_code):
     except Exception as e:
         logger.error(f"Error querying tariff_232 for HTS {hts_clean}: {e}")
         pass
+
+    # Fallback: hardcoded HTS prefixes for common aluminum products
     if hts_clean.startswith(('7601','7604','7605','7606','7607','7608','7609')) or hts_clean.startswith('76169951'):
         return "Aluminum", "07", "Y"
-    if hts_clean.startswith((""" '7206','7207','7208','7209','7210','7211','7212','7213','7214','7215',
-                            '7216','7217','7218','7219','7220','7221','7222','7223','7224','7225',
-                            '7226','7227','7228','7229','7301','7302','7303','7304','7305','7306',
-                            '7307','7308','7309','7310','7311','7312','7313','7314','7315','7316',
-                            '7317','7318','7320','7321','7322','7323','7324','7325','7326' """)):
+
+    # Fallback: hardcoded HTS prefixes for steel products
+    if hts_clean.startswith((
+        '7206','7207','7208','7209','7210','7211','7212','7213','7214','7215',
+        '7216','7217','7218','7219','7220','7221','7222','7223','7224','7225',
+        '7226','7227','7228','7229','7301','7302','7303','7304','7305','7306',
+        '7307','7308','7309','7310','7311','7312','7313','7314','7315','7316',
+        '7317','7318','7320','7321','7322','7323','7324','7325','7326'
+    )):
         return "Steel", "08", ""
+
+    # Fallback: specific aluminum HTS codes
     if hts_8 in ('76141050', '76149020', '76149040', '76149050'):
         return "Aluminum", "07", "Y"
+
     return None, "", ""
 
-# ----------------------------------------------------------------------
-# Database Init
-# ----------------------------------------------------------------------
+# ==============================================================================
+# Database Initialization
+# ==============================================================================
+# Creates tables if they don't exist: parts_master, tariff_232, sec_232_actions,
+# mid_table, mapping_profiles, and app_config.
+
 def init_database():
     try:
         conn = sqlite3.connect(str(DB_PATH))
