@@ -164,6 +164,23 @@ def get_232_info(hts_code):
         logger.error(f"Error querying tariff_232 for HTS {hts_clean}: {e}")
         pass
 
+    # Check if fallback is enabled
+    fallback_enabled = True  # Default to enabled
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        c = conn.cursor()
+        c.execute("SELECT value FROM app_config WHERE key = 'tariff_232_fallback_enabled'")
+        row = c.fetchone()
+        conn.close()
+        if row:
+            fallback_enabled = row[0].lower() == 'true'
+    except:
+        pass
+
+    # Only apply fallback rules if enabled
+    if not fallback_enabled:
+        return None, "", ""
+
     # Fallback: hardcoded HTS prefixes for common aluminum products
     if hts_clean.startswith(('7601','7604','7605','7606','7607','7608','7609')) or hts_clean.startswith('76169951'):
         return "Aluminum", "07", "Y"
@@ -1264,6 +1281,52 @@ class DerivativeMill(QMainWindow):
 
         colors_group.setLayout(colors_layout)
         appearance_layout.addWidget(colors_group)
+
+        # Tariff 232 Fallback Settings Group
+        fallback_group = QGroupBox("Tariff 232 Fallback")
+        fallback_layout = QFormLayout()
+
+        # Load saved fallback preference
+        fallback_enabled = True  # Default to enabled
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+            c.execute("SELECT value FROM app_config WHERE key = 'tariff_232_fallback_enabled'")
+            row = c.fetchone()
+            conn.close()
+            if row:
+                fallback_enabled = row[0].lower() == 'true'
+        except:
+            pass
+
+        # Create checkbox for fallback toggle
+        fallback_checkbox = QCheckBox("Enable automatic classification for steel and aluminum")
+        fallback_checkbox.setChecked(fallback_enabled)
+
+        def save_fallback_preference(state):
+            """Save the fallback preference to database"""
+            is_checked = fallback_checkbox.isChecked()
+            try:
+                conn = sqlite3.connect(str(DB_PATH))
+                c = conn.cursor()
+                c.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES ('tariff_232_fallback_enabled', ?)",
+                         (str(is_checked),))
+                conn.commit()
+                conn.close()
+                logger.info(f"Tariff 232 fallback toggled: {is_checked}")
+            except Exception as e:
+                logger.error(f"Failed to save fallback preference: {e}")
+
+        fallback_checkbox.stateChanged.connect(save_fallback_preference)
+        fallback_layout.addRow(fallback_checkbox)
+
+        fallback_info = QLabel("<small>When enabled, automatically assigns Section 232 classification (Steel/Aluminum) to products matching common HTS code patterns. When disabled, only uses the tariff database for classification.</small>")
+        fallback_info.setWordWrap(True)
+        fallback_info.setStyleSheet("color:#666; padding:5px;")
+        fallback_layout.addRow("", fallback_info)
+
+        fallback_group.setLayout(fallback_layout)
+        appearance_layout.addWidget(fallback_group)
 
         # Add stretch to appearance tab
         appearance_layout.addStretch()
