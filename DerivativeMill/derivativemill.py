@@ -1762,9 +1762,9 @@ class DerivativeMill(QMainWindow):
         base_text = palette.color(QPalette.ButtonText)
         highlight = palette.color(QPalette.Highlight)
 
-        # All buttons use teal color across all themes
-        bg = QColor(78, 174, 205)  # Teal
-        hover_bg = QColor(53, 128, 151)  # Darker Teal
+        # All buttons use logo blue color across all themes
+        bg = QColor(52, 152, 219)  # Logo Blue
+        hover_bg = QColor(41, 128, 185)  # Darker Logo Blue
         disabled_bg = QColor(160, 160, 160)  # Grey
 
         # Text color - white for dark buttons, black for light buttons
