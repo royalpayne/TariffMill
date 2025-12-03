@@ -169,43 +169,8 @@ def get_232_info(hts_code):
             return material, dec_type, smelt_flag
     except Exception as e:
         logger.error(f"Error querying tariff_232 for HTS {hts_clean}: {e}")
-        pass
 
-    # Check if fallback is enabled
-    fallback_enabled = True  # Default to enabled
-    try:
-        conn = sqlite3.connect(str(DB_PATH))
-        c = conn.cursor()
-        c.execute("SELECT value FROM app_config WHERE key = 'tariff_232_fallback_enabled'")
-        row = c.fetchone()
-        conn.close()
-        if row:
-            fallback_enabled = row[0].lower() == 'true'
-    except:
-        pass
-
-    # Only apply fallback rules if enabled
-    if not fallback_enabled:
-        return None, "", ""
-
-    # Fallback: hardcoded HTS prefixes for common aluminum products
-    if hts_clean.startswith(('7601','7604','7605','7606','7607','7608','7609')) or hts_clean.startswith('76169951'):
-        return "Aluminum", "07", "Y"
-
-    # Fallback: hardcoded HTS prefixes for steel products
-    if hts_clean.startswith((
-        '7206','7207','7208','7209','7210','7211','7212','7213','7214','7215',
-        '7216','7217','7218','7219','7220','7221','7222','7223','7224','7225',
-        '7226','7227','7228','7229','7301','7302','7303','7304','7305','7306',
-        '7307','7308','7309','7310','7311','7312','7313','7314','7315','7316',
-        '7317','7318','7320','7321','7322','7323','7324','7325','7326'
-    )):
-        return "Steel", "08", ""
-
-    # Fallback: specific aluminum HTS codes
-    if hts_8 in ('76141050', '76149020', '76149040', '76149050'):
-        return "Aluminum", "07", "Y"
-
+    # No match found in tariff_232 database
     return None, "", ""
 
 # ==============================================================================
@@ -503,9 +468,10 @@ class DerivativeMill(QMainWindow):
         self._processed_events = set()
         
         # Set window icon (use TEMP_RESOURCES_DIR for bundled resources)
-        icon_path = TEMP_RESOURCES_DIR / "banner_bg.png"
+        # Prefer icon.ico which is a proper multi-size icon created from banner_bg.png
+        icon_path = TEMP_RESOURCES_DIR / "icon.ico"
         if not icon_path.exists():
-            icon_path = TEMP_RESOURCES_DIR / "icon.ico"
+            icon_path = TEMP_RESOURCES_DIR / "banner_bg.png"
         if not icon_path.exists():
             icon_path = TEMP_RESOURCES_DIR / "icon.png"
         if icon_path.exists():
@@ -1294,52 +1260,6 @@ class DerivativeMill(QMainWindow):
 
         colors_group.setLayout(colors_layout)
         appearance_layout.addWidget(colors_group)
-
-        # Tariff 232 Fallback Settings Group
-        fallback_group = QGroupBox("Tariff 232 Fallback")
-        fallback_layout = QFormLayout()
-
-        # Load saved fallback preference
-        fallback_enabled = True  # Default to enabled
-        try:
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("SELECT value FROM app_config WHERE key = 'tariff_232_fallback_enabled'")
-            row = c.fetchone()
-            conn.close()
-            if row:
-                fallback_enabled = row[0].lower() == 'true'
-        except:
-            pass
-
-        # Create checkbox for fallback toggle
-        fallback_checkbox = QCheckBox("Enable automatic classification for steel and aluminum")
-        fallback_checkbox.setChecked(fallback_enabled)
-
-        def save_fallback_preference(state):
-            """Save the fallback preference to database"""
-            is_checked = fallback_checkbox.isChecked()
-            try:
-                conn = sqlite3.connect(str(DB_PATH))
-                c = conn.cursor()
-                c.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES ('tariff_232_fallback_enabled', ?)",
-                         (str(is_checked),))
-                conn.commit()
-                conn.close()
-                logger.info(f"Tariff 232 fallback toggled: {is_checked}")
-            except Exception as e:
-                logger.error(f"Failed to save fallback preference: {e}")
-
-        fallback_checkbox.stateChanged.connect(save_fallback_preference)
-        fallback_layout.addRow(fallback_checkbox)
-
-        fallback_info = QLabel("<small>When enabled, automatically assigns Section 232 classification (Steel/Aluminum) to products matching common HTS code patterns. When disabled, only uses the tariff database for classification.</small>")
-        fallback_info.setWordWrap(True)
-        fallback_info.setStyleSheet("color:#666; padding:5px;")
-        fallback_layout.addRow("", fallback_info)
-
-        fallback_group.setLayout(fallback_layout)
-        appearance_layout.addWidget(fallback_group)
 
         # Add stretch to appearance tab
         appearance_layout.addStretch()
