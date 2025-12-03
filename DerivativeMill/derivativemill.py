@@ -1710,24 +1710,24 @@ class DerivativeMill(QMainWindow):
         return palette
     
     def get_teal_professional_palette(self):
-        """Create a professional teal palette based on industry-standard colors"""
+        """Create a professional teal/cyan palette matching customs management UI design"""
         from PyQt5.QtGui import QPalette, QColor
 
         palette = QPalette()
-        # Classic professional teal with clean, modern aesthetics
-        palette.setColor(QPalette.Window, QColor(240, 248, 248))  # Light professional background (#F0F8F8)
-        palette.setColor(QPalette.WindowText, QColor(26, 26, 26))  # Near-black text for better contrast
-        palette.setColor(QPalette.Base, QColor(240, 248, 248))  # Same as Window for consistency
-        palette.setColor(QPalette.AlternateBase, QColor(220, 240, 240))  # Slightly darker for alternating rows
+        # Professional cyan/teal color scheme inspired by customs management systems
+        palette.setColor(QPalette.Window, QColor(245, 250, 252))  # Very light blue-grey background
+        palette.setColor(QPalette.WindowText, QColor(33, 33, 33))  # Dark text for readability
+        palette.setColor(QPalette.Base, QColor(255, 255, 255))  # White base for data entry areas
+        palette.setColor(QPalette.AlternateBase, QColor(197, 232, 240))  # Light cyan for alternating rows (#C5E8F0)
         palette.setColor(QPalette.ToolTipBase, QColor(255, 255, 255))
-        palette.setColor(QPalette.ToolTipText, QColor(26, 26, 26))
-        palette.setColor(QPalette.Text, QColor(26, 26, 26))  # Near-black text for readability
-        palette.setColor(QPalette.Button, QColor(0, 128, 128))  # Professional teal buttons (#008080)
-        palette.setColor(QPalette.ButtonText, QColor(26, 26, 26))  # Dark text on buttons
-        palette.setColor(QPalette.BrightText, QColor(192, 0, 0))  # Professional red
-        palette.setColor(QPalette.Link, QColor(0, 166, 166))  # Brighter teal for links (#00A6A6)
-        palette.setColor(QPalette.Highlight, QColor(32, 178, 170))  # Light sea green highlight (#20B2AA)
-        palette.setColor(QPalette.HighlightedText, QColor(26, 26, 26))  # Dark text on highlights
+        palette.setColor(QPalette.ToolTipText, QColor(33, 33, 33))
+        palette.setColor(QPalette.Text, QColor(33, 33, 33))  # Dark text
+        palette.setColor(QPalette.Button, QColor(74, 154, 168))  # Teal button color (#4A9AA8)
+        palette.setColor(QPalette.ButtonText, QColor(255, 255, 255))  # White text on teal buttons
+        palette.setColor(QPalette.BrightText, QColor(192, 0, 0))  # Professional red for errors
+        palette.setColor(QPalette.Link, QColor(26, 123, 136))  # Darker teal for links (#1A7B88)
+        palette.setColor(QPalette.Highlight, QColor(208, 238, 245))  # Light cyan highlight (#D0EEF5)
+        palette.setColor(QPalette.HighlightedText, QColor(33, 33, 33))  # Dark text on highlights
         return palette
 
     def get_button_style(self, button_type="default"):
