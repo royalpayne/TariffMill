@@ -1095,7 +1095,7 @@ class DerivativeMill(QMainWindow):
         
         # Use local variable instead of instance variable
         theme_combo = QComboBox()
-        theme_combo.addItems(["System Default", "Fusion (Light)", "Windows", "Fusion (Dark)", "Ocean", "Teal Professional"])
+        theme_combo.addItems(["System Default", "Fusion (Light)", "Windows", "Fusion (Dark)", "Ocean", "Light Cyan"])
         
         # Load saved theme preference and set combo without triggering signal
         try:
@@ -1410,7 +1410,7 @@ class DerivativeMill(QMainWindow):
             app.setStyle("Fusion")
             ocean_palette = self.get_ocean_palette()
             app.setPalette(ocean_palette)
-        elif theme_name == "Teal Professional":
+        elif theme_name == "Light Cyan":
             app.setStyle("Fusion")
             teal_palette = self.get_teal_professional_palette()
             app.setPalette(teal_palette)
@@ -1710,7 +1710,7 @@ class DerivativeMill(QMainWindow):
         return palette
     
     def get_teal_professional_palette(self):
-        """Create a professional palette based on Fusion Light with custom button colors"""
+        """Create a Light Cyan palette based on Fusion Light with custom colors"""
         from PyQt5.QtGui import QPalette, QColor
         from PyQt5.QtWidgets import QApplication
 
