@@ -1352,12 +1352,17 @@ class DerivativeMill(QMainWindow):
             text_edit.setReadOnly(True)
             text_edit.setFixedHeight(45)
 
-            # Apply theme-aware styling
-            is_dark = hasattr(self, 'current_theme') and self.current_theme in ["Fusion (Dark)", "Ocean"]
-            if is_dark:
-                text_edit.setStyleSheet("background:#2d2d2d; padding:5px; border:1px solid #555; color:#e0e0e0; font-family: monospace;")
-            else:
-                text_edit.setStyleSheet("background:#f0f0f0; padding:5px; border:1px solid #ccc; color:#000000; font-family: monospace;")
+            # Apply theme-aware styling using result preview background color
+            app = QApplication.instance()
+            palette = app.palette()
+            base_color = palette.color(QPalette.Base)
+            text_color = palette.color(QPalette.Text)
+
+            # Format colors for stylesheet
+            bg_color = base_color.name()
+            fg_color = text_color.name()
+
+            text_edit.setStyleSheet(f"background:{bg_color}; padding:5px; border:1px solid #555; color:{fg_color}; font-family: monospace;")
 
             return text_edit
 
