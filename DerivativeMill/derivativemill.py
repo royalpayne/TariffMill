@@ -1715,7 +1715,7 @@ class DerivativeMill(QMainWindow):
 
         palette = QPalette()
         # Professional cyan/teal color scheme inspired by customs management systems
-        palette.setColor(QPalette.Window, QColor(245, 250, 252))  # Very light blue-grey background
+        palette.setColor(QPalette.Window, QColor(240, 248, 251))  # Very light teal background for tabs/panels (#F0F8FB)
         palette.setColor(QPalette.WindowText, QColor(33, 33, 33))  # Dark text for readability
         palette.setColor(QPalette.Base, QColor(255, 255, 255))  # White base for data entry areas
         palette.setColor(QPalette.AlternateBase, QColor(197, 232, 240))  # Light cyan for alternating rows (#C5E8F0)
@@ -1723,7 +1723,7 @@ class DerivativeMill(QMainWindow):
         palette.setColor(QPalette.ToolTipText, QColor(33, 33, 33))
         palette.setColor(QPalette.Text, QColor(33, 33, 33))  # Dark text
         palette.setColor(QPalette.Button, QColor(74, 154, 168))  # Teal button color (#4A9AA8)
-        palette.setColor(QPalette.ButtonText, QColor(255, 255, 255))  # White text on teal buttons
+        palette.setColor(QPalette.ButtonText, QColor(33, 33, 33))  # Dark text on buttons for contrast
         palette.setColor(QPalette.BrightText, QColor(192, 0, 0))  # Professional red for errors
         palette.setColor(QPalette.Link, QColor(26, 123, 136))  # Darker teal for links (#1A7B88)
         palette.setColor(QPalette.Highlight, QColor(208, 238, 245))  # Light cyan highlight (#D0EEF5)
