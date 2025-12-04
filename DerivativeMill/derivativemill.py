@@ -1322,6 +1322,170 @@ class DerivativeMill(QMainWindow):
         folders_layout.addStretch()
         tabs.addTab(folders_widget, "Folders")
 
+        # ===== TAB 3: DATABASE =====
+        database_widget = QWidget()
+        database_layout = QVBoxLayout(database_widget)
+
+        # Current Database Info
+        db_info_group = QGroupBox("Current Database")
+        db_info_layout = QFormLayout()
+
+        # Determine current database type
+        db_type_label = QLabel("SQLite (Local)")
+        db_path_label = QLabel(str(DB_PATH))
+        db_path_label.setWordWrap(True)
+        db_path_label.setStyleSheet("font-family: monospace; font-size: 9pt;")
+
+        db_info_layout.addRow("Type:", db_type_label)
+        db_info_layout.addRow("Location:", db_path_label)
+
+        db_info_group.setLayout(db_info_layout)
+        database_layout.addWidget(db_info_group)
+
+        # PostgreSQL Configuration
+        pg_group = QGroupBox("PostgreSQL Configuration (Multi-User Sync)")
+        pg_layout = QFormLayout()
+
+        pg_host_input = QLineEdit("localhost")
+        pg_port_input = QLineEdit("5432")
+        pg_database_input = QLineEdit("derivativemill")
+        pg_user_input = QLineEdit("postgres")
+        pg_password_input = QLineEdit()
+        pg_password_input.setEchoMode(QLineEdit.Password)
+
+        pg_layout.addRow("Host:", pg_host_input)
+        pg_layout.addRow("Port:", pg_port_input)
+        pg_layout.addRow("Database:", pg_database_input)
+        pg_layout.addRow("Username:", pg_user_input)
+        pg_layout.addRow("Password:", pg_password_input)
+
+        # Test connection button
+        pg_test_btn = QPushButton("Test Connection")
+        pg_test_btn.setStyleSheet(self.get_button_style("info"))
+
+        def test_pg_connection():
+            try:
+                import psycopg2
+                conn = psycopg2.connect(
+                    host=pg_host_input.text(),
+                    port=int(pg_port_input.text()),
+                    database=pg_database_input.text(),
+                    user=pg_user_input.text(),
+                    password=pg_password_input.text()
+                )
+                conn.close()
+                QMessageBox.information(dialog, "Success", "Successfully connected to PostgreSQL!")
+            except ImportError:
+                QMessageBox.warning(dialog, "Missing Dependency", 
+                    "psycopg2 is not installed.\n\nRun: pip install psycopg2-binary")
+            except Exception as e:
+                QMessageBox.critical(dialog, "Connection Failed", f"Failed to connect:\n{e}")
+
+        pg_test_btn.clicked.connect(test_pg_connection)
+        pg_layout.addRow("", pg_test_btn)
+
+        # Migrate and Switch buttons
+        pg_btn_layout = QHBoxLayout()
+
+        pg_migrate_btn = QPushButton("Migrate Data to PostgreSQL")
+        pg_migrate_btn.setStyleSheet(self.get_button_style("warning"))
+
+        def migrate_to_postgresql():
+            reply = QMessageBox.question(dialog, "Confirm Migration",
+                "This will copy all data from your local SQLite database to PostgreSQL.\n\n"
+                "The local database will not be modified.\n\n"
+                "Continue?",
+                QMessageBox.Yes | QMessageBox.No)
+
+            if reply == QMessageBox.Yes:
+                try:
+                    import psycopg2
+                    import pandas as pd
+
+                    # Connect to PostgreSQL
+                    pg_conn = psycopg2.connect(
+                        host=pg_host_input.text(),
+                        port=int(pg_port_input.text()),
+                        database=pg_database_input.text(),
+                        user=pg_user_input.text(),
+                        password=pg_password_input.text()
+                    )
+                    pg_cursor = pg_conn.cursor()
+
+                    # Create tables
+                    pg_cursor.execute("""CREATE TABLE IF NOT EXISTS parts_master (
+                        part_number TEXT PRIMARY KEY, description TEXT, hts_code TEXT, 
+                        country_origin TEXT, mid TEXT, client_code TEXT, 
+                        steel_ratio REAL DEFAULT 1.0, non_steel_ratio REAL DEFAULT 0.0, last_updated TEXT
+                    )""")
+                    pg_cursor.execute("""CREATE TABLE IF NOT EXISTS tariff_232 (
+                        hts_code TEXT PRIMARY KEY, material TEXT, classification TEXT,
+                        chapter TEXT, chapter_description TEXT, declaration_required TEXT, notes TEXT
+                    )""")
+                    pg_cursor.execute("""CREATE TABLE IF NOT EXISTS sec_232_actions (
+                        tariff_no TEXT PRIMARY KEY, action TEXT, description TEXT,
+                        advalorem_rate TEXT, effective_date TEXT, expiration_date TEXT,
+                        specific_rate TEXT, additional_declaration TEXT, note TEXT, link TEXT
+                    )""")
+                    pg_cursor.execute("""CREATE TABLE IF NOT EXISTS mapping_profiles (
+                        profile_name TEXT PRIMARY KEY, mapping_json TEXT, created_date TEXT
+                    )""")
+                    pg_cursor.execute("""CREATE TABLE IF NOT EXISTS app_config (
+                        key TEXT PRIMARY KEY, value TEXT
+                    )""")
+                    pg_conn.commit()
+
+                    # Migrate data from SQLite
+                    sqlite_conn = sqlite3.connect(str(DB_PATH))
+                    tables = ['parts_master', 'tariff_232', 'sec_232_actions', 'mapping_profiles', 'app_config']
+                    migrated = 0
+
+                    for table in tables:
+                        try:
+                            df = pd.read_sql(f"SELECT * FROM {table}", sqlite_conn)
+                            if not df.empty:
+                                for _, row in df.iterrows():
+                                    cols = ', '.join(df.columns)
+                                    placeholders = ', '.join(['%s'] * len(df.columns))
+                                    pg_cursor.execute(
+                                        f"INSERT INTO {table} ({cols}) VALUES ({placeholders}) ON CONFLICT DO NOTHING",
+                                        tuple(row)
+                                    )
+                                migrated += len(df)
+                        except Exception as e:
+                            logger.warning(f"Error migrating {table}: {e}")
+
+                    pg_conn.commit()
+                    pg_conn.close()
+                    sqlite_conn.close()
+
+                    QMessageBox.information(dialog, "Migration Complete", 
+                        f"Successfully migrated {migrated} records to PostgreSQL!\n\n"
+                        "Click 'Switch to PostgreSQL' to start using the remote database.")
+
+                except ImportError:
+                    QMessageBox.warning(dialog, "Missing Dependency", 
+                        "psycopg2 is not installed.\n\nRun: pip install psycopg2-binary")
+                except Exception as e:
+                    QMessageBox.critical(dialog, "Migration Failed", f"Error during migration:\n{e}")
+
+        pg_migrate_btn.clicked.connect(migrate_to_postgresql)
+        pg_btn_layout.addWidget(pg_migrate_btn)
+
+        pg_layout.addRow("", pg_btn_layout)
+
+        pg_info = QLabel("<small>PostgreSQL enables multiple users to access the same database simultaneously. "
+                        "Install with: pip install psycopg2-binary</small>")
+        pg_info.setWordWrap(True)
+        pg_info.setStyleSheet("color:#666; padding:5px;")
+        pg_layout.addRow("", pg_info)
+
+        pg_group.setLayout(pg_layout)
+        database_layout.addWidget(pg_group)
+
+        database_layout.addStretch()
+        tabs.addTab(database_widget, "Database")
+
         # Add tabs to main dialog layout
         layout.addWidget(tabs)
         dialog.exec_()
@@ -2045,7 +2209,10 @@ class DerivativeMill(QMainWindow):
             conn = sqlite3.connect(str(DB_PATH))
             parts = pd.read_sql("SELECT part_number, hts_code, steel_ratio, non_steel_ratio FROM parts_master", conn)
             conn.close()
-            df = df.merge(parts, on='part_number', how='left', suffixes=('', '_master'))
+            df = df.merge(parts, on='part_number', how='left', suffixes=('', '_master'), indicator=True)
+            # Track parts not found in the database
+            df['_not_in_db'] = df['_merge'] == 'left_only'
+            df = df.drop(columns=['_merge'])
             if 'hts_code_master' in df.columns:
                 df['hts_code'] = df['hts_code'].fillna(df['hts_code_master'])
             else:
@@ -2154,7 +2321,7 @@ class DerivativeMill(QMainWindow):
         preview_cols = [
             'Product No','ValueUSD','HTSCode','MID','CalcWtNet','DecTypeCd',
             'CountryofMelt','CountryOfCast','PrimCountryOfSmelt','PrimSmeltFlag',
-            'SteelRatio','NonSteelRatio','_232_flag'
+            'SteelRatio','NonSteelRatio','_232_flag','_not_in_db'
         ]
         preview_df = df[preview_cols].copy()
         self.on_done(preview_df, vr, None)
@@ -2368,6 +2535,10 @@ class DerivativeMill(QMainWindow):
             else:
                 non_steel_display = f"{non_steel_ratio_val*100:.1f}%" if non_steel_ratio_val > 0 else ""
 
+            # Check if part is not in database - show "Not Found" in 232 Status column
+            not_in_db = r.get('_not_in_db', False)
+            status_display = "Not Found" if not_in_db else flag
+
             items = [
                 QTableWidgetItem(str(r['Product No'])),
                 value_item,
@@ -2381,7 +2552,7 @@ class DerivativeMill(QMainWindow):
                 QTableWidgetItem(r.get('PrimSmeltFlag','')),
                 QTableWidgetItem(f"{steel_ratio_val*100:.1f}%"),
                 QTableWidgetItem(non_steel_display),
-                QTableWidgetItem(flag)
+                QTableWidgetItem(status_display)
             ]
 
             # Make all items editable except 232%, Non-232%, and 232 Status
