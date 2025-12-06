@@ -1982,18 +1982,33 @@ class DerivativeMill(QMainWindow):
             else:
                 df = pd.read_csv(path, dtype=str, header=header_row)
 
-            # Try to calculate total before renaming (using original column names)
-            # and after renaming (using mapped names)
+            # Calculate total before renaming (using original column names)
+            # Only sum rows that have a part number to exclude total/subtotal rows
             value_column = None
+            part_number_column = None
+
             if 'value_usd' in self.shipment_mapping:
                 # Get the original column name mapped to value_usd
                 original_col_name = self.shipment_mapping['value_usd']
                 if original_col_name in df.columns:
                     value_column = original_col_name
 
+            # Get part number column to filter rows
+            if 'part_number' in self.shipment_mapping:
+                part_number_col_name = self.shipment_mapping['part_number']
+                if part_number_col_name in df.columns:
+                    part_number_column = part_number_col_name
+
             # If we found the value column, calculate total
             if value_column:
-                total = pd.to_numeric(df[value_column], errors='coerce').sum()
+                # Filter to only rows that have a part number (exclude total/subtotal rows)
+                if part_number_column:
+                    df_filtered = df[df[part_number_column].notna() & (df[part_number_column].astype(str).str.strip() != '')]
+                    total = pd.to_numeric(df_filtered[value_column], errors='coerce').sum()
+                else:
+                    # If no part number column, sum all rows (old behavior)
+                    total = pd.to_numeric(df[value_column], errors='coerce').sum()
+
                 self.csv_total_value = round(total, 2)
 
             # Now rename columns for other uses
@@ -5067,7 +5082,10 @@ class DerivativeMill(QMainWindow):
                 logger.info(f"[CSV TOTAL DEBUG] Shipment mapping: {self.shipment_mapping}")
 
                 # Calculate total using original column name before renaming
+                # Only sum rows that have a part number to exclude total/subtotal rows
                 value_column = None
+                part_number_column = None
+
                 if 'value_usd' in self.shipment_mapping:
                     original_col_name = self.shipment_mapping['value_usd']
                     logger.info(f"[CSV TOTAL DEBUG] Looking for column '{original_col_name}' in DataFrame")
@@ -5078,8 +5096,24 @@ class DerivativeMill(QMainWindow):
                 else:
                     logger.warning("[CSV TOTAL DEBUG] 'value_usd' not found in shipment_mapping")
 
+                # Get part number column to filter rows
+                if 'part_number' in self.shipment_mapping:
+                    part_number_col_name = self.shipment_mapping['part_number']
+                    if part_number_col_name in df.columns:
+                        part_number_column = part_number_col_name
+                        logger.info(f"[CSV TOTAL DEBUG] Part number column: '{part_number_column}'")
+
                 if value_column:
-                    total = pd.to_numeric(df[value_column], errors='coerce').sum()
+                    # Filter to only rows that have a part number (exclude total/subtotal rows)
+                    if part_number_column:
+                        df_filtered = df[df[part_number_column].notna() & (df[part_number_column].astype(str).str.strip() != '')]
+                        logger.info(f"[CSV TOTAL DEBUG] Rows with part numbers: {len(df_filtered)} of {len(df)} total rows")
+                        total = pd.to_numeric(df_filtered[value_column], errors='coerce').sum()
+                    else:
+                        # If no part number column, sum all rows (old behavior)
+                        logger.warning("[CSV TOTAL DEBUG] No part_number column mapped, summing all rows")
+                        total = pd.to_numeric(df[value_column], errors='coerce').sum()
+
                     self.csv_total_value = round(total, 2)
                     logger.info(f"[CSV TOTAL DEBUG] Calculated total: ${self.csv_total_value:,.2f}")
                     # Don't auto-populate CI input - just update the check
