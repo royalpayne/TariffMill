@@ -528,6 +528,7 @@ class DerivativeMill(QMainWindow):
         
         self.current_csv = None
         self.shipment_mapping = {}
+        self.profile_header_row = 1  # Default header row (1 = first row)
         self.selected_mid = ""
         self.current_worker = None
         self.missing_df = None
@@ -893,13 +894,14 @@ class DerivativeMill(QMainWindow):
         self.invoice_check_label.setWordWrap(True)
         self.invoice_check_label.setStyleSheet("font-size: 7pt;")
         self.invoice_check_label.setAlignment(Qt.AlignCenter)
+        self.invoice_check_label.setFixedWidth(120)  # Match Edit Values button width
 
         vbox_check = QVBoxLayout()
         vbox_check.setSpacing(12)
         vbox_check.setContentsMargins(0, 10, 0, 0)
 
         vbox_check.addWidget(self.invoice_check_label, alignment=Qt.AlignCenter)
-        
+
         # Edit Values button (initially hidden, shown when values don't match)
         self.edit_values_btn = QPushButton("Edit Values")
         self.edit_values_btn.setFixedSize(120, 30)
@@ -2040,7 +2042,7 @@ class DerivativeMill(QMainWindow):
             
             # Update the invoice check label and Edit Values button
             if user_val == 0.0:
-                self.invoice_check_label.setText(f"CSV Total: ${self.csv_total_value:,.2f}")
+                self.invoice_check_label.setText(f"Invoice Total: ${self.csv_total_value:,.2f}")
                 self.invoice_check_label.setStyleSheet("background:#0078D4; color:white; font-weight:bold; font-size:7pt; padding:3px;")
                 self.edit_values_btn.setVisible(False)
             elif diff <= threshold:
@@ -2050,7 +2052,7 @@ class DerivativeMill(QMainWindow):
             else:
                 # Values don't match - show comparison and Edit Values button
                 self.invoice_check_label.setText(
-                    f"CSV Total: ${self.csv_total_value:,.2f}\n"
+                    f"Invoice Total: ${self.csv_total_value:,.2f}\n"
                     f"Difference: ${diff:,.2f}"
                 )
                 self.invoice_check_label.setStyleSheet("background:#ff9800; color:white; font-weight:bold; font-size:7pt; padding:3px;")
@@ -3356,6 +3358,7 @@ class DerivativeMill(QMainWindow):
         if not name or name == "-- Select Profile --":
             # Clear all mappings and reset UI
             self.shipment_mapping = {}
+            self.profile_header_row = 1  # Reset to default
 
             # Clear drop targets
             for target in self.shipment_targets.values():
@@ -3387,6 +3390,8 @@ class DerivativeMill(QMainWindow):
                 self.shipment_mapping = json.loads(row[0])
                 # Restore header row value
                 header_row_value = row[1] if len(row) > 1 and row[1] is not None else 1
+                # Store as instance variable for use in Process Shipments tab
+                self.profile_header_row = header_row_value
                 if hasattr(self, 'header_row_input'):
                     self.header_row_input.setText(str(header_row_value))
                 self.apply_current_mapping()
@@ -5037,9 +5042,13 @@ class DerivativeMill(QMainWindow):
                 self.last_processed_df = None
                 self.table.setRowCount(0)
 
-                # Get header row value from input field
+                # Get header row value from profile or input field
                 header_row = 0  # Default: first row is header
-                if hasattr(self, 'header_row_input') and self.header_row_input.text().strip():
+                # First check if there's a profile header row loaded
+                if hasattr(self, 'profile_header_row') and self.profile_header_row:
+                    header_row = max(0, self.profile_header_row - 1)
+                # Otherwise check input field (for Invoice Mapping Profiles tab)
+                elif hasattr(self, 'header_row_input') and self.header_row_input.text().strip():
                     try:
                         header_row_value = int(self.header_row_input.text().strip())
                         header_row = max(0, header_row_value - 1)
