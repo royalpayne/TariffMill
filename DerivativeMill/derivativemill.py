@@ -5020,19 +5020,37 @@ class DerivativeMill(QMainWindow):
                 self.last_processed_df = None
                 self.table.setRowCount(0)
 
+                # Get header row value from input field
+                header_row = 0  # Default: first row is header
+                if hasattr(self, 'header_row_input') and self.header_row_input.text().strip():
+                    try:
+                        header_row_value = int(self.header_row_input.text().strip())
+                        header_row = max(0, header_row_value - 1)
+                    except ValueError:
+                        header_row = 0
+
                 # Read total value - handle both CSV and Excel files
                 col_map = {v: k for k, v in self.shipment_mapping.items()}
                 if file_path.suffix.lower() == '.xlsx':
-                    df = pd.read_excel(file_path, dtype=str)
+                    df = pd.read_excel(file_path, dtype=str, header=header_row)
                 else:
-                    df = pd.read_csv(file_path, dtype=str)
-                df = df.rename(columns=col_map)
+                    df = pd.read_csv(file_path, dtype=str, header=header_row)
 
-                if 'value_usd' in df.columns:
-                    total = pd.to_numeric(df['value_usd'], errors='coerce').sum()
+                # Calculate total using original column name before renaming
+                value_column = None
+                if 'value_usd' in self.shipment_mapping:
+                    original_col_name = self.shipment_mapping['value_usd']
+                    if original_col_name in df.columns:
+                        value_column = original_col_name
+
+                if value_column:
+                    total = pd.to_numeric(df[value_column], errors='coerce').sum()
                     self.csv_total_value = round(total, 2)
                     # Don't auto-populate CI input - just update the check
                     self.update_invoice_check()  # This will control button state
+
+                # Rename columns for other uses
+                df = df.rename(columns=col_map)
 
                 self.bottom_status.setText(f"Loaded: {file_path.name}")
                 logger.info(f"Loaded: {file_path.name}")
