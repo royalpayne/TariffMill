@@ -2185,9 +2185,13 @@ class DerivativeMill(QMainWindow):
 
     def load_file_as_dataframe(self, file_path):
         """Load CSV or Excel file and return as DataFrame"""
-        # Get header row value from input field
+        # Get header row value from profile or input field
         header_row = 0  # Default: first row is header
-        if hasattr(self, 'header_row_input') and self.header_row_input.text().strip():
+        # First check if there's a profile header row loaded
+        if hasattr(self, 'profile_header_row') and self.profile_header_row:
+            header_row = max(0, self.profile_header_row - 1)
+        # Otherwise check input field (for Invoice Mapping Profiles tab)
+        elif hasattr(self, 'header_row_input') and self.header_row_input.text().strip():
             try:
                 header_row_value = int(self.header_row_input.text().strip())
                 # Convert from 1-based to 0-based indexing
@@ -2197,6 +2201,7 @@ class DerivativeMill(QMainWindow):
             except ValueError:
                 header_row = 0
 
+        logger.info(f"[LOAD DATAFRAME] Loading {file_path} with header_row={header_row}")
         file_path_str = str(file_path)
         if file_path_str.lower().endswith('.xlsx') or file_path_str.lower().endswith('.xls'):
             return pd.read_excel(file_path_str, dtype=str, keep_default_na=False, header=header_row).fillna("")
@@ -2263,6 +2268,14 @@ class DerivativeMill(QMainWindow):
             if not {'part_number','value_usd'}.issubset(df.columns):
                 self.status.setText("Missing Part Number or Value USD")
                 return
+
+            # Filter out rows without part numbers (excludes total/subtotal rows)
+            initial_row_count = len(df)
+            df = df[df['part_number'].notna() & (df['part_number'].astype(str).str.strip() != '')]
+            filtered_row_count = len(df)
+            if filtered_row_count < initial_row_count:
+                logger.info(f"[PROCESS] Filtered {initial_row_count - filtered_row_count} rows without part numbers (total/subtotal rows)")
+                logger.info(f"[PROCESS] Processing {filtered_row_count} data rows")
             def safe_float(text):
                 if pd.isna(text) or text == "": return 0.0
                 try:
