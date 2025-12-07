@@ -1,4 +1,5 @@
 {
-  "part_number": "Item",
-  "value_usd": "Total Price"
+  "part_number": "part_number",
+  "value_usd": "total_price",
+  "quantity": "quantity"
 }
