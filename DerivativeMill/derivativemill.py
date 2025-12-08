@@ -2932,11 +2932,31 @@ class DerivativeMill(QMainWindow):
             # Track parts not found in the database
             df['_not_in_db'] = df['_merge'] == 'left_only'
             df = df.drop(columns=['_merge'])
-            if 'hts_code_master' in df.columns:
-                df['hts_code'] = df['hts_code'].fillna(df['hts_code_master'])
-            else:
-                df['hts_code'] = df['hts_code'].fillna('')
+
+            # Merge strategy: Prefer invoice values over database values for all optional fields
+            # For each field, if invoice has it, use it; otherwise fall back to database value
+            merge_fields = ['hts_code', 'steel_ratio', 'aluminum_ratio', 'copper_ratio', 'wood_ratio', 'auto_ratio', 'non_steel_ratio', 'cbp_qty1']
+            for field in merge_fields:
+                master_col = f'{field}_master'
+                if master_col in df.columns:
+                    # Invoice has this column mapped - prefer invoice value, fall back to master
+                    df[field] = df[field].fillna(df[master_col])
+                elif field not in df.columns and master_col in df.columns:
+                    # Invoice doesn't have this column - use master value
+                    df[field] = df[master_col]
+                elif field not in df.columns:
+                    # Neither invoice nor master has it - set default
+                    if field in ['steel_ratio', 'aluminum_ratio', 'copper_ratio', 'wood_ratio', 'auto_ratio', 'non_steel_ratio']:
+                        df[field] = 0.0
+                    else:
+                        df[field] = ''
+
+            # Convert ratio fields to numeric
             df['steel_ratio'] = pd.to_numeric(df['steel_ratio'], errors='coerce').fillna(1.0)
+            df['aluminum_ratio'] = pd.to_numeric(df['aluminum_ratio'], errors='coerce').fillna(0.0)
+            df['copper_ratio'] = pd.to_numeric(df['copper_ratio'], errors='coerce').fillna(0.0)
+            df['wood_ratio'] = pd.to_numeric(df['wood_ratio'], errors='coerce').fillna(0.0)
+            df['auto_ratio'] = pd.to_numeric(df['auto_ratio'], errors='coerce').fillna(0.0)
             df['non_steel_ratio'] = pd.to_numeric(df['non_steel_ratio'], errors='coerce').fillna(0.0)
             missing = df[
                 (df['hts_code'].isnull() | (df['hts_code'] == '')) |
@@ -3880,7 +3900,15 @@ class DerivativeMill(QMainWindow):
         optional_layout = QFormLayout()
         optional_layout.setLabelAlignment(Qt.AlignRight)
         optional_fields = {
-            "quantity": "Quantity"
+            "quantity": "Quantity",
+            "hts_code": "HTS Code",
+            "steel_ratio": "Steel Ratio",
+            "aluminum_ratio": "Aluminum Ratio",
+            "copper_ratio": "Copper Ratio",
+            "wood_ratio": "Wood Ratio",
+            "auto_ratio": "Auto Ratio",
+            "non_steel_ratio": "Non-Steel Ratio",
+            "cbp_qty1": "CBP Qty1"
         }
         for key, name in optional_fields.items():
             target = DropTarget(key, name)
