@@ -2624,26 +2624,36 @@ class DerivativeMill(QMainWindow):
             if 'value_usd' in self.shipment_mapping:
                 # Get the original column name mapped to value_usd
                 original_col_name = self.shipment_mapping['value_usd']
+                logger.debug(f"Looking for value column: '{original_col_name}' in {df.columns.tolist()}")
                 if original_col_name in df.columns:
                     value_column = original_col_name
+                    logger.info(f"Found value column: '{value_column}'")
+                else:
+                    logger.warning(f"Value column '{original_col_name}' not found in file columns: {df.columns.tolist()}")
+            else:
+                logger.warning(f"'value_usd' not mapped in shipment_mapping: {self.shipment_mapping}")
 
             # Get part number column to filter rows
             if 'part_number' in self.shipment_mapping:
                 part_number_col_name = self.shipment_mapping['part_number']
                 if part_number_col_name in df.columns:
                     part_number_column = part_number_col_name
+                else:
+                    logger.warning(f"Part number column '{part_number_col_name}' not found in file columns: {df.columns.tolist()}")
 
             # If we found the value column, calculate total
             if value_column:
                 # Filter to only rows that have a part number (exclude total/subtotal rows)
                 if part_number_column:
                     df_filtered = df[df[part_number_column].notna() & (df[part_number_column].astype(str).str.strip() != '')]
+                    logger.debug(f"Filtered {len(df)} rows to {len(df_filtered)} rows with part numbers")
                     total = pd.to_numeric(df_filtered[value_column], errors='coerce').sum()
                 else:
                     # If no part number column, sum all rows (old behavior)
                     total = pd.to_numeric(df[value_column], errors='coerce').sum()
 
                 self.csv_total_value = round(total, 2)
+                logger.info(f"Calculated invoice total: ${self.csv_total_value:,.2f}")
 
             # Now rename columns for other uses
             df = df.rename(columns=col_map)
@@ -3405,14 +3415,14 @@ class DerivativeMill(QMainWindow):
             items = [
                 QTableWidgetItem(str(r['Product No'])),
                 value_item,
-                QTableWidgetItem(r.get('HTSCode','')),
-                QTableWidgetItem(r.get('MID','')),
+                QTableWidgetItem(str(r.get('HTSCode',''))),
+                QTableWidgetItem(str(r.get('MID',''))),
                 QTableWidgetItem(str(r.get('cbp_qty', ''))),
-                QTableWidgetItem(r.get('DecTypeCd','')),
-                QTableWidgetItem(r.get('CountryofMelt','')),
-                QTableWidgetItem(r.get('CountryOfCast','')),
-                QTableWidgetItem(r.get('PrimCountryOfSmelt','')),
-                QTableWidgetItem(r.get('PrimSmeltFlag','')),
+                QTableWidgetItem(str(r.get('DecTypeCd',''))),
+                QTableWidgetItem(str(r.get('CountryofMelt',''))),
+                QTableWidgetItem(str(r.get('CountryOfCast',''))),
+                QTableWidgetItem(str(r.get('PrimCountryOfSmelt',''))),
+                QTableWidgetItem(str(r.get('PrimSmeltFlag',''))),
                 QTableWidgetItem(f"{steel_ratio_val*100:.1f}%" if steel_ratio_val > 0 else ""),
                 QTableWidgetItem(aluminum_display),
                 QTableWidgetItem(copper_display),
