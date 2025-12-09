@@ -426,6 +426,36 @@ def init_database():
         except Exception as e:
             logger.warning(f"Failed to check/add auto_ratio column: {e}")
 
+        # Migration: Add country_of_melt column to parts_master if it doesn't exist
+        try:
+            c.execute("PRAGMA table_info(parts_master)")
+            columns = [col[1] for col in c.fetchall()]
+            if 'country_of_melt' not in columns:
+                c.execute("ALTER TABLE parts_master ADD COLUMN country_of_melt TEXT")
+                logger.info("Added country_of_melt column to parts_master")
+        except Exception as e:
+            logger.warning(f"Failed to check/add country_of_melt column: {e}")
+
+        # Migration: Add country_of_cast column to parts_master if it doesn't exist
+        try:
+            c.execute("PRAGMA table_info(parts_master)")
+            columns = [col[1] for col in c.fetchall()]
+            if 'country_of_cast' not in columns:
+                c.execute("ALTER TABLE parts_master ADD COLUMN country_of_cast TEXT")
+                logger.info("Added country_of_cast column to parts_master")
+        except Exception as e:
+            logger.warning(f"Failed to check/add country_of_cast column: {e}")
+
+        # Migration: Add country_of_smelt column to parts_master if it doesn't exist
+        try:
+            c.execute("PRAGMA table_info(parts_master)")
+            columns = [col[1] for col in c.fetchall()]
+            if 'country_of_smelt' not in columns:
+                c.execute("ALTER TABLE parts_master ADD COLUMN country_of_smelt TEXT")
+                logger.info("Added country_of_smelt column to parts_master")
+        except Exception as e:
+            logger.warning(f"Failed to check/add country_of_smelt column: {e}")
+
         # Migration: Reset column visibility settings if we have outdated settings
         # (This handles upgrades from versions with fewer columns)
         try:
@@ -2936,7 +2966,7 @@ class DerivativeMill(QMainWindow):
             # Invoice diff
             self.handle_invoice_diff(csv_total, user_ci)
             conn = sqlite3.connect(str(DB_PATH))
-            parts = pd.read_sql("SELECT part_number, hts_code, steel_ratio, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio, non_steel_ratio, cbp_qty1 FROM parts_master", conn)
+            parts = pd.read_sql("SELECT part_number, hts_code, steel_ratio, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio, non_steel_ratio, cbp_qty1, country_of_melt, country_of_cast, country_of_smelt FROM parts_master", conn)
             conn.close()
             df = df.merge(parts, on='part_number', how='left', suffixes=('', '_master'), indicator=True)
             # Track parts not found in the database
@@ -3170,9 +3200,14 @@ class DerivativeMill(QMainWindow):
                 flag = f"232_{material}" if material else ''
                 dec_type_list.append(dec_type)
             
-            country_melt_list.append(melt)
-            country_cast_list.append(melt)
-            prim_country_smelt_list.append(melt)
+            # Use imported country codes if available, otherwise fall back to MID-based default
+            country_of_melt = r.get('country_of_melt', '')
+            country_of_cast = r.get('country_of_cast', '')
+            country_of_smelt = r.get('country_of_smelt', '')
+
+            country_melt_list.append(country_of_melt if country_of_melt else melt)
+            country_cast_list.append(country_of_cast if country_of_cast else melt)
+            prim_country_smelt_list.append(country_of_smelt if country_of_smelt else melt)
             prim_smelt_flag_list.append(smelt_flag)
             flag_list.append(flag)
 
@@ -3547,6 +3582,9 @@ class DerivativeMill(QMainWindow):
             "wood_ratio": "Wood Ratio",
             "auto_ratio": "Auto Ratio",
             "cbp_qty1": "CBP Qty1",
+            "country_of_melt": "Country of Melt",
+            "country_of_cast": "Country of Cast",
+            "country_of_smelt": "Country of Smelt",
             "client_code": "Client Code",
             "description": "Description",
             "country_origin": "Country of Origin"
@@ -3769,6 +3807,10 @@ class DerivativeMill(QMainWindow):
                 client_code = str(r.get('client_code', '')).strip() if 'client_code' in df.columns else ""
                 # Get cbp_qty1 if it was mapped, otherwise empty string
                 cbp_qty1 = str(r.get('cbp_qty1', '')).strip() if 'cbp_qty1' in df.columns else ""
+                # Get country codes if mapped, otherwise empty string
+                country_of_melt = str(r.get('country_of_melt', '')).strip().upper()[:2] if 'country_of_melt' in df.columns else ""
+                country_of_cast = str(r.get('country_of_cast', '')).strip().upper()[:2] if 'country_of_cast' in df.columns else ""
+                country_of_smelt = str(r.get('country_of_smelt', '')).strip().upper()[:2] if 'country_of_smelt' in df.columns else ""
 
                 # Helper function to parse ratio values
                 def parse_ratio(value_str):
@@ -3802,8 +3844,9 @@ class DerivativeMill(QMainWindow):
                 non_steel_ratio = max(0.0, 1.0 - total_232)
 
                 c.execute("""INSERT INTO parts_master (part_number, description, hts_code, country_origin, mid, client_code,
-                          steel_ratio, non_steel_ratio, last_updated, cbp_qty1, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio)
-                          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                          steel_ratio, non_steel_ratio, last_updated, cbp_qty1, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio,
+                          country_of_melt, country_of_cast, country_of_smelt)
+                          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                           ON CONFLICT(part_number) DO UPDATE SET
                           description=excluded.description, hts_code=excluded.hts_code,
                           country_origin=excluded.country_origin, mid=excluded.mid,
@@ -3811,9 +3854,11 @@ class DerivativeMill(QMainWindow):
                           non_steel_ratio=excluded.non_steel_ratio, last_updated=excluded.last_updated,
                           cbp_qty1=excluded.cbp_qty1, aluminum_ratio=excluded.aluminum_ratio,
                           copper_ratio=excluded.copper_ratio, wood_ratio=excluded.wood_ratio,
-                          auto_ratio=excluded.auto_ratio""",
+                          auto_ratio=excluded.auto_ratio, country_of_melt=excluded.country_of_melt,
+                          country_of_cast=excluded.country_of_cast, country_of_smelt=excluded.country_of_smelt""",
                           (part, desc, hts, origin, mid, client_code, steel_ratio, non_steel_ratio, now,
-                           cbp_qty1, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio))
+                           cbp_qty1, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio,
+                           country_of_melt, country_of_cast, country_of_smelt))
                 if c.rowcount:
                     inserted += 1 if conn.total_changes > updated+inserted else 0
                     updated += 1 if conn.total_changes == updated+inserted else 0
