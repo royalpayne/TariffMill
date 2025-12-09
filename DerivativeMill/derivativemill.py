@@ -3650,7 +3650,7 @@ class DerivativeMill(QMainWindow):
             
             # Add new labels directly to the layout
             for col in cols:
-                lbl = DraggableLabel(col)
+                lbl = DraggableLabel(str(col))
                 self.import_left_layout.addWidget(lbl)
                 self.drag_labels.append(lbl)
 
@@ -3700,7 +3700,7 @@ class DerivativeMill(QMainWindow):
             self.drag_labels = []
             left_layout = self.import_widget.layout().itemAt(0).widget().layout()
             for col in cols:
-                lbl = DraggableLabel(col)
+                lbl = DraggableLabel(str(col))
                 left_layout.insertWidget(left_layout.count()-1, lbl)
                 self.drag_labels.append(lbl)
             logger.info(f"Loaded CSV for import: {Path(path).name}")
@@ -4016,7 +4016,7 @@ class DerivativeMill(QMainWindow):
             # Add new labels from extracted columns
             left_layout = self.shipment_widget.layout().itemAt(0).widget().layout()
             for col in cols:
-                lbl = DraggableLabel(col)
+                lbl = DraggableLabel(str(col))
                 left_layout.insertWidget(left_layout.count()-1, lbl)
                 self.shipment_drag_labels.append(lbl)
 
