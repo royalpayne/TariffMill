@@ -1616,14 +1616,27 @@ class DerivativeMill(QMainWindow):
             return button
 
         # 232 Steel rows color picker
+        # Section 232 material type color pickers
         steel_color_btn = create_color_button('preview_steel_color', '#4a4a4a')
-        colors_layout.addRow("Section 232 Rows:", steel_color_btn)
+        colors_layout.addRow("Steel Rows:", steel_color_btn)
+
+        aluminum_color_btn = create_color_button('preview_aluminum_color', '#3498db')
+        colors_layout.addRow("Aluminum Rows:", aluminum_color_btn)
+
+        copper_color_btn = create_color_button('preview_copper_color', '#e67e22')
+        colors_layout.addRow("Copper Rows:", copper_color_btn)
+
+        wood_color_btn = create_color_button('preview_wood_color', '#27ae60')
+        colors_layout.addRow("Wood Rows:", wood_color_btn)
+
+        auto_color_btn = create_color_button('preview_auto_color', '#9b59b6')
+        colors_layout.addRow("Auto Rows:", auto_color_btn)
 
         # Non-232 rows color picker
         non232_color_btn = create_color_button('preview_non232_color', '#ff0000')
         colors_layout.addRow("Non-232 Rows:", non232_color_btn)
 
-        colors_info = QLabel("<small>Choose font colors for different row types in the preview table.</small>")
+        colors_info = QLabel("<small>Choose font colors for each Section 232 material type in the preview table.</small>")
         colors_info.setWordWrap(True)
         colors_info.setStyleSheet("color:#666; padding:5px;")
         colors_layout.addRow("", colors_info)
