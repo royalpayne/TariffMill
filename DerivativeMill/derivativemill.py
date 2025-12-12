@@ -1213,6 +1213,8 @@ class DerivativeMill(QMainWindow):
         self.edit_values_btn.setFixedSize(120, 30)
         self.edit_values_btn.setStyleSheet(self.get_button_style("warning"))
         self.edit_values_btn.setVisible(False)
+        self.edit_values_btn.setAutoDefault(True)
+        self.edit_values_btn.setDefault(True)
         self.edit_values_btn.clicked.connect(self.start_processing_with_editable_preview)
         vbox_check.addWidget(self.edit_values_btn, alignment=Qt.AlignCenter)
         
@@ -3435,7 +3437,7 @@ class DerivativeMill(QMainWindow):
         preview_cols = [
             'Product No','ValueUSD','HTSCode','MID','cbp_qty','DecTypeCd',
             'CountryofMelt','CountryOfCast','PrimCountryOfSmelt','PrimSmeltFlag',
-            'SteelRatio','AluminumRatio','CopperRatio','WoodRatio','AutoRatio','_232_flag','_not_in_db','Sec301_Exclusion_Tariff'
+            'SteelRatio','AluminumRatio','CopperRatio','WoodRatio','AutoRatio','NonSteelRatio','_232_flag','_not_in_db','Sec301_Exclusion_Tariff'
         ]
         preview_df = df[preview_cols].copy()
         self.on_done(preview_df, vr, None)
