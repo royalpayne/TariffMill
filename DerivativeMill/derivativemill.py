@@ -48,7 +48,7 @@ from threading import Thread
 import pandas as pd
 import sqlite3
 from PyQt5.QtWidgets import *
-from PyQt5.QtCore import Qt, QMimeData, pyqtSignal, QTimer, QSize, QEventLoop, QRect
+from PyQt5.QtCore import Qt, QMimeData, pyqtSignal, QTimer, QSize, QEventLoop, QRect, QSettings
 from PyQt5.QtGui import QColor, QFont, QDrag, QKeySequence, QIcon, QPixmap, QPainter, QDoubleValidator, QCursor, QPen, QTextCursor, QTextCharFormat
 from PyQt5.QtSvg import QSvgRenderer
 from openpyxl.styles import Font as ExcelFont, Alignment
@@ -265,6 +265,88 @@ def set_database_path(path):
 
 # Database location - reads from config.ini or defaults to local
 DB_PATH = get_database_path()
+
+# ==============================================================================
+# Per-User Settings (QSettings - Windows Registry)
+# ==============================================================================
+# These settings are stored per-user in the Windows Registry under
+# HKEY_CURRENT_USER\Software\DerivativeMill\DerivativeMill
+# This allows each user to have their own personal preferences while
+# sharing the same database for parts data, profiles, etc.
+
+def get_user_settings():
+    """Get QSettings object for per-user settings stored in Windows Registry."""
+    return QSettings("DerivativeMill", "DerivativeMill")
+
+def get_user_setting(key, default=None):
+    """
+    Get a per-user setting from Windows Registry.
+
+    Args:
+        key: Setting key (e.g., 'theme', 'font_size', 'column_widths')
+        default: Default value if setting doesn't exist
+
+    Returns:
+        The stored value or default
+    """
+    settings = get_user_settings()
+    return settings.value(key, default)
+
+def set_user_setting(key, value):
+    """
+    Save a per-user setting to Windows Registry.
+
+    Args:
+        key: Setting key
+        value: Value to store
+    """
+    settings = get_user_settings()
+    settings.setValue(key, value)
+    settings.sync()
+
+def get_user_setting_bool(key, default=False):
+    """Get a boolean per-user setting (handles string 'true'/'false' from registry)."""
+    value = get_user_setting(key, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ('true', '1', 'yes')
+    return bool(value)
+
+def get_user_setting_int(key, default=0):
+    """Get an integer per-user setting."""
+    value = get_user_setting(key, default)
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+def get_user_setting_float(key, default=0.0):
+    """Get a float per-user setting."""
+    value = get_user_setting(key, default)
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+def is_widget_valid(widget):
+    """
+    Check if a Qt widget is still valid (not deleted).
+    Returns False if the widget's underlying C++ object has been deleted.
+    """
+    try:
+        import sip
+        return widget is not None and not sip.isdeleted(widget)
+    except ImportError:
+        # If sip is not available, try accessing the widget
+        try:
+            if widget is None:
+                return False
+            # Try to access a property - will raise RuntimeError if deleted
+            widget.objectName()
+            return True
+        except RuntimeError:
+            return False
 
 def get_232_info(hts_code):
     """
@@ -1079,38 +1161,14 @@ class DerivativeMill(QMainWindow):
             logger.debug(f"Initialized tab {index}")
     
     def apply_saved_theme(self):
-        """Load and apply the saved theme preference on startup"""
-        try:
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("SELECT value FROM app_config WHERE key = 'theme'")
-            row = c.fetchone()
-            conn.close()
-            if row:
-                self.apply_theme(row[0])
-            else:
-                # Default to Fusion (Light) if no preference saved
-                self.apply_theme("Fusion (Light)")
-        except:
-            # Use Fusion (Light) as default theme if database error
-            self.apply_theme("Fusion (Light)")
+        """Load and apply the saved theme preference on startup (per-user setting)"""
+        theme = get_user_setting('theme', 'Fusion (Light)')
+        self.apply_theme(theme)
 
     def apply_saved_font_size(self):
-        """Load and apply the saved font size preference on startup"""
-        try:
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("SELECT value FROM app_config WHERE key = 'font_size'")
-            row = c.fetchone()
-            conn.close()
-            if row:
-                self.apply_font_size(int(row[0]))
-            else:
-                # Default to 10pt if no preference saved
-                self.apply_font_size(10)
-        except:
-            # Use 10pt as default font size if database error
-            self.apply_font_size(10)
+        """Load and apply the saved font size preference on startup (per-user setting)"""
+        font_size = get_user_setting_int('font_size', 10)
+        self.apply_font_size(font_size)
 
     def load_config_paths(self):
         try:
@@ -1164,6 +1222,8 @@ class DerivativeMill(QMainWindow):
         self.input_files_list.itemActivated.connect(self.load_selected_input_file)
         # Allow focus for tab navigation
         self.input_files_list.setFocusPolicy(Qt.StrongFocus)
+        # Limit height to show ~6 files to save vertical space
+        self.input_files_list.setFixedHeight(100)
         self.refresh_input_btn = QPushButton("Refresh")
         self.refresh_input_btn.setFixedHeight(25)
         self.refresh_input_btn.clicked.connect(self.refresh_input_files)
@@ -1245,27 +1305,28 @@ class DerivativeMill(QMainWindow):
         left_side.addWidget(file_group)
         left_side.addWidget(values_group)
 
-        # ACTIONS GROUP — Clear All + Export Worksheet buttons
+        # ACTIONS GROUP — Clear All + Export Worksheet buttons (side by side)
         actions_group = QGroupBox("Actions")
-        actions_layout = QVBoxLayout()
-        
-        self.clear_btn = QPushButton("Clear All")
-        self.clear_btn.setFixedHeight(35)
-        self.clear_btn.setStyleSheet(self.get_button_style("danger"))
-        self.clear_btn.clicked.connect(self.clear_all)
+        actions_layout = QHBoxLayout()
+        actions_layout.setContentsMargins(5, 5, 5, 5)
+        actions_layout.setSpacing(5)
 
         self.process_btn = QPushButton("Process Invoice")
         self.process_btn.setEnabled(False)
-        self.process_btn.setFixedHeight(35)
+        self.process_btn.setFixedHeight(28)
         self.process_btn.setStyleSheet(self.get_button_style("success"))
         self.process_btn.clicked.connect(self._process_or_export)
         # Make button respond to Enter/Return key when focused
         self.process_btn.setAutoDefault(True)
         self.process_btn.setDefault(False)  # Don't make it the default for the whole window
 
+        self.clear_btn = QPushButton("Clear All")
+        self.clear_btn.setFixedHeight(28)
+        self.clear_btn.setStyleSheet(self.get_button_style("danger"))
+        self.clear_btn.clicked.connect(self.clear_all)
+
         actions_layout.addWidget(self.process_btn)
         actions_layout.addWidget(self.clear_btn)
-        actions_layout.addStretch()
         actions_group.setLayout(actions_layout)
         left_side.addWidget(actions_group)
 
@@ -1342,6 +1403,9 @@ class DerivativeMill(QMainWindow):
         self.table.setSelectionBehavior(QTableWidget.SelectItems)
         self.table.setSelectionMode(QTableWidget.ExtendedSelection)
         self.table.setSortingEnabled(False)  # Disabled for better performance
+        # Set row height from saved preference (per-user setting)
+        saved_row_height = get_user_setting_int('preview_row_height', 20)
+        self.table.verticalHeader().setDefaultSectionSize(saved_row_height)
         # Match body font size to the header font size and make non-bold
         header_font = self.table.horizontalHeader().font()
         header_font.setBold(False)
@@ -1609,24 +1673,14 @@ class DerivativeMill(QMainWindow):
         theme_combo = QComboBox()
         theme_combo.addItems(["System Default", "Fusion (Light)", "Windows", "Fusion (Dark)", "Ocean", "Light Cyan"])
         
-        # Load saved theme preference and set combo without triggering signal
-        try:
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("SELECT value FROM app_config WHERE key = 'theme'")
-            row = c.fetchone()
-            conn.close()
-
-            if row:
-                saved_theme = row[0]
-                index = theme_combo.findText(saved_theme)
-                if index >= 0:
-                    # Block signals to prevent double-applying theme
-                    theme_combo.blockSignals(True)
-                    theme_combo.setCurrentIndex(index)
-                    theme_combo.blockSignals(False)
-        except:
-            pass
+        # Load saved theme preference from per-user settings
+        saved_theme = get_user_setting('theme', 'Fusion (Light)')
+        index = theme_combo.findText(saved_theme)
+        if index >= 0:
+            # Block signals to prevent double-applying theme
+            theme_combo.blockSignals(True)
+            theme_combo.setCurrentIndex(index)
+            theme_combo.blockSignals(False)
         
         theme_combo.currentTextChanged.connect(self.apply_theme)
         theme_layout.addRow("Application Theme:", theme_combo)
@@ -1648,20 +1702,10 @@ class DerivativeMill(QMainWindow):
         font_size_value_label = QLabel("10pt")
         font_size_value_label.setMinimumWidth(40)
 
-        # Load saved font size preference
-        try:
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("SELECT value FROM app_config WHERE key = 'font_size'")
-            row = c.fetchone()
-            conn.close()
-
-            if row:
-                saved_font_size = int(row[0])
-                font_size_slider.setValue(saved_font_size)
-                font_size_value_label.setText(f"{saved_font_size}pt")
-        except:
-            pass
+        # Load saved font size preference from per-user settings
+        saved_font_size = get_user_setting_int('font_size', 10)
+        font_size_slider.setValue(saved_font_size)
+        font_size_value_label.setText(f"{saved_font_size}pt")
 
         # Connect slider to update label and apply font size
         def update_font_size(value):
@@ -1674,6 +1718,35 @@ class DerivativeMill(QMainWindow):
         font_size_layout.addWidget(font_size_value_label)
 
         theme_layout.addRow("Font Size:", font_size_layout)
+
+        # Row Height Slider for Result Preview table
+        row_height_layout = QHBoxLayout()
+        row_height_slider = QSlider(Qt.Horizontal)
+        row_height_slider.setMinimum(16)
+        row_height_slider.setMaximum(40)
+        row_height_slider.setValue(20)  # Default
+        row_height_slider.setTickPosition(QSlider.TicksBelow)
+        row_height_slider.setTickInterval(4)
+
+        row_height_value_label = QLabel("20px")
+        row_height_value_label.setMinimumWidth(40)
+
+        # Load saved row height preference from per-user settings
+        saved_row_height = get_user_setting_int('preview_row_height', 20)
+        row_height_slider.setValue(saved_row_height)
+        row_height_value_label.setText(f"{saved_row_height}px")
+
+        # Connect slider to update label and apply row height
+        def update_row_height(value):
+            row_height_value_label.setText(f"{value}px")
+            self.apply_row_height(value)
+
+        row_height_slider.valueChanged.connect(update_row_height)
+
+        row_height_layout.addWidget(row_height_slider)
+        row_height_layout.addWidget(row_height_value_label)
+
+        theme_layout.addRow("Preview Row Height:", row_height_layout)
 
         theme_group.setLayout(theme_layout)
         appearance_layout.addWidget(theme_group)
@@ -1690,33 +1763,16 @@ class DerivativeMill(QMainWindow):
             viewer_combo.addItems(["System Default"])
             viewer_combo.setEnabled(False)  # Only relevant on Linux
 
-        # Load saved preference
-        try:
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("SELECT value FROM app_config WHERE key = 'excel_viewer'")
-            row = c.fetchone()
-            conn.close()
+        # Load saved preference (per-user setting)
+        saved_viewer = get_user_setting('excel_viewer', 'System Default')
+        index = viewer_combo.findText(saved_viewer)
+        if index >= 0:
+            viewer_combo.setCurrentIndex(index)
 
-            if row:
-                saved_viewer = row[0]
-                index = viewer_combo.findText(saved_viewer)
-                if index >= 0:
-                    viewer_combo.setCurrentIndex(index)
-        except:
-            pass
-
-        # Save preference when changed
+        # Save preference when changed (per-user setting)
         def save_viewer_preference(viewer):
-            try:
-                conn = sqlite3.connect(str(DB_PATH))
-                c = conn.cursor()
-                c.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES ('excel_viewer', ?)", (viewer,))
-                conn.commit()
-                conn.close()
-                logger.info(f"Excel viewer preference changed to: {viewer}")
-            except Exception as e:
-                logger.error(f"Failed to save excel viewer preference: {e}")
+            set_user_setting('excel_viewer', viewer)
+            logger.info(f"Excel viewer preference changed to: {viewer}")
 
         viewer_combo.currentTextChanged.connect(save_viewer_preference)
         viewer_layout.addRow("Open Exported Files With:", viewer_combo)
@@ -1737,45 +1793,28 @@ class DerivativeMill(QMainWindow):
 
         # Helper function to create color picker button
         def create_color_button(config_key, default_color):
-            """Create a color picker button with saved color"""
+            """Create a color picker button with saved color (per-user setting)"""
             button = QPushButton()
             button.setFixedSize(60, 20)
 
-            # Load saved color or use default
-            saved_color = default_color
-            try:
-                conn = sqlite3.connect(str(DB_PATH))
-                c = conn.cursor()
-                c.execute("SELECT value FROM app_config WHERE key = ?", (config_key,))
-                row = c.fetchone()
-                conn.close()
-                if row:
-                    saved_color = row[0]
-            except:
-                pass
+            # Load saved color from per-user settings or use default
+            saved_color = get_user_setting(config_key, default_color)
 
             # Set button style with current color
             button.setStyleSheet(f"background-color: {saved_color}; border: 1px solid #999;")
 
             def pick_color():
-                color = QColorDialog.getColor(QColor(saved_color), dialog, "Choose Color")
+                current_color = get_user_setting(config_key, default_color)
+                color = QColorDialog.getColor(QColor(current_color), dialog, "Choose Color")
                 if color.isValid():
                     color_hex = color.name()
                     button.setStyleSheet(f"background-color: {color_hex}; border: 1px solid #999;")
-                    # Save to database
-                    try:
-                        conn = sqlite3.connect(str(DB_PATH))
-                        c = conn.cursor()
-                        c.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)",
-                                  (config_key, color_hex))
-                        conn.commit()
-                        conn.close()
-                        logger.info(f"Saved color preference {config_key}: {color_hex}")
-                        # Refresh the preview table if it exists
-                        if hasattr(self, 'table') and self.table.rowCount() > 0:
-                            self.refresh_preview_colors()
-                    except Exception as e:
-                        logger.error(f"Failed to save color preference: {e}")
+                    # Save to per-user settings
+                    set_user_setting(config_key, color_hex)
+                    logger.info(f"Saved color preference {config_key}: {color_hex}")
+                    # Refresh the preview table if it exists
+                    if hasattr(self, 'table') and self.table.rowCount() > 0:
+                        self.refresh_preview_colors()
 
             button.clicked.connect(pick_color)
             return button
@@ -2073,32 +2112,13 @@ class DerivativeMill(QMainWindow):
 
         # Checkbox for startup update check
         startup_check_cb = QCheckBox("Check for updates when application starts")
-        
-        # Load saved preference
-        try:
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("SELECT value FROM app_config WHERE key = 'check_updates_on_startup'")
-            row = c.fetchone()
-            conn.close()
-            if row and row[0] == '1':
-                startup_check_cb.setChecked(True)
-            else:
-                startup_check_cb.setChecked(False)
-        except:
-            startup_check_cb.setChecked(False)
-        
+
+        # Load saved preference from per-user settings
+        startup_check_cb.setChecked(get_user_setting_bool('check_updates_on_startup', False))
+
         def save_startup_check_preference(checked):
-            try:
-                conn = sqlite3.connect(str(DB_PATH))
-                c = conn.cursor()
-                c.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES ('check_updates_on_startup', ?)",
-                          ('1' if checked else '0',))
-                conn.commit()
-                conn.close()
-                logger.info(f"Startup update check preference: {'enabled' if checked else 'disabled'}")
-            except Exception as e:
-                logger.error(f"Failed to save update preference: {e}")
+            set_user_setting('check_updates_on_startup', '1' if checked else '0')
+            logger.info(f"Startup update check preference: {'enabled' if checked else 'disabled'}")
         
         startup_check_cb.stateChanged.connect(lambda state: save_startup_check_preference(state == Qt.Checked))
         update_settings_layout.addWidget(startup_check_cb)
@@ -2186,16 +2206,9 @@ class DerivativeMill(QMainWindow):
         # Update table stylesheet for new theme
         self.update_table_stylesheet()
         
-        # Save theme preference
-        try:
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES ('theme', ?)", (theme_name,))
-            conn.commit()
-            conn.close()
-            logger.info(f"Theme changed to: {theme_name}")
-        except Exception as e:
-            logger.error(f"Failed to save theme: {e}")
+        # Save theme preference (per-user setting)
+        set_user_setting('theme', theme_name)
+        logger.info(f"Theme changed to: {theme_name}")
 
     def apply_font_size(self, size):
         """Apply the selected font size to the application"""
@@ -2206,16 +2219,21 @@ class DerivativeMill(QMainWindow):
         font.setPointSize(size)
         app.setFont(font)
 
-        # Save font size preference
-        try:
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES ('font_size', ?)", (str(size),))
-            conn.commit()
-            conn.close()
-            logger.info(f"Font size changed to: {size}pt")
-        except Exception as e:
-            logger.error(f"Failed to save font size: {e}")
+        # Save font size preference (per-user setting)
+        set_user_setting('font_size', size)
+        logger.info(f"Font size changed to: {size}pt")
+
+    def apply_row_height(self, height):
+        """Apply the selected row height to the Result Preview table"""
+        if hasattr(self, 'table'):
+            self.table.verticalHeader().setDefaultSectionSize(height)
+            # Also update existing rows
+            for row in range(self.table.rowCount()):
+                self.table.setRowHeight(row, height)
+
+        # Save row height preference (per-user setting)
+        set_user_setting('preview_row_height', height)
+        logger.info(f"Preview row height changed to: {height}px")
 
     def check_for_updates_manual(self):
         """Manually check for updates and show result dialog"""
@@ -2294,20 +2312,11 @@ class DerivativeMill(QMainWindow):
 
     def check_for_updates_startup(self):
         """Check for updates on startup (runs in background thread)"""
-        # Check if startup update check is enabled
-        try:
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("SELECT value FROM app_config WHERE key = 'check_updates_on_startup'")
-            row = c.fetchone()
-            conn.close()
-            if not row or row[0] != '1':
-                logger.debug("Startup update check disabled")
-                return
-        except Exception as e:
-            logger.warning(f"Could not read update preference: {e}")
+        # Check if startup update check is enabled (per-user setting)
+        if not get_user_setting_bool('check_updates_on_startup', False):
+            logger.debug("Startup update check disabled")
             return
-        
+
         logger.info("Checking for updates on startup...")
         
         def check_thread():
@@ -2465,8 +2474,11 @@ class DerivativeMill(QMainWindow):
         if not hasattr(self, 'table'):
             return
 
-        # Set green focus color that works with all themes
+        # Set green focus color and reduced cell padding
         self.table.setStyleSheet("""
+            QTableWidget::item {
+                padding: 1px 3px;
+            }
             QTableWidget::item:focus {
                 background-color: #90EE90;
                 border: 2px solid #228B22;
@@ -2510,35 +2522,19 @@ class DerivativeMill(QMainWindow):
             color_key = 'preview_non232_color'
             default_color = default_colors['Non_232']
 
-        try:
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("SELECT value FROM app_config WHERE key = ?", (color_key,))
-            row = c.fetchone()
-            conn.close()
-            return QColor(row[0]) if row else QColor(default_color)
-        except:
-            # Return default if database query fails
-            return QColor(default_color)
+        # Get color from per-user settings
+        saved_color = get_user_setting(color_key, default_color)
+        return QColor(saved_color)
 
     def get_sec301_bg_color(self):
-        """Get the background color for Section 301 exclusion rows
+        """Get the background color for Section 301 exclusion rows (per-user setting)
 
         Returns:
             QColor: Background color for Sec301 exclusion rows
         """
         default_color = '#ffc8c8'  # Light red background
-
-        try:
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("SELECT value FROM app_config WHERE key = ?", ('preview_sec301_bg_color',))
-            row = c.fetchone()
-            conn.close()
-            return QColor(row[0]) if row else QColor(default_color)
-        except:
-            # Return default if database query fails
-            return QColor(default_color)
+        saved_color = get_user_setting('preview_sec301_bg_color', default_color)
+        return QColor(saved_color)
 
     def refresh_preview_colors(self):
         """Refresh all row colors in the preview table based on current settings"""
@@ -3265,75 +3261,27 @@ class DerivativeMill(QMainWindow):
             non_steel_ratio = row['NonSteelRatio']
             original_value = row['value_usd']
 
-            # If no ratios are set, default to 100% steel for backward compatibility
+            # If no ratios are set, use HTS lookup to determine material type
             if steel_ratio == 0 and aluminum_ratio == 0 and copper_ratio == 0 and wood_ratio == 0 and auto_ratio == 0 and non_steel_ratio == 0:
-                steel_ratio = 1.0
-                non_steel_ratio = 0.0
+                # Look up HTS code to determine material type
+                hts = row.get('hts_code', '')
+                material, _, _ = get_232_info(hts)
+                if material == 'Aluminum':
+                    aluminum_ratio = 1.0
+                elif material == 'Copper':
+                    copper_ratio = 1.0
+                elif material == 'Wood':
+                    wood_ratio = 1.0
+                elif material == 'Auto':
+                    auto_ratio = 1.0
+                elif material == 'Steel':
+                    steel_ratio = 1.0
+                else:
+                    # Default to 100% steel for backward compatibility if no material found
+                    steel_ratio = 1.0
 
-            # Create non-232 portion row (if non_steel_ratio > 0)
-            if non_steel_ratio > 0:
-                non_232_row = row.copy()
-                non_232_row['value_usd'] = original_value * non_steel_ratio
-                non_232_row['SteelRatio'] = 0.0
-                non_232_row['AluminumRatio'] = 0.0
-                non_232_row['CopperRatio'] = 0.0
-                non_232_row['WoodRatio'] = 0.0
-                non_232_row['AutoRatio'] = 0.0
-                non_232_row['NonSteelRatio'] = non_steel_ratio
-                non_232_row['_content_type'] = 'non_232'
-                expanded_rows.append(non_232_row)
-
-            # Create auto portion row (if auto_ratio > 0)
-            if auto_ratio > 0:
-                auto_row = row.copy()
-                auto_row['value_usd'] = original_value * auto_ratio
-                auto_row['SteelRatio'] = 0.0
-                auto_row['AluminumRatio'] = 0.0
-                auto_row['CopperRatio'] = 0.0
-                auto_row['WoodRatio'] = 0.0
-                auto_row['AutoRatio'] = auto_ratio
-                auto_row['NonSteelRatio'] = 0.0
-                auto_row['_content_type'] = 'auto'
-                expanded_rows.append(auto_row)
-
-            # Create wood portion row (if wood_ratio > 0)
-            if wood_ratio > 0:
-                wood_row = row.copy()
-                wood_row['value_usd'] = original_value * wood_ratio
-                wood_row['SteelRatio'] = 0.0
-                wood_row['AluminumRatio'] = 0.0
-                wood_row['CopperRatio'] = 0.0
-                wood_row['WoodRatio'] = wood_ratio
-                wood_row['AutoRatio'] = 0.0
-                wood_row['NonSteelRatio'] = 0.0
-                wood_row['_content_type'] = 'wood'
-                expanded_rows.append(wood_row)
-
-            # Create copper portion row (if copper_ratio > 0)
-            if copper_ratio > 0:
-                copper_row = row.copy()
-                copper_row['value_usd'] = original_value * copper_ratio
-                copper_row['SteelRatio'] = 0.0
-                copper_row['AluminumRatio'] = 0.0
-                copper_row['CopperRatio'] = copper_ratio
-                copper_row['WoodRatio'] = 0.0
-                copper_row['AutoRatio'] = 0.0
-                copper_row['NonSteelRatio'] = 0.0
-                copper_row['_content_type'] = 'copper'
-                expanded_rows.append(copper_row)
-
-            # Create aluminum portion row (if aluminum_ratio > 0)
-            if aluminum_ratio > 0:
-                aluminum_row = row.copy()
-                aluminum_row['value_usd'] = original_value * aluminum_ratio
-                aluminum_row['SteelRatio'] = 0.0
-                aluminum_row['AluminumRatio'] = aluminum_ratio
-                aluminum_row['CopperRatio'] = 0.0
-                aluminum_row['WoodRatio'] = 0.0
-                aluminum_row['AutoRatio'] = 0.0
-                aluminum_row['NonSteelRatio'] = 0.0
-                aluminum_row['_content_type'] = 'aluminum'
-                expanded_rows.append(aluminum_row)
+            # Create derivative rows in order: Steel first, then Aluminum, Copper, Wood, Auto, Non-232 last
+            # This ensures derivatives appear BELOW the primary row in the preview
 
             # Create steel portion row (if steel_ratio > 0)
             if steel_ratio > 0:
@@ -3348,6 +3296,71 @@ class DerivativeMill(QMainWindow):
                 steel_row['_content_type'] = 'steel'
                 expanded_rows.append(steel_row)
 
+            # Create aluminum portion row (if aluminum_ratio > 0)
+            if aluminum_ratio > 0:
+                aluminum_row = row.copy()
+                aluminum_row['value_usd'] = original_value * aluminum_ratio
+                aluminum_row['SteelRatio'] = 0.0
+                aluminum_row['AluminumRatio'] = aluminum_ratio
+                aluminum_row['CopperRatio'] = 0.0
+                aluminum_row['WoodRatio'] = 0.0
+                aluminum_row['AutoRatio'] = 0.0
+                aluminum_row['NonSteelRatio'] = 0.0
+                aluminum_row['_content_type'] = 'aluminum'
+                expanded_rows.append(aluminum_row)
+
+            # Create copper portion row (if copper_ratio > 0)
+            if copper_ratio > 0:
+                copper_row = row.copy()
+                copper_row['value_usd'] = original_value * copper_ratio
+                copper_row['SteelRatio'] = 0.0
+                copper_row['AluminumRatio'] = 0.0
+                copper_row['CopperRatio'] = copper_ratio
+                copper_row['WoodRatio'] = 0.0
+                copper_row['AutoRatio'] = 0.0
+                copper_row['NonSteelRatio'] = 0.0
+                copper_row['_content_type'] = 'copper'
+                expanded_rows.append(copper_row)
+
+            # Create wood portion row (if wood_ratio > 0)
+            if wood_ratio > 0:
+                wood_row = row.copy()
+                wood_row['value_usd'] = original_value * wood_ratio
+                wood_row['SteelRatio'] = 0.0
+                wood_row['AluminumRatio'] = 0.0
+                wood_row['CopperRatio'] = 0.0
+                wood_row['WoodRatio'] = wood_ratio
+                wood_row['AutoRatio'] = 0.0
+                wood_row['NonSteelRatio'] = 0.0
+                wood_row['_content_type'] = 'wood'
+                expanded_rows.append(wood_row)
+
+            # Create auto portion row (if auto_ratio > 0)
+            if auto_ratio > 0:
+                auto_row = row.copy()
+                auto_row['value_usd'] = original_value * auto_ratio
+                auto_row['SteelRatio'] = 0.0
+                auto_row['AluminumRatio'] = 0.0
+                auto_row['CopperRatio'] = 0.0
+                auto_row['WoodRatio'] = 0.0
+                auto_row['AutoRatio'] = auto_ratio
+                auto_row['NonSteelRatio'] = 0.0
+                auto_row['_content_type'] = 'auto'
+                expanded_rows.append(auto_row)
+
+            # Create non-232 portion row (if non_steel_ratio > 0)
+            if non_steel_ratio > 0:
+                non_232_row = row.copy()
+                non_232_row['value_usd'] = original_value * non_steel_ratio
+                non_232_row['SteelRatio'] = 0.0
+                non_232_row['AluminumRatio'] = 0.0
+                non_232_row['CopperRatio'] = 0.0
+                non_232_row['WoodRatio'] = 0.0
+                non_232_row['AutoRatio'] = 0.0
+                non_232_row['NonSteelRatio'] = non_steel_ratio
+                non_232_row['_content_type'] = 'non_232'
+                expanded_rows.append(non_232_row)
+
         # Rebuild dataframe from expanded rows
         df = pd.DataFrame(expanded_rows).reset_index(drop=True)
         logger.info(f"Row expansion: {original_row_count} → {len(expanded_rows)} rows (steel/aluminum/copper/wood/auto/non-232 split)")
@@ -3360,23 +3373,27 @@ class DerivativeMill(QMainWindow):
             df['CalcWtNet'] = (df['value_usd'] / total_value) * wt
 
         # Calculate cbp_qty based on cbp_qty1 unit type
-        # KG = use net weight (CalcWtNet), NO = use quantity, blank/nan = default to net weight
+        # KG = use net weight (CalcWtNet), NO = use quantity, blank/empty/other = empty
         def get_cbp_qty(row):
             cbp_qty1 = str(row.get('cbp_qty1', '')).strip().upper() if pd.notna(row.get('cbp_qty1')) else ''
-            if cbp_qty1 == 'KG' or cbp_qty1 == '':
-                # Default to net weight for KG or blank
+            if cbp_qty1 == '':
+                # Blank/empty defaults to empty
+                return ''
+            elif cbp_qty1 == 'KG':
+                # KG uses net weight
                 return str(int(round(row['CalcWtNet'])))
             elif cbp_qty1 == 'NO':
+                # NO uses quantity from invoice
                 qty = row.get('quantity', '')
                 if pd.notna(qty) and str(qty).strip():
                     try:
                         return str(int(float(str(qty).replace(',', '').strip())))
                     except (ValueError, TypeError):
-                        return str(int(round(row['CalcWtNet'])))
-                return str(int(round(row['CalcWtNet'])))
+                        return ''
+                return ''
             else:
-                # Unknown unit type, default to net weight
-                return str(int(round(row['CalcWtNet'])))
+                # Unknown unit type, return empty
+                return ''
         
         df['cbp_qty'] = df.apply(get_cbp_qty, axis=1)
 
@@ -3400,25 +3417,32 @@ class DerivativeMill(QMainWindow):
             hts_8 = hts_clean[:8]
             hts_10 = hts_clean[:10]
             material, dec_type, smelt_flag = get_232_info(hts)
-            
-            # Set flag based on content type
+
+            # Set flag and declaration code based on content type
+            # Each derivative row gets its appropriate declaration code
             if content_type == 'steel':
                 flag = '232_Steel'
-                dec_type_list.append(dec_type if material == 'Steel' else '')
+                # Steel derivatives always get declaration code 08
+                dec_type_list.append(dec_type if dec_type else '08')
             elif content_type == 'aluminum':
                 flag = '232_Aluminum'
-                dec_type_list.append(dec_type if material == 'Aluminum' else '')
+                # Aluminum derivatives always get declaration code 07
+                dec_type_list.append(dec_type if dec_type else '07')
             elif content_type == 'copper':
                 flag = '232_Copper'
-                dec_type_list.append(dec_type if material == 'Copper' else '')
+                # Copper derivatives get their declaration code
+                dec_type_list.append(dec_type if dec_type else '11')
             elif content_type == 'wood':
                 flag = '232_Wood'
-                dec_type_list.append(dec_type if material == 'Wood' else '')
+                # Wood derivatives get their declaration code
+                dec_type_list.append(dec_type if dec_type else '10')
             elif content_type == 'auto':
                 flag = '232_Auto'
-                dec_type_list.append(dec_type if material == 'Auto' else '')
+                # Auto derivatives get their declaration code
+                dec_type_list.append(dec_type if dec_type else '')
             elif content_type == 'non_232':
                 flag = 'Non_232'
+                # Non-232 rows still need the declaration code from HTS lookup
                 dec_type_list.append(dec_type)
             else:
                 # Fallback for backward compatibility
@@ -3672,16 +3696,25 @@ class DerivativeMill(QMainWindow):
             non_steel_ratio_val = r.get('NonSteelRatio', 0.0) or 0.0
             is_232_row = steel_ratio_val > 0.0 or aluminum_ratio_val > 0.0 or copper_ratio_val > 0.0 or wood_ratio_val > 0.0 or auto_ratio_val > 0.0
 
-            # Display percentages
-            aluminum_display = f"{aluminum_ratio_val*100:.1f}%" if aluminum_ratio_val > 0 else ""
-            copper_display = f"{copper_ratio_val*100:.1f}%" if copper_ratio_val > 0 else ""
-            wood_display = f"{wood_ratio_val*100:.1f}%" if wood_ratio_val > 0 else ""
-            auto_display = f"{auto_ratio_val*100:.1f}%" if auto_ratio_val > 0 else ""
-            non_steel_display = f"{non_steel_ratio_val*100:.1f}%" if non_steel_ratio_val > 0 else ""
-
             # Check if part is not in database - show "Not Found" in 232 Status column
             not_in_db = r.get('_not_in_db', False)
             status_display = "Not Found" if not_in_db else flag
+
+            # Display percentages (empty for "Not Found" rows)
+            if not_in_db:
+                steel_display = ""
+                aluminum_display = ""
+                copper_display = ""
+                wood_display = ""
+                auto_display = ""
+                non_steel_display = ""
+            else:
+                steel_display = f"{steel_ratio_val*100:.1f}%" if steel_ratio_val > 0 else ""
+                aluminum_display = f"{aluminum_ratio_val*100:.1f}%" if aluminum_ratio_val > 0 else ""
+                copper_display = f"{copper_ratio_val*100:.1f}%" if copper_ratio_val > 0 else ""
+                wood_display = f"{wood_ratio_val*100:.1f}%" if wood_ratio_val > 0 else ""
+                auto_display = f"{auto_ratio_val*100:.1f}%" if auto_ratio_val > 0 else ""
+                non_steel_display = f"{non_steel_ratio_val*100:.1f}%" if non_steel_ratio_val > 0 else ""
 
             # Get Sec301 exclusion tariff value
             sec301_exclusion = str(r.get('Sec301_Exclusion_Tariff', '')).strip()
@@ -3692,10 +3725,7 @@ class DerivativeMill(QMainWindow):
             if has_sec301_exclusion:
                 hts_item.setToolTip(f"Sec301 Exclusion Tariff: {sec301_exclusion}")
 
-            # Add indicator symbol for Sec301 parts
             product_no = str(r['Product No'])
-            if has_sec301_exclusion:
-                product_no = f"§ {product_no}"  # § symbol indicates Sec301
 
             items = [
                 QTableWidgetItem(product_no),
@@ -3708,7 +3738,7 @@ class DerivativeMill(QMainWindow):
                 QTableWidgetItem(str(r.get('CountryOfCast',''))),
                 QTableWidgetItem(str(r.get('PrimCountryOfSmelt',''))),
                 QTableWidgetItem(str(r.get('PrimSmeltFlag',''))),
-                QTableWidgetItem(f"{steel_ratio_val*100:.1f}%" if steel_ratio_val > 0 else ""),
+                QTableWidgetItem(steel_display),
                 QTableWidgetItem(aluminum_display),
                 QTableWidgetItem(copper_display),
                 QTableWidgetItem(wood_display),
@@ -4069,6 +4099,49 @@ class DerivativeMill(QMainWindow):
                 QMessageBox.critical(self, "Error", f"Missing required fields: {', '.join(missing)}")
                 self.status.setText("Import failed")
                 return
+            # First pass: validate ratios and collect any rows with total > 1.0
+            invalid_ratio_rows = []
+            for idx, r in df.iterrows():
+                part = str(r.get('part_number', '')).strip()
+                if not part:
+                    continue
+
+                # Helper function to parse ratio values for validation
+                def parse_ratio_val(value_str):
+                    try:
+                        if value_str:
+                            ratio = float(value_str)
+                            if ratio > 1.0:
+                                ratio /= 100.0
+                            return max(0.0, ratio)
+                        return 0.0
+                    except:
+                        return 0.0
+
+                steel_val = parse_ratio_val(str(r.get('steel_ratio', r.get('Sec 232 Content Ratio', r.get('Steel %', '')))).strip())
+                aluminum_val = parse_ratio_val(str(r.get('aluminum_ratio', r.get('Aluminum %', ''))).strip())
+                copper_val = parse_ratio_val(str(r.get('copper_ratio', r.get('Copper %', ''))).strip())
+                wood_val = parse_ratio_val(str(r.get('wood_ratio', r.get('Wood %', ''))).strip())
+                auto_val = parse_ratio_val(str(r.get('auto_ratio', r.get('Auto %', ''))).strip())
+                non_steel_val = parse_ratio_val(str(r.get('non_steel_ratio', r.get('Non-Steel %', ''))).strip())
+
+                total_ratio = steel_val + aluminum_val + copper_val + wood_val + auto_val + non_steel_val
+                if total_ratio > 1.01:  # Allow small floating point tolerance
+                    invalid_ratio_rows.append((part, total_ratio))
+
+            # If there are invalid rows, reject the import
+            if invalid_ratio_rows:
+                msg = f"Import failed. The following {len(invalid_ratio_rows)} part(s) have total ratios exceeding 100%:\n\n"
+                for part, total in invalid_ratio_rows[:15]:  # Show first 15
+                    msg += f"  {part}: {total*100:.1f}%\n"
+                if len(invalid_ratio_rows) > 15:
+                    msg += f"  ... and {len(invalid_ratio_rows) - 15} more\n"
+                msg += "\nPlease correct these rows in your import file and try again."
+
+                QMessageBox.critical(self, "Invalid Ratios Detected", msg)
+                self.status.setText("Import failed - invalid ratios")
+                return
+
             conn = sqlite3.connect(str(DB_PATH))
             c = conn.cursor()
             updated = inserted = 0
@@ -4502,41 +4575,24 @@ class DerivativeMill(QMainWindow):
 
         # Helper function to create export color picker button
         def create_export_color_button(config_key, default_color, label_text):
-            """Create a color picker button for export with saved color"""
+            """Create a color picker button for export with saved color (per-user setting)"""
             button = QPushButton()
             button.setFixedSize(80, 25)
 
-            # Load saved color or use default
-            saved_color = default_color
-            try:
-                conn = sqlite3.connect(str(DB_PATH))
-                c = conn.cursor()
-                c.execute("SELECT value FROM app_config WHERE key = ?", (config_key,))
-                row = c.fetchone()
-                conn.close()
-                if row:
-                    saved_color = row[0]
-            except:
-                pass
+            # Load saved color from per-user settings or use default
+            saved_color = get_user_setting(config_key, default_color)
 
             button.setStyleSheet(f"background-color: {saved_color}; border: 1px solid #999;")
 
             def pick_color():
-                color = QColorDialog.getColor(QColor(saved_color), self, f"Choose {label_text} Color")
+                current_color = get_user_setting(config_key, default_color)
+                color = QColorDialog.getColor(QColor(current_color), self, f"Choose {label_text} Color")
                 if color.isValid():
                     color_hex = color.name()
                     button.setStyleSheet(f"background-color: {color_hex}; border: 1px solid #999;")
-                    try:
-                        conn = sqlite3.connect(str(DB_PATH))
-                        c = conn.cursor()
-                        c.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)",
-                                  (config_key, color_hex))
-                        conn.commit()
-                        conn.close()
-                        logger.info(f"Saved export color preference {config_key}: {color_hex}")
-                        self.bottom_status.setText(f"{label_text} export color set to {color_hex}")
-                    except Exception as e:
-                        logger.error(f"Failed to save export color preference {config_key}: {e}")
+                    set_user_setting(config_key, color_hex)
+                    logger.info(f"Saved export color preference {config_key}: {color_hex}")
+                    self.bottom_status.setText(f"{label_text} export color set to {color_hex}")
 
             button.clicked.connect(pick_color)
             return button
@@ -4553,18 +4609,8 @@ class DerivativeMill(QMainWindow):
         colors_grid.setSpacing(5)
         colors_grid.setContentsMargins(10, 10, 10, 10)
 
-        # Load saved font color
-        self.output_font_color = '#000000'
-        try:
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("SELECT value FROM app_config WHERE key = ?", ('output_font_color',))
-            row = c.fetchone()
-            conn.close()
-            if row:
-                self.output_font_color = row[0]
-        except:
-            pass
+        # Load saved font color (per-user setting)
+        self.output_font_color = get_user_setting('output_font_color', '#000000')
 
         # Font color
         self.output_font_color_btn = QPushButton()
@@ -4751,34 +4797,28 @@ class DerivativeMill(QMainWindow):
             logger.error(f"Failed to save split by invoice setting: {e}")
 
     def pick_output_font_color(self):
-        """Open color picker for output font color"""
+        """Open color picker for output font color (per-user setting)"""
         color = QColorDialog.getColor(QColor(self.output_font_color), self, "Choose Export Font Color")
         if color.isValid():
             color_hex = color.name()
             self.output_font_color = color_hex
-            self.output_font_color_btn.setStyleSheet(f"background-color: {color_hex}; border: 1px solid #999;")
-            # Save to database
-            try:
-                conn = sqlite3.connect(str(DB_PATH))
-                c = conn.cursor()
-                c.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)",
-                          ('output_font_color', color_hex))
-                conn.commit()
-                conn.close()
-                logger.info(f"Saved output font color: {color_hex}")
-                self.status.setText(f"Output font color set to {color_hex}")
-            except Exception as e:
-                logger.error(f"Failed to save output font color: {e}")
-                QMessageBox.critical(self, "Error", f"Failed to save color:\n{e}")
+            if is_widget_valid(self.output_font_color_btn):
+                self.output_font_color_btn.setStyleSheet(f"background-color: {color_hex}; border: 1px solid #999;")
+            # Save to per-user settings
+            set_user_setting('output_font_color', color_hex)
+            logger.info(f"Saved output font color: {color_hex}")
+            self.bottom_status.setText(f"Output font color set to {color_hex}")
 
     def reset_output_mapping(self):
         """Reset output column mapping to default values"""
         self.output_column_mapping = self.default_output_columns.copy()
-        for internal_name, line_edit in self.output_column_inputs.items():
-            line_edit.blockSignals(True)
-            line_edit.setText(self.default_output_columns[internal_name])
-            line_edit.blockSignals(False)
-        self.status.setText("Output mapping reset to default")
+        if hasattr(self, 'output_column_inputs'):
+            for internal_name, line_edit in self.output_column_inputs.items():
+                if is_widget_valid(line_edit):
+                    line_edit.blockSignals(True)
+                    line_edit.setText(self.default_output_columns[internal_name])
+                    line_edit.blockSignals(False)
+        self.bottom_status.setText("Output mapping reset to default")
         logger.info("Output column mapping reset to default")
 
     def load_output_mapping_profiles(self):
@@ -4790,8 +4830,8 @@ class DerivativeMill(QMainWindow):
 
             profile_names = df['profile_name'].tolist()
 
-            # Update the Configuration dialog combo box
-            if hasattr(self, 'output_profile_combo'):
+            # Update the Configuration dialog combo box (if still valid)
+            if hasattr(self, 'output_profile_combo') and is_widget_valid(self.output_profile_combo):
                 self.output_profile_combo.blockSignals(True)
                 self.output_profile_combo.clear()
                 self.output_profile_combo.addItem("-- Select Profile --")
@@ -4799,8 +4839,8 @@ class DerivativeMill(QMainWindow):
                     self.output_profile_combo.addItem(name)
                 self.output_profile_combo.blockSignals(False)
 
-            # Update the quick access combo box on Process Shipment tab
-            if hasattr(self, 'quick_export_profile_combo'):
+            # Update the quick access combo box on Process Shipment tab (if still valid)
+            if hasattr(self, 'quick_export_profile_combo') and is_widget_valid(self.quick_export_profile_combo):
                 current_selection = self.quick_export_profile_combo.currentText()
                 self.quick_export_profile_combo.blockSignals(True)
                 self.quick_export_profile_combo.clear()
@@ -4825,8 +4865,8 @@ class DerivativeMill(QMainWindow):
         # Load the profile (reuse existing method)
         self.load_output_mapping_profile(profile_name)
 
-        # Sync the Configuration dialog combo if it exists
-        if hasattr(self, 'output_profile_combo'):
+        # Sync the Configuration dialog combo if it exists and is still valid
+        if hasattr(self, 'output_profile_combo') and is_widget_valid(self.output_profile_combo):
             self.output_profile_combo.blockSignals(True)
             self.output_profile_combo.setCurrentText(profile_name)
             self.output_profile_combo.blockSignals(False)
@@ -4860,40 +4900,43 @@ class DerivativeMill(QMainWindow):
                     column_visibility = {}
                     split_by_invoice = False
 
-                # Update column name inputs (if Configuration dialog has been opened)
+                # Update column name inputs (if Configuration dialog is still open)
                 if hasattr(self, 'output_column_inputs'):
                     for internal_name, line_edit in self.output_column_inputs.items():
-                        line_edit.blockSignals(True)
-                        line_edit.setText(self.output_column_mapping.get(internal_name, internal_name))
-                        line_edit.blockSignals(False)
+                        if is_widget_valid(line_edit):
+                            line_edit.blockSignals(True)
+                            line_edit.setText(self.output_column_mapping.get(internal_name, internal_name))
+                            line_edit.blockSignals(False)
 
-                # Update column visibility checkboxes
+                # Update column visibility checkboxes (if Configuration dialog is still open)
                 if hasattr(self, 'output_column_visibility'):
                     for col_name, checkbox in self.output_column_visibility.items():
-                        checkbox.blockSignals(True)
-                        # Default to True if not specified in profile
+                        if is_widget_valid(checkbox):
+                            checkbox.blockSignals(True)
+                            # Default to True if not specified in profile
+                            is_visible = column_visibility.get(col_name, True)
+                            checkbox.setChecked(is_visible)
+                            checkbox.blockSignals(False)
+                        # Save to database regardless of widget state
                         is_visible = column_visibility.get(col_name, True)
-                        checkbox.setChecked(is_visible)
-                        checkbox.blockSignals(False)
-                        # Save to database
                         self.update_column_visibility(col_name, 2 if is_visible else 0)
 
-                # Update split by invoice checkbox
-                if hasattr(self, 'split_by_invoice_checkbox'):
+                # Update split by invoice checkbox (if Configuration dialog is still open)
+                if hasattr(self, 'split_by_invoice_checkbox') and is_widget_valid(self.split_by_invoice_checkbox):
                     self.split_by_invoice_checkbox.blockSignals(True)
                     self.split_by_invoice_checkbox.setChecked(split_by_invoice)
                     self.split_by_invoice_checkbox.blockSignals(False)
-                    self.split_by_invoice = split_by_invoice
-                    # Save to database
-                    self.update_split_by_invoice_setting(2 if split_by_invoice else 0)
+                self.split_by_invoice = split_by_invoice
+                # Save to database regardless of widget state
+                self.update_split_by_invoice_setting(2 if split_by_invoice else 0)
 
                 # Sync the quick export profile combo on Process Shipment tab
-                if hasattr(self, 'quick_export_profile_combo'):
+                if hasattr(self, 'quick_export_profile_combo') and is_widget_valid(self.quick_export_profile_combo):
                     self.quick_export_profile_combo.blockSignals(True)
                     self.quick_export_profile_combo.setCurrentText(profile_name)
                     self.quick_export_profile_combo.blockSignals(False)
 
-                self.status.setText(f"Loaded output mapping profile: {profile_name}")
+                self.bottom_status.setText(f"Loaded output mapping profile: {profile_name}")
                 logger.info(f"Loaded output mapping profile: {profile_name}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load profile:\n{e}")
@@ -4943,8 +4986,9 @@ class DerivativeMill(QMainWindow):
             conn.close()
 
             self.load_output_mapping_profiles()
-            self.output_profile_combo.setCurrentText(name)
-            self.status.setText(f"Saved output mapping profile: {name}")
+            if is_widget_valid(self.output_profile_combo):
+                self.output_profile_combo.setCurrentText(name)
+            self.bottom_status.setText(f"Saved output mapping profile: {name}")
             logger.info(f"Saved output mapping profile: {name}")
 
         except Exception as e:
@@ -4953,6 +4997,8 @@ class DerivativeMill(QMainWindow):
 
     def delete_output_mapping_profile(self):
         """Delete selected output mapping profile"""
+        if not is_widget_valid(self.output_profile_combo):
+            return
         profile_name = self.output_profile_combo.currentText()
         if not profile_name or profile_name == "-- Select Profile --":
             QMessageBox.information(self, "No Profile Selected", "Please select a profile to delete.")
@@ -4972,7 +5018,7 @@ class DerivativeMill(QMainWindow):
             conn.close()
 
             self.load_output_mapping_profiles()
-            self.status.setText(f"Deleted output mapping profile: {profile_name}")
+            self.bottom_status.setText(f"Deleted output mapping profile: {profile_name}")
             logger.info(f"Deleted output mapping profile: {profile_name}")
 
         except Exception as e:
@@ -5661,6 +5707,78 @@ class DerivativeMill(QMainWindow):
             self.load_available_mids()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Save failed:\n{e}")
+
+    def add_not_found_parts_to_db(self):
+        """
+        Add parts that were not found in the database during processing.
+        Uses the part number and MID from the current preview table.
+        Returns the count of parts added.
+        """
+        if self.last_processed_df is None:
+            return 0
+
+        # Get rows where _not_in_db is True
+        not_found_df = self.last_processed_df[self.last_processed_df['_not_in_db'] == True]
+        if not_found_df.empty:
+            return 0
+
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+            now = datetime.now().isoformat()
+            added_count = 0
+            added_parts = []
+
+            for idx, row in not_found_df.iterrows():
+                part_number = str(row.get('Product No', '')).strip()
+                if not part_number:
+                    continue
+
+                # Check if part already exists (might have been added manually since processing)
+                c.execute("SELECT 1 FROM parts_master WHERE part_number = ?", (part_number,))
+                if c.fetchone():
+                    continue  # Part already exists, skip
+
+                # Get MID from the table at the corresponding row index
+                # Find the table row that matches this part number
+                table_row = None
+                for i in range(self.table.rowCount()):
+                    item = self.table.item(i, 0)  # Column 0 is Product No
+                    if item and item.text() == part_number:
+                        table_row = i
+                        break
+
+                if table_row is None:
+                    continue
+
+                # Get values from the preview table
+                mid = self.table.item(table_row, 3).text() if self.table.item(table_row, 3) else ""
+                hts_code = self.table.item(table_row, 2).text() if self.table.item(table_row, 2) else ""
+
+                # Insert the part with minimal information (part_number and MID)
+                c.execute("""INSERT INTO parts_master (part_number, description, hts_code, country_origin, mid, client_code,
+                          steel_ratio, non_steel_ratio, last_updated, cbp_qty1, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio,
+                          Sec301_Exclusion_Tariff)
+                          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                          (part_number, '', hts_code, '', mid, '', 0.0, 1.0, now, '', 0.0, 0.0, 0.0, 0.0, ''))
+
+                if c.rowcount:
+                    added_count += 1
+                    added_parts.append(part_number)
+
+            conn.commit()
+            conn.close()
+
+            if added_count > 0:
+                logger.info(f"Added {added_count} new parts to database: {added_parts}")
+                # Refresh the MID dropdown in case new MIDs were added
+                self.load_available_mids()
+
+            return added_count
+
+        except Exception as e:
+            logger.error(f"Failed to add not-found parts to database: {e}")
+            return 0
 
     def filter_parts_table(self, text):
         text = text.lower().strip()
@@ -6642,7 +6760,7 @@ class DerivativeMill(QMainWindow):
                 item.setSelected(True)
 
     def save_column_widths(self):
-        """Save column widths to database for persistence"""
+        """Save column widths to per-user settings for persistence"""
         try:
             widths = {}
             for col in range(self.table.columnCount()):
@@ -6650,38 +6768,28 @@ class DerivativeMill(QMainWindow):
                 widths[header_text] = self.table.columnWidth(col)
 
             import json
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES ('column_widths', ?)",
-                     (json.dumps(widths),))
-            conn.commit()
-            conn.close()
+            set_user_setting('column_widths', json.dumps(widths))
         except Exception as e:
             logger.debug(f"Could not save column widths: {e}")
 
     def load_column_widths(self):
-        """Load saved column widths from database"""
+        """Load saved column widths from per-user settings"""
         try:
             import json
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("SELECT value FROM app_config WHERE key = 'column_widths'")
-            row = c.fetchone()
-            
-            if row:
-                widths = json.loads(row[0])
+            widths_json = get_user_setting('column_widths')
+
+            if widths_json:
+                widths = json.loads(widths_json)
                 # Check if any width is 0 - if so, this is corrupted data, clear it
                 has_zero_width = any(w == 0 for w in widths.values())
                 if has_zero_width:
-                    c.execute("DELETE FROM app_config WHERE key = 'column_widths'")
-                    conn.commit()
+                    set_user_setting('column_widths', '')
                     logger.info("Cleared corrupted column widths (had 0-width columns)")
                 else:
                     for col in range(self.table.columnCount()):
                         header_text = self.table.horizontalHeaderItem(col).text()
                         if header_text in widths and widths[header_text] > 20:  # Minimum 20px width
                             self.table.setColumnWidth(col, widths[header_text])
-            conn.close()
         except Exception as e:
             logger.debug(f"Could not load column widths: {e}")
 
@@ -6725,22 +6833,12 @@ class DerivativeMill(QMainWindow):
         """Export a single Excel file with formatting. Used by both regular export and split-by-invoice export."""
         from openpyxl.styles import PatternFill
 
-        # Helper function to get export color from config
+        # Helper function to get export color from per-user settings
         def get_export_color(config_key, default_color):
-            try:
-                conn = sqlite3.connect(str(DB_PATH))
-                c = conn.cursor()
-                c.execute("SELECT value FROM app_config WHERE key = ?", (config_key,))
-                row = c.fetchone()
-                conn.close()
-                if row:
-                    return row[0]
-            except:
-                pass
-            return default_color
+            return get_user_setting(config_key, default_color)
 
-        # Get user-selected font color from settings
-        font_color_hex = self.output_font_color if hasattr(self, 'output_font_color') else '#000000'
+        # Get user-selected font color from per-user settings
+        font_color_hex = get_user_setting('output_font_color', '#000000')
         font_color_rgb = '00' + font_color_hex.lstrip('#').upper()
 
         # Get Section 232 material type colors
@@ -7125,12 +7223,20 @@ class DerivativeMill(QMainWindow):
                 self.refresh_exported_files()
                 self.refresh_input_files()
 
+                # Add "Not Found" parts to the database
+                added_parts_count = self.add_not_found_parts_to_db()
+
                 QTimer.singleShot(500, self.export_progress_widget.hide)
 
-                QMessageBox.information(self, "Success",
-                    f"Export complete!\nCreated {len(exported_files)} files:\n" + "\n".join(exported_files[:10]) +
-                    (f"\n... and {len(exported_files) - 10} more" if len(exported_files) > 10 else ""))
-                logger.success(f"Split export complete: {len(exported_files)} files created")
+                # Build success message
+                success_msg = f"Export complete!\nCreated {len(exported_files)} files:\n" + "\n".join(exported_files[:10])
+                if len(exported_files) > 10:
+                    success_msg += f"\n... and {len(exported_files) - 10} more"
+                if added_parts_count > 0:
+                    success_msg += f"\n\n{added_parts_count} new part(s) added to database."
+
+                QMessageBox.information(self, "Success", success_msg)
+                logger.success(f"Split export complete: {len(exported_files)} files created" + (f" ({added_parts_count} parts added to DB)" if added_parts_count > 0 else ""))
                 self.clear_all()
                 return
 
@@ -7160,22 +7266,12 @@ class DerivativeMill(QMainWindow):
                     # Set Arial font for all cells (including header)
                     from openpyxl.styles import PatternFill
 
-                    # Helper function to get export color from config
+                    # Helper function to get export color from per-user settings
                     def get_export_color(config_key, default_color):
-                        try:
-                            conn = sqlite3.connect(str(DB_PATH))
-                            c = conn.cursor()
-                            c.execute("SELECT value FROM app_config WHERE key = ?", (config_key,))
-                            row = c.fetchone()
-                            conn.close()
-                            if row:
-                                return row[0]
-                        except:
-                            pass
-                        return default_color
+                        return get_user_setting(config_key, default_color)
 
-                    # Get user-selected font color from settings, default to black
-                    font_color_hex = self.output_font_color if hasattr(self, 'output_font_color') else '#000000'
+                    # Get user-selected font color from per-user settings
+                    font_color_hex = get_user_setting('output_font_color', '#000000')
                     font_color_rgb = '00' + font_color_hex.lstrip('#').upper()
 
                     # Get Section 232 material type colors
@@ -7277,22 +7373,12 @@ class DerivativeMill(QMainWindow):
                     # Create font, fill, and alignment styles
                     from openpyxl.styles import PatternFill
 
-                    # Helper function to get export color from config
+                    # Helper function to get export color from per-user settings
                     def get_export_color(config_key, default_color):
-                        try:
-                            conn = sqlite3.connect(str(DB_PATH))
-                            c = conn.cursor()
-                            c.execute("SELECT value FROM app_config WHERE key = ?", (config_key,))
-                            row = c.fetchone()
-                            conn.close()
-                            if row:
-                                return row[0]
-                        except:
-                            pass
-                        return default_color
+                        return get_user_setting(config_key, default_color)
 
-                    # Get user-selected font color from settings, default to black
-                    font_color_hex = self.output_font_color if hasattr(self, 'output_font_color') else '#000000'
+                    # Get user-selected font color from per-user settings
+                    font_color_hex = get_user_setting('output_font_color', '#000000')
                     font_color_rgb = '00' + font_color_hex.lstrip('#').upper()
 
                     # Get Section 232 material type colors
@@ -7404,12 +7490,20 @@ class DerivativeMill(QMainWindow):
             
             self.refresh_exported_files()
             self.refresh_input_files()  # Refresh to show file moved
-            
+
+            # Add "Not Found" parts to the database
+            added_parts_count = self.add_not_found_parts_to_db()
+
             # Hide progress indicator after brief delay
             QTimer.singleShot(500, self.export_progress_widget.hide)
-            
-            QMessageBox.information(self, "Success", f"Export complete!\nSaved: {out.name}")
-            logger.success(f"Export complete: {out.name}")
+
+            # Build success message
+            success_msg = f"Export complete!\nSaved: {out.name}"
+            if added_parts_count > 0:
+                success_msg += f"\n\n{added_parts_count} new part(s) added to database."
+
+            QMessageBox.information(self, "Success", success_msg)
+            logger.success(f"Export complete: {out.name}" + (f" ({added_parts_count} parts added to DB)" if added_parts_count > 0 else ""))
         except Exception as e:
             self.export_progress_widget.hide()
             QMessageBox.critical(self, "Export Failed", str(e))
@@ -7701,18 +7795,8 @@ class DerivativeMill(QMainWindow):
                 elif sys.platform == 'darwin':  # macOS
                     subprocess.run(['open', str(file_path)])
                 else:  # Linux and other Unix-like systems
-                    # Check user preference for Excel viewer
-                    viewer_preference = "System Default"
-                    try:
-                        conn = sqlite3.connect(str(DB_PATH))
-                        c = conn.cursor()
-                        c.execute("SELECT value FROM app_config WHERE key = 'excel_viewer'")
-                        row = c.fetchone()
-                        conn.close()
-                        if row:
-                            viewer_preference = row[0]
-                    except:
-                        pass
+                    # Check user preference for Excel viewer (per-user setting)
+                    viewer_preference = get_user_setting('excel_viewer', 'System Default')
 
                     if viewer_preference == "Gnumeric":
                         subprocess.run(['gnumeric', str(file_path)])

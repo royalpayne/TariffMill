@@ -73,8 +73,9 @@ flowchart TD
         G --> I[Map Invoice Columns]
         H --> I
         I --> J[Validate Required Fields]
-        J -->|Missing Fields| H
         J -->|Complete| K[Create Data Frame]
+        J -->|Missing Fields| H2[Manual Column Mapping]
+        H2 --> J
     end
 
     subgraph PARTS["📦 PARTS LOOKUP"]
@@ -107,11 +108,8 @@ flowchart TD
     end
 
     subgraph EXPORT["📤 EXPORT"]
-        ZB --> ZC{Export Format}
-        ZC -->|Excel| ZD[Generate Customs Workbook]
-        ZC -->|Save Parts| ZE[Update Parts Database]
+        ZB --> ZD[Generate Customs Workbook]
         ZD --> ZF[Apply Formatting]
-        ZE --> ZF
         ZF --> ZG[Save to Output Folder]
         ZG --> ZH[Move Input to Processed]
         ZH --> ZI[End]
@@ -169,7 +167,7 @@ flowchart TB
 
     <h2>3. Data Flow - Settings Storage</h2>
     <div class="description">
-        <strong>Overview:</strong> Shows how settings are separated between shared (config.ini) and personal (QSettings/Registry).
+        <strong>Overview:</strong> Shows how settings are separated between shared (config.ini/database) and personal (QSettings/Registry). Each user has their own personal preferences stored in the Windows Registry, while business data is shared via the SQLite database.
     </div>
     <div class="chart-container">
         <div class="mermaid">
@@ -178,24 +176,28 @@ flowchart LR
         A[Application Startup]
     end
 
-    subgraph SHARED["📄 config.ini (Shared)"]
-        B["Database Path<br/>\\\\server\\share\\db"]
+    subgraph SHARED["📄 Shared Settings"]
+        B["config.ini<br/>───────────<br/>Database Path"]
+        B2["SQLite Database<br/>───────────<br/>• Parts Data<br/>• Tariff Data<br/>• Mapping Profiles"]
     end
 
-    subgraph PERSONAL["🔐 QSettings (Personal)"]
-        C["Window Size/Position"]
-        D["Theme Preference"]
-        E["Column Widths"]
-        F["Last Used Directories"]
+    subgraph PERSONAL["🔐 Per-User Settings (QSettings)"]
+        C["Theme & Font Size"]
+        D["Column Widths"]
+        E["Preview Colors<br/>(Steel/Aluminum/etc.)"]
+        F["Export Colors"]
+        G["Excel Viewer Preference"]
+        H["Update Check Preference"]
     end
 
     subgraph REGISTRY["Windows Registry"]
-        G["HKEY_CURRENT_USER\\<br/>Software\\DerivativeMill"]
+        R["HKEY_CURRENT_USER\\<br/>Software\\DerivativeMill\\<br/>DerivativeMill"]
     end
 
     A -->|"Read shared config"| B
+    B -->|"Connect to"| B2
     A -->|"Read user prefs"| PERSONAL
-    PERSONAL --> G
+    PERSONAL --> R
 
     style SHARED fill:#fff9c4
     style PERSONAL fill:#e1bee7
@@ -205,7 +207,7 @@ flowchart LR
 
     <h2>4. Database Schema</h2>
     <div class="description">
-        <strong>Overview:</strong> Entity relationship diagram showing the database tables and their relationships.
+        <strong>Overview:</strong> Entity relationship diagram showing the shared database tables. Note: Per-user settings (theme, colors, etc.) are stored in the Windows Registry via QSettings, not in this database.
     </div>
     <div class="chart-container">
         <div class="mermaid">
@@ -331,11 +333,16 @@ flowchart TD
                 <td style="padding: 10px; border-bottom: 1px solid #ddd;">Next to .exe</td>
                 <td style="padding: 10px; border-bottom: 1px solid #ddd;">Icons, templates, reference files</td>
             </tr>
+            <tr>
+                <td style="padding: 10px; border-bottom: 1px solid #ddd;"><code>User Settings</code></td>
+                <td style="padding: 10px; border-bottom: 1px solid #ddd;">Windows Registry<br/>(HKCU\Software\DerivativeMill)</td>
+                <td style="padding: 10px; border-bottom: 1px solid #ddd;">Per-user preferences (theme, colors, column widths)</td>
+            </tr>
         </table>
     </div>
 
     <footer style="text-align: center; margin-top: 40px; color: #7f8c8d;">
-        <p>Derivative Mill v0.6 - Customs Documentation Processing System</p>
+        <p>Derivative Mill v0.90 - Customs Documentation Processing System</p>
         <p>Generated: <script>document.write(new Date().toLocaleDateString())</script></p>
     </footer>
 </body>
