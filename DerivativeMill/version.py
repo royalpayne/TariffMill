@@ -1,54 +1,103 @@
 """
 Version management for DerivativeMill
 
-This file maintains the current version of the application.
-Version format: vMAJOR.MINOR.PATCH (e.g., v0.60.1)
+Version is automatically derived from git tags.
+To release a new version:
+    git tag v0.90.2
+    git push origin v0.90.2
+
+Version format: vMAJOR.MINOR.PATCH (e.g., v0.90.1)
 
 Semantic Versioning:
 - MAJOR: Large feature releases or breaking changes
-- MINOR: New features and enhancements (0.60, 0.61, etc.)
-- PATCH: Bug fixes and minor updates (0.60.1, 0.60.2, etc.)
+- MINOR: New features and enhancements (0.90, 0.91, etc.)
+- PATCH: Bug fixes and minor updates (0.90.1, 0.90.2, etc.)
 """
 
-__version__ = "v0.63.0"
+import subprocess
+import os
+
+# Fallback version if git is not available
+__fallback_version__ = "v0.90.1"
 
 def get_version():
-    """Get the current version"""
-    return __version__
+    """
+    Get version from git tags.
+    Returns the most recent tag, or fallback if git is unavailable.
+    """
+    try:
+        # Get the directory where this file is located
+        file_dir = os.path.dirname(os.path.abspath(__file__))
 
-def increment_patch():
-    """
-    Increment the patch version (e.g., v0.60.1 -> v0.60.2)
-    Call this when making a patch release (bug fixes, small updates)
-    """
-    global __version__
-    parts = __version__[1:].split('.')  # Remove 'v' and split
-    major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
-    patch += 1
-    __version__ = f"v{major}.{minor}.{patch}"
-    return __version__
+        # Try to get version from git describe
+        version = subprocess.check_output(
+            ['git', 'describe', '--tags', '--always'],
+            cwd=file_dir,
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
 
-def increment_minor():
-    """
-    Increment the minor version (e.g., v0.60.1 -> v0.61.0)
-    Call this when making a feature release
-    """
-    global __version__
-    parts = __version__[1:].split('.')  # Remove 'v' and split
-    major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
-    minor += 1
-    patch = 0
-    __version__ = f"v{major}.{minor}.{patch}"
-    return __version__
+        # Ensure it starts with 'v'
+        if not version.startswith('v'):
+            version = f"v{version}"
 
-def increment_major():
+        return version
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        # Git not available or not a git repo - use fallback
+        return __fallback_version__
+
+def get_version_info():
     """
-    Increment the major version (e.g., v0.60.1 -> v1.0.0)
-    Call this when making a major release with breaking changes
+    Get detailed version information including commit count since last tag.
+    Returns a dict with version details.
     """
-    global __version__
-    parts = __version__[1:].split('.')  # Remove 'v' and split
-    major = int(parts[0])
-    major += 1
-    __version__ = f"v{major}.0.0"
-    return __version__
+    try:
+        file_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # Get full describe output (e.g., v0.90.1-5-g1234abc)
+        full_version = subprocess.check_output(
+            ['git', 'describe', '--tags', '--long', '--always'],
+            cwd=file_dir,
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+
+        # Get current branch
+        branch = subprocess.check_output(
+            ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
+            cwd=file_dir,
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+
+        # Parse version components
+        if '-' in full_version:
+            parts = full_version.rsplit('-', 2)
+            if len(parts) == 3:
+                tag, commits_ahead, commit_hash = parts
+                return {
+                    'version': get_version(),
+                    'tag': tag,
+                    'commits_ahead': int(commits_ahead),
+                    'commit': commit_hash,
+                    'branch': branch,
+                    'is_release': int(commits_ahead) == 0
+                }
+
+        return {
+            'version': get_version(),
+            'tag': full_version,
+            'commits_ahead': 0,
+            'commit': '',
+            'branch': branch,
+            'is_release': True
+        }
+    except:
+        return {
+            'version': __fallback_version__,
+            'tag': __fallback_version__,
+            'commits_ahead': 0,
+            'commit': '',
+            'branch': 'unknown',
+            'is_release': True
+        }
+
+# For backwards compatibility
+__version__ = get_version()

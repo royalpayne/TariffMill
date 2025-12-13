@@ -1030,6 +1030,7 @@ class DerivativeMill(QMainWindow):
             ("Applying font size...", self.apply_saved_font_size),
             ("Loading MIDs...", self.load_available_mids),
             ("Loading profiles...", self.load_mapping_profiles),
+            ("Loading export profiles...", self.load_output_mapping_profiles),
             # Removed output file scanning on startup
             ("Scanning input files...", self.refresh_input_files),
             ("Starting auto-refresh...", self.setup_auto_refresh),
@@ -1268,10 +1269,22 @@ class DerivativeMill(QMainWindow):
         actions_group.setLayout(actions_layout)
         left_side.addWidget(actions_group)
 
+        # EXPORT PROFILE GROUP — quick access to output mapping profiles
+        export_profile_group = QGroupBox("Export Profile")
+        export_profile_layout = QVBoxLayout()
+        export_profile_layout.setContentsMargins(5, 5, 5, 5)
+
+        self.quick_export_profile_combo = QComboBox()
+        self.quick_export_profile_combo.currentTextChanged.connect(self.on_quick_export_profile_changed)
+        export_profile_layout.addWidget(self.quick_export_profile_combo)
+
+        export_profile_group.setLayout(export_profile_layout)
+        left_side.addWidget(export_profile_group)
+
         # EXPORTED FILES GROUP — shows recent exports
         exports_group = QGroupBox("Exported Files")
         exports_layout = QVBoxLayout()
-        
+
         self.exports_list = AutoSelectListWidget()
         self.exports_list.setSelectionMode(QListWidget.SingleSelection)
         self.exports_list.itemDoubleClicked.connect(self.open_exported_file)
@@ -1285,7 +1298,19 @@ class DerivativeMill(QMainWindow):
         self.refresh_exports_btn.setFixedHeight(25)
         self.refresh_exports_btn.clicked.connect(self.refresh_exported_files)
         exports_layout.addWidget(self.refresh_exports_btn)
-        
+
+        # Invoice total display for selected file
+        total_layout = QHBoxLayout()
+        total_layout.addWidget(QLabel("Invoice Total:"))
+        self.export_invoice_total = QLineEdit()
+        self.export_invoice_total.setReadOnly(True)
+        self.export_invoice_total.setPlaceholderText("Select a file")
+        total_layout.addWidget(self.export_invoice_total)
+        exports_layout.addLayout(total_layout)
+
+        # Connect selection change to update invoice total
+        self.exports_list.itemSelectionChanged.connect(self.update_export_invoice_total)
+
         exports_group.setLayout(exports_layout)
         left_side.addWidget(exports_group)
         
@@ -4439,21 +4464,29 @@ class DerivativeMill(QMainWindow):
     def setup_output_mapping_tab(self):
         """Setup the Output XLSX Mapping tab for customizing export column names and order"""
         layout = QVBoxLayout(self.tab_output_map)
-        title = QLabel("<h2>Output XLSX Column Mapping</h2><p>Customize column names and order for exported files</p>")
+        layout.setSpacing(8)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        title = QLabel("<h2>Output XLSX Column Mapping</h2>")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
         # Top bar with profile management
         top_bar_widget = QWidget()
         top_bar = QHBoxLayout(top_bar_widget)
+        top_bar.setContentsMargins(0, 0, 0, 0)
         self.output_profile_combo = QComboBox()
-        self.output_profile_combo.setMinimumWidth(300)
+        self.output_profile_combo.setMinimumWidth(250)
         self.output_profile_combo.currentTextChanged.connect(self.load_output_mapping_profile)
         top_bar.addWidget(QLabel("Saved Profiles:"))
         top_bar.addWidget(self.output_profile_combo)
 
         # Load existing profiles
         self.load_output_mapping_profiles()
+
+        btn_reset_output = QPushButton("Reset to Default")
+        btn_reset_output.setStyleSheet(self.get_button_style("info"))
+        btn_reset_output.clicked.connect(self.reset_output_mapping)
 
         btn_save_output = QPushButton("Save Current Mapping As...")
         btn_save_output.setStyleSheet(self.get_button_style("success"))
@@ -4463,65 +4496,17 @@ class DerivativeMill(QMainWindow):
         btn_delete_output.setStyleSheet(self.get_button_style("danger"))
         btn_delete_output.clicked.connect(self.delete_output_mapping_profile)
 
-        btn_reset_output = QPushButton("Reset to Default")
-        btn_reset_output.setStyleSheet(self.get_button_style("info"))
-        btn_reset_output.clicked.connect(self.reset_output_mapping)
-
         top_bar.addWidget(btn_reset_output)
         top_bar.addWidget(btn_save_output)
         top_bar.addWidget(btn_delete_output)
         top_bar.addStretch()
         layout.addWidget(top_bar_widget)
 
-        # Instructions
-        instructions = QLabel(
-            "<p><b>Instructions:</b> Modify the column names below to customize your export file. "
-            "These are the internal field names mapped to export column headers.</p>"
-        )
-        instructions.setWordWrap(True)
-        layout.addWidget(instructions)
-
-        # Font color selector
-        color_widget = QWidget()
-        color_layout = QHBoxLayout(color_widget)
-        color_layout.setContentsMargins(10, 10, 10, 10)
-        color_label = QLabel("Export Font Color:")
-        color_layout.addWidget(color_label)
-
-        # Create color picker button
-        self.output_font_color_btn = QPushButton()
-        self.output_font_color_btn.setFixedSize(100, 30)
-
-        # Load saved font color or use default black
-        self.output_font_color = '#000000'
-        try:
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("SELECT value FROM app_config WHERE key = ?", ('output_font_color',))
-            row = c.fetchone()
-            conn.close()
-            if row:
-                self.output_font_color = row[0]
-        except:
-            pass
-
-        self.output_font_color_btn.setStyleSheet(f"background-color: {self.output_font_color}; border: 1px solid #999;")
-        self.output_font_color_btn.clicked.connect(self.pick_output_font_color)
-        color_layout.addWidget(self.output_font_color_btn)
-        color_layout.addStretch()
-        layout.addWidget(color_widget)
-
-        # Section 232 Material Type Colors for Export
-        sec232_colors_group = QGroupBox("Section 232 Material Type Colors (Export)")
-        sec232_colors_layout = QFormLayout(sec232_colors_group)
-        sec232_colors_layout.setLabelAlignment(Qt.AlignRight)
-        sec232_colors_layout.setSpacing(10)
-
         # Helper function to create export color picker button
         def create_export_color_button(config_key, default_color, label_text):
             """Create a color picker button for export with saved color"""
             button = QPushButton()
-            button.setFixedSize(100, 30)
+            button.setFixedSize(80, 25)
 
             # Load saved color or use default
             saved_color = default_color
@@ -4536,7 +4521,6 @@ class DerivativeMill(QMainWindow):
             except:
                 pass
 
-            # Set button style with current color
             button.setStyleSheet(f"background-color: {saved_color}; border: 1px solid #999;")
 
             def pick_color():
@@ -4544,7 +4528,6 @@ class DerivativeMill(QMainWindow):
                 if color.isValid():
                     color_hex = color.name()
                     button.setStyleSheet(f"background-color: {color_hex}; border: 1px solid #999;")
-                    # Save to database
                     try:
                         conn = sqlite3.connect(str(DB_PATH))
                         c = conn.cursor()
@@ -4556,48 +4539,75 @@ class DerivativeMill(QMainWindow):
                         self.bottom_status.setText(f"{label_text} export color set to {color_hex}")
                     except Exception as e:
                         logger.error(f"Failed to save export color preference {config_key}: {e}")
-                        QMessageBox.critical(self, "Error", f"Failed to save color:\n{e}")
 
             button.clicked.connect(pick_color)
             return button
 
-        # Section 232 material type color pickers for export
-        export_steel_btn = create_export_color_button('export_steel_color', '#4a4a4a', 'Steel')
-        sec232_colors_layout.addRow("Steel:", export_steel_btn)
+        # === COLORS AND OPTIONS SECTION (horizontal layout) ===
+        options_widget = QWidget()
+        options_layout = QHBoxLayout(options_widget)
+        options_layout.setContentsMargins(0, 5, 0, 5)
+        options_layout.setSpacing(15)
 
-        export_aluminum_btn = create_export_color_button('export_aluminum_color', '#6495ED', 'Aluminum')
-        sec232_colors_layout.addRow("Aluminum:", export_aluminum_btn)
+        # --- Left: Export Colors (Grid Layout) ---
+        colors_group = QGroupBox("Export Colors")
+        colors_grid = QGridLayout(colors_group)
+        colors_grid.setSpacing(5)
+        colors_grid.setContentsMargins(10, 10, 10, 10)
 
-        export_copper_btn = create_export_color_button('export_copper_color', '#B87333', 'Copper')
-        sec232_colors_layout.addRow("Copper:", export_copper_btn)
+        # Load saved font color
+        self.output_font_color = '#000000'
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+            c.execute("SELECT value FROM app_config WHERE key = ?", ('output_font_color',))
+            row = c.fetchone()
+            conn.close()
+            if row:
+                self.output_font_color = row[0]
+        except:
+            pass
 
-        export_wood_btn = create_export_color_button('export_wood_color', '#8B4513', 'Wood')
-        sec232_colors_layout.addRow("Wood:", export_wood_btn)
+        # Font color
+        self.output_font_color_btn = QPushButton()
+        self.output_font_color_btn.setFixedSize(80, 25)
+        self.output_font_color_btn.setStyleSheet(f"background-color: {self.output_font_color}; border: 1px solid #999;")
+        self.output_font_color_btn.clicked.connect(self.pick_output_font_color)
 
-        export_automotive_btn = create_export_color_button('export_automotive_color', '#2F4F4F', 'Automotive')
-        sec232_colors_layout.addRow("Automotive:", export_automotive_btn)
+        # Row 0: Default Font and Steel
+        colors_grid.addWidget(QLabel("Default:"), 0, 0, Qt.AlignRight)
+        colors_grid.addWidget(self.output_font_color_btn, 0, 1)
+        colors_grid.addWidget(QLabel("Steel:"), 0, 2, Qt.AlignRight)
+        colors_grid.addWidget(create_export_color_button('export_steel_color', '#4a4a4a', 'Steel'), 0, 3)
 
-        export_non232_btn = create_export_color_button('export_non232_color', '#FF0000', 'Non-232')
-        sec232_colors_layout.addRow("Non-232:", export_non232_btn)
+        # Row 1: Aluminum and Copper
+        colors_grid.addWidget(QLabel("Aluminum:"), 1, 0, Qt.AlignRight)
+        colors_grid.addWidget(create_export_color_button('export_aluminum_color', '#6495ED', 'Aluminum'), 1, 1)
+        colors_grid.addWidget(QLabel("Copper:"), 1, 2, Qt.AlignRight)
+        colors_grid.addWidget(create_export_color_button('export_copper_color', '#B87333', 'Copper'), 1, 3)
 
-        layout.addWidget(sec232_colors_group)
+        # Row 2: Wood and Automotive
+        colors_grid.addWidget(QLabel("Wood:"), 2, 0, Qt.AlignRight)
+        colors_grid.addWidget(create_export_color_button('export_wood_color', '#8B4513', 'Wood'), 2, 1)
+        colors_grid.addWidget(QLabel("Auto:"), 2, 2, Qt.AlignRight)
+        colors_grid.addWidget(create_export_color_button('export_automotive_color', '#2F4F4F', 'Automotive'), 2, 3)
 
-        # Column Visibility Selection
-        visibility_group = QGroupBox("Export Column Visibility")
-        visibility_layout = QVBoxLayout(visibility_group)
+        # Row 3: Non-232
+        colors_grid.addWidget(QLabel("Non-232:"), 3, 0, Qt.AlignRight)
+        colors_grid.addWidget(create_export_color_button('export_non232_color', '#FF0000', 'Non-232'), 3, 1)
 
-        visibility_label = QLabel("Select which Section 232 ratio columns to include in export:")
-        visibility_layout.addWidget(visibility_label)
+        options_layout.addWidget(colors_group)
 
-        # Create checkboxes for ratio columns
-        ratio_checkboxes_layout = QHBoxLayout()
+        # --- Middle: Column Visibility ---
+        visibility_group = QGroupBox("Column Visibility")
+        visibility_layout = QGridLayout(visibility_group)
+        visibility_layout.setSpacing(5)
+        visibility_layout.setContentsMargins(10, 10, 10, 10)
 
-        # Load saved visibility settings or default to all visible
         self.output_column_visibility = {}
         ratio_columns = ['SteelRatio', 'AluminumRatio', 'CopperRatio', 'WoodRatio', 'AutoRatio', 'NonSteelRatio']
 
-        for col in ratio_columns:
-            # Load saved setting or default to True (visible)
+        for idx, col in enumerate(ratio_columns):
             is_visible = True
             try:
                 conn = sqlite3.connect(str(DB_PATH))
@@ -4614,17 +4624,16 @@ class DerivativeMill(QMainWindow):
             checkbox.setChecked(is_visible)
             checkbox.stateChanged.connect(lambda state, col=col: self.update_column_visibility(col, state))
             self.output_column_visibility[col] = checkbox
-            ratio_checkboxes_layout.addWidget(checkbox)
+            # 2 columns layout
+            visibility_layout.addWidget(checkbox, idx // 2, idx % 2)
 
-        ratio_checkboxes_layout.addStretch()
-        visibility_layout.addLayout(ratio_checkboxes_layout)
-        layout.addWidget(visibility_group)
+        options_layout.addWidget(visibility_group)
 
-        # Export File Splitting Options
-        split_group = QGroupBox("Export File Options")
-        split_layout = QVBoxLayout(split_group)
+        # --- Right: Export Options ---
+        export_options_group = QGroupBox("Export Options")
+        export_options_layout = QVBoxLayout(export_options_group)
+        export_options_layout.setContentsMargins(10, 10, 10, 10)
 
-        # Load saved split by invoice setting
         self.split_by_invoice = False
         try:
             conn = sqlite3.connect(str(DB_PATH))
@@ -4637,16 +4646,26 @@ class DerivativeMill(QMainWindow):
         except:
             pass
 
-        self.split_by_invoice_checkbox = QCheckBox("Split export by Invoice Number (creates separate files for each invoice)")
+        self.split_by_invoice_checkbox = QCheckBox("Split by Invoice Number")
         self.split_by_invoice_checkbox.setChecked(self.split_by_invoice)
         self.split_by_invoice_checkbox.stateChanged.connect(self.update_split_by_invoice_setting)
-        split_layout.addWidget(self.split_by_invoice_checkbox)
+        export_options_layout.addWidget(self.split_by_invoice_checkbox)
 
-        split_note = QLabel("Note: Requires 'Invoice Number' field to be mapped in Invoice Mapping tab")
-        split_note.setStyleSheet("color: gray; font-style: italic;")
-        split_layout.addWidget(split_note)
+        split_note = QLabel("Creates separate files per invoice.\nRequires Invoice Number mapping.")
+        split_note.setStyleSheet("color: gray; font-size: 9pt;")
+        split_note.setWordWrap(True)
+        export_options_layout.addWidget(split_note)
+        export_options_layout.addStretch()
 
-        layout.addWidget(split_group)
+        options_layout.addWidget(export_options_group)
+        options_layout.addStretch()
+
+        layout.addWidget(options_widget)
+
+        # === COLUMN MAPPING SECTION ===
+        mapping_group = QGroupBox("Column Name Mapping")
+        mapping_layout = QVBoxLayout(mapping_group)
+        mapping_layout.setContentsMargins(10, 10, 10, 10)
 
         # Scrollable area for column mappings
         scroll = QScrollArea()
@@ -4695,7 +4714,8 @@ class DerivativeMill(QMainWindow):
 
         scroll_layout.addWidget(form_widget)
         scroll.setWidget(scroll_widget)
-        layout.addWidget(scroll, 1)
+        mapping_layout.addWidget(scroll)
+        layout.addWidget(mapping_group, 1)
         self.tab_output_map.setLayout(layout)
 
     def update_output_column_name(self, internal_name, new_name):
@@ -4770,17 +4790,50 @@ class DerivativeMill(QMainWindow):
             df = pd.read_sql("SELECT profile_name FROM output_column_mappings ORDER BY created_date DESC", conn)
             conn.close()
 
+            profile_names = df['profile_name'].tolist()
+
+            # Update the Configuration dialog combo box
             if hasattr(self, 'output_profile_combo'):
                 self.output_profile_combo.blockSignals(True)
                 self.output_profile_combo.clear()
                 self.output_profile_combo.addItem("-- Select Profile --")
-                for name in df['profile_name'].tolist():
+                for name in profile_names:
                     self.output_profile_combo.addItem(name)
                 self.output_profile_combo.blockSignals(False)
+
+            # Update the quick access combo box on Process Shipment tab
+            if hasattr(self, 'quick_export_profile_combo'):
+                current_selection = self.quick_export_profile_combo.currentText()
+                self.quick_export_profile_combo.blockSignals(True)
+                self.quick_export_profile_combo.clear()
+                self.quick_export_profile_combo.addItem("-- Select Profile --")
+                for name in profile_names:
+                    self.quick_export_profile_combo.addItem(name)
+                # Restore selection if it still exists
+                idx = self.quick_export_profile_combo.findText(current_selection)
+                if idx >= 0:
+                    self.quick_export_profile_combo.setCurrentIndex(idx)
+                self.quick_export_profile_combo.blockSignals(False)
 
             logger.info(f"Loaded {len(df)} output mapping profiles")
         except Exception as e:
             logger.error(f"Failed to load output mapping profiles: {e}")
+
+    def on_quick_export_profile_changed(self, profile_name):
+        """Handle export profile change from Process Shipment tab"""
+        if not profile_name or profile_name == "-- Select Profile --":
+            return
+
+        # Load the profile (reuse existing method)
+        self.load_output_mapping_profile(profile_name)
+
+        # Sync the Configuration dialog combo if it exists
+        if hasattr(self, 'output_profile_combo'):
+            self.output_profile_combo.blockSignals(True)
+            self.output_profile_combo.setCurrentText(profile_name)
+            self.output_profile_combo.blockSignals(False)
+
+        self.bottom_status.setText(f"Export profile: {profile_name}")
 
     def load_output_mapping_profile(self, profile_name):
         """Load selected output mapping profile"""
@@ -4795,12 +4848,51 @@ class DerivativeMill(QMainWindow):
             conn.close()
 
             if row:
-                self.output_column_mapping = json.loads(row[0])
-                # Update UI inputs
+                profile_data = json.loads(row[0])
+
+                # Check if this is the new format (with nested structure) or old format (just column mapping)
+                if 'column_mapping' in profile_data:
+                    # New format
+                    self.output_column_mapping = profile_data.get('column_mapping', {})
+                    column_visibility = profile_data.get('column_visibility', {})
+                    split_by_invoice = profile_data.get('split_by_invoice', False)
+                else:
+                    # Old format - just column mapping
+                    self.output_column_mapping = profile_data
+                    column_visibility = {}
+                    split_by_invoice = False
+
+                # Update column name inputs
                 for internal_name, line_edit in self.output_column_inputs.items():
                     line_edit.blockSignals(True)
                     line_edit.setText(self.output_column_mapping.get(internal_name, internal_name))
                     line_edit.blockSignals(False)
+
+                # Update column visibility checkboxes
+                if hasattr(self, 'output_column_visibility'):
+                    for col_name, checkbox in self.output_column_visibility.items():
+                        checkbox.blockSignals(True)
+                        # Default to True if not specified in profile
+                        is_visible = column_visibility.get(col_name, True)
+                        checkbox.setChecked(is_visible)
+                        checkbox.blockSignals(False)
+                        # Save to database
+                        self.update_column_visibility(col_name, 2 if is_visible else 0)
+
+                # Update split by invoice checkbox
+                if hasattr(self, 'split_by_invoice_checkbox'):
+                    self.split_by_invoice_checkbox.blockSignals(True)
+                    self.split_by_invoice_checkbox.setChecked(split_by_invoice)
+                    self.split_by_invoice_checkbox.blockSignals(False)
+                    self.split_by_invoice = split_by_invoice
+                    # Save to database
+                    self.update_split_by_invoice_setting(2 if split_by_invoice else 0)
+
+                # Sync the quick export profile combo on Process Shipment tab
+                if hasattr(self, 'quick_export_profile_combo'):
+                    self.quick_export_profile_combo.blockSignals(True)
+                    self.quick_export_profile_combo.setCurrentText(profile_name)
+                    self.quick_export_profile_combo.blockSignals(False)
 
                 self.status.setText(f"Loaded output mapping profile: {profile_name}")
                 logger.info(f"Loaded output mapping profile: {profile_name}")
@@ -4828,7 +4920,22 @@ class DerivativeMill(QMainWindow):
                     conn.close()
                     return
 
-            mapping_str = json.dumps(self.output_column_mapping)
+            # Build column visibility dict from checkboxes
+            column_visibility = {}
+            if hasattr(self, 'output_column_visibility'):
+                for col_name, checkbox in self.output_column_visibility.items():
+                    column_visibility[col_name] = checkbox.isChecked()
+
+            # Get split by invoice setting
+            split_by_invoice = self.split_by_invoice if hasattr(self, 'split_by_invoice') else False
+
+            # Save all settings in new format
+            profile_data = {
+                'column_mapping': self.output_column_mapping,
+                'column_visibility': column_visibility,
+                'split_by_invoice': split_by_invoice
+            }
+            mapping_str = json.dumps(profile_data)
             now = datetime.now().isoformat()
 
             c.execute("""INSERT OR REPLACE INTO output_column_mappings (profile_name, mapping_json, created_date)
@@ -6983,9 +7090,8 @@ class DerivativeMill(QMainWindow):
                     inv_sec301_mask = invoice_df['_sec301_exclusion'].fillna('').astype(str).str.strip().ne('') & \
                                       ~invoice_df['_sec301_exclusion'].fillna('').astype(str).str.contains('nan|None', case=False, na=False) if '_sec301_exclusion' in invoice_df.columns else pd.Series([False] * len(invoice_df))
 
-                    # Generate filename with invoice number
-                    base_name = self.last_output_filename or f"Upload_Sheet_{datetime.now():%Y%m%d_%H%M}.xlsx"
-                    invoice_filename = base_name.replace('.xlsx', f'_INV{invoice_num}.xlsx')
+                    # Generate filename with invoice number and date
+                    invoice_filename = f"{invoice_num}_{datetime.now():%Y%m%d}.xlsx"
 
                     # Update progress
                     progress_pct = int(10 + (idx / total_invoices) * 80)
@@ -7369,6 +7475,36 @@ class DerivativeMill(QMainWindow):
         else:
             self.selected_mid = ""
 
+    def update_export_invoice_total(self):
+        """Update the invoice total display when a file is selected"""
+        selected_items = self.exports_list.selectedItems()
+        if not selected_items:
+            self.export_invoice_total.setText("")
+            return
+
+        filename = selected_items[0].text()
+        filepath = OUTPUT_DIR / filename
+
+        try:
+            # Read the Excel file and sum the ValueUSD column
+            df = pd.read_excel(filepath, engine='openpyxl')
+
+            # Try to find the value column (might be named differently based on mapping)
+            value_col = None
+            for col in df.columns:
+                if 'value' in col.lower() or 'usd' in col.lower():
+                    value_col = col
+                    break
+
+            if value_col:
+                total = pd.to_numeric(df[value_col], errors='coerce').sum()
+                self.export_invoice_total.setText(f"${total:,.2f}")
+            else:
+                self.export_invoice_total.setText("N/A")
+        except Exception as e:
+            logger.debug(f"Could not read invoice total from {filename}: {e}")
+            self.export_invoice_total.setText("Error")
+
     def refresh_exported_files(self):
         """Load and display exported files from Output folder"""
         try:
@@ -7381,7 +7517,8 @@ class DerivativeMill(QMainWindow):
             self.exports_list.blockSignals(True)
             self.exports_list.clear()
             if OUTPUT_DIR.exists():
-                files = sorted(OUTPUT_DIR.glob("Upload_Sheet_*.xlsx"), key=lambda p: p.stat().st_mtime, reverse=True)
+                # Include all xlsx files (Upload_Sheet_* and split-by-invoice files)
+                files = sorted(OUTPUT_DIR.glob("*.xlsx"), key=lambda p: p.stat().st_mtime, reverse=True)
                 for f in files[:20]:  # Show last 20 files
                     self.exports_list.addItem(f.name)
 
@@ -7613,38 +7750,32 @@ class DerivativeMill(QMainWindow):
         logger.info("Auto-refresh enabled for file lists (10 second interval)")
     
     def refresh_input_files_light(self):
-        """Lightweight refresh - only update if directory has changed and on Process Shipment tab"""
+        """Lightweight refresh - only update if on Process Shipment tab"""
         try:
             # Only refresh if on Process Shipment tab (tab index 0)
             if self.tabs.currentIndex() != 0:
                 return
-            
+
             if not INPUT_DIR.exists():
                 return
-            
-            # Check if directory has been modified
-            dir_mtime = INPUT_DIR.stat().st_mtime
-            if dir_mtime != self.last_input_mtime:
-                self.last_input_mtime = dir_mtime
-                self.refresh_input_files()
+
+            # Always refresh - directory mtime is unreliable on network drives
+            self.refresh_input_files()
         except:
             pass  # Silently ignore errors during auto-refresh
-    
+
     def refresh_exported_files_light(self):
-        """Lightweight refresh - only update if directory has changed and on Process Shipment tab"""
+        """Lightweight refresh - only update if on Process Shipment tab"""
         try:
             # Only refresh if on Process Shipment tab (tab index 0)
             if self.tabs.currentIndex() != 0:
                 return
-            
+
             if not OUTPUT_DIR.exists():
                 return
-            
-            # Check if directory has been modified
-            dir_mtime = OUTPUT_DIR.stat().st_mtime
-            if dir_mtime != self.last_output_mtime:
-                self.last_output_mtime = dir_mtime
-                self.refresh_exported_files()
+
+            # Always refresh - directory mtime is unreliable on network drives
+            self.refresh_exported_files()
         except:
             pass  # Silently ignore errors during auto-refresh
     
