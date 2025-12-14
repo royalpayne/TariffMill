@@ -329,6 +329,50 @@ def get_user_setting_float(key, default=0.0):
     except (ValueError, TypeError):
         return default
 
+def get_theme_color_key(base_key, theme_name=None):
+    """
+    Generate a theme-specific color settings key.
+
+    Args:
+        base_key: Base color key (e.g., 'preview_steel_color')
+        theme_name: Theme name (if None, uses current saved theme)
+
+    Returns:
+        Theme-specific key (e.g., 'preview_steel_color_fusion_dark')
+    """
+    if theme_name is None:
+        theme_name = get_user_setting('theme', 'Fusion (Light)')
+    # Normalize theme name for use as key suffix
+    theme_suffix = theme_name.lower().replace(' ', '_').replace('(', '').replace(')', '')
+    return f"{base_key}_{theme_suffix}"
+
+def get_theme_color(base_key, default_color, theme_name=None):
+    """
+    Get a color setting for the current or specified theme.
+
+    Args:
+        base_key: Base color key (e.g., 'preview_steel_color')
+        default_color: Default color hex value
+        theme_name: Theme name (if None, uses current saved theme)
+
+    Returns:
+        Color hex string
+    """
+    theme_key = get_theme_color_key(base_key, theme_name)
+    return get_user_setting(theme_key, default_color)
+
+def set_theme_color(base_key, color_value, theme_name=None):
+    """
+    Save a color setting for the current or specified theme.
+
+    Args:
+        base_key: Base color key (e.g., 'preview_steel_color')
+        color_value: Color hex value to save
+        theme_name: Theme name (if None, uses current saved theme)
+    """
+    theme_key = get_theme_color_key(base_key, theme_name)
+    set_user_setting(theme_key, color_value)
+
 def is_widget_valid(widget):
     """
     Check if a Qt widget is still valid (not deleted).
@@ -463,15 +507,21 @@ def init_database():
         except Exception as e:
             logger.warning(f"Failed to check/add header_row column: {e}")
 
-        # Migration: Add cbp_qty1 column to parts_master if it doesn't exist
+        # Migration: Add qty_unit column to parts_master (renamed from cbp_qty1)
         try:
             c.execute("PRAGMA table_info(parts_master)")
             columns = [col[1] for col in c.fetchall()]
-            if 'cbp_qty1' not in columns:
-                c.execute("ALTER TABLE parts_master ADD COLUMN cbp_qty1 TEXT")
-                logger.info("Added cbp_qty1 column to parts_master")
+            if 'qty_unit' not in columns:
+                if 'cbp_qty1' in columns:
+                    # Rename existing cbp_qty1 column to qty_unit
+                    c.execute("ALTER TABLE parts_master RENAME COLUMN cbp_qty1 TO qty_unit")
+                    logger.info("Renamed cbp_qty1 column to qty_unit in parts_master")
+                else:
+                    # Add new qty_unit column
+                    c.execute("ALTER TABLE parts_master ADD COLUMN qty_unit TEXT")
+                    logger.info("Added qty_unit column to parts_master")
         except Exception as e:
-            logger.warning(f"Failed to check/add cbp_qty1 column: {e}")
+            logger.warning(f"Failed to check/add qty_unit column: {e}")
 
         # Migration: Add aluminum_ratio column to parts_master if it doesn't exist
         try:
@@ -614,6 +664,101 @@ def init_database():
                 c.execute("INSERT INTO app_config (key, value) VALUES ('ratios_migration_v1', '1')")
         except Exception as e:
             logger.warning(f"Failed to fix corrupted ratios: {e}")
+
+        # Migration: Convert ratios from 0.0-1.0 to 0-100 percentages
+        # This makes the database values more intuitive for users
+        try:
+            c.execute("SELECT value FROM app_config WHERE key = 'ratios_to_percentage_v1'")
+            if not c.fetchone():
+                # Convert all ratio columns from decimal (0.0-1.0) to percentage (0-100)
+                # Only convert rows where at least one non-zero ratio is in decimal format (0 < x <= 1)
+                c.execute("""
+                    UPDATE parts_master
+                    SET steel_ratio = steel_ratio * 100,
+                        aluminum_ratio = aluminum_ratio * 100,
+                        copper_ratio = copper_ratio * 100,
+                        wood_ratio = wood_ratio * 100,
+                        auto_ratio = auto_ratio * 100,
+                        non_steel_ratio = non_steel_ratio * 100
+                    WHERE (steel_ratio > 0 AND steel_ratio <= 1.0)
+                       OR (aluminum_ratio > 0 AND aluminum_ratio <= 1.0)
+                       OR (copper_ratio > 0 AND copper_ratio <= 1.0)
+                       OR (wood_ratio > 0 AND wood_ratio <= 1.0)
+                       OR (auto_ratio > 0 AND auto_ratio <= 1.0)
+                       OR (non_steel_ratio > 0 AND non_steel_ratio <= 1.0)
+                """)
+                migrated_count = c.execute("SELECT changes()").fetchone()[0]
+                logger.info(f"Converted {migrated_count} parts from ratio (0-1) to percentage (0-100)")
+
+                # Mark migration as complete
+                c.execute("INSERT INTO app_config (key, value) VALUES ('ratios_to_percentage_v1', '1')")
+        except Exception as e:
+            logger.warning(f"Failed to convert ratios to percentages: {e}")
+
+        # Migration: Update output mapping profiles to replace CalcWtNet/Pcs with Qty1/Qty2
+        try:
+            c.execute("SELECT value FROM app_config WHERE key = 'qty_columns_migration_v1'")
+            if not c.fetchone():
+                import json
+                # Update mapping_profiles table
+                c.execute("SELECT profile_name, mapping_json FROM mapping_profiles")
+                profiles = c.fetchall()
+                updated = 0
+                for profile_name, mapping_json in profiles:
+                    if mapping_json:
+                        try:
+                            data = json.loads(mapping_json)
+                            changed = False
+                            # Update column_order if present
+                            if 'column_order' in data:
+                                new_order = []
+                                for col in data['column_order']:
+                                    if col == 'CalcWtNet':
+                                        new_order.append('Qty1')
+                                        changed = True
+                                    elif col == 'Pcs':
+                                        new_order.append('Qty2')
+                                        changed = True
+                                    else:
+                                        new_order.append(col)
+                                # Add Qty1/Qty2 if not present
+                                if 'Qty1' not in new_order:
+                                    # Insert after MID if possible
+                                    if 'MID' in new_order:
+                                        mid_idx = new_order.index('MID')
+                                        new_order.insert(mid_idx + 1, 'Qty1')
+                                        changed = True
+                                if 'Qty2' not in new_order:
+                                    if 'Qty1' in new_order:
+                                        qty1_idx = new_order.index('Qty1')
+                                        new_order.insert(qty1_idx + 1, 'Qty2')
+                                        changed = True
+                                data['column_order'] = new_order
+                            # Update output_columns if present
+                            if 'output_columns' in data:
+                                if 'CalcWtNet' in data['output_columns']:
+                                    data['output_columns']['Qty1'] = data['output_columns'].pop('CalcWtNet')
+                                    changed = True
+                                if 'Pcs' in data['output_columns']:
+                                    data['output_columns']['Qty2'] = data['output_columns'].pop('Pcs')
+                                    changed = True
+                                if 'Qty1' not in data['output_columns']:
+                                    data['output_columns']['Qty1'] = 'Qty1'
+                                    changed = True
+                                if 'Qty2' not in data['output_columns']:
+                                    data['output_columns']['Qty2'] = 'Qty2'
+                                    changed = True
+                            if changed:
+                                c.execute("UPDATE mapping_profiles SET mapping_json = ? WHERE profile_name = ?",
+                                         (json.dumps(data), profile_name))
+                                updated += 1
+                        except:
+                            pass
+                if updated > 0:
+                    logger.info(f"Updated {updated} output mapping profiles: CalcWtNet->Qty1, Pcs->Qty2")
+                c.execute("INSERT INTO app_config (key, value) VALUES ('qty_columns_migration_v1', '1')")
+        except Exception as e:
+            logger.warning(f"Failed to migrate output columns: {e}")
 
         conn.commit()
         conn.close()
@@ -867,6 +1012,7 @@ class DerivativeMill(QMainWindow):
         self.current_csv = None
         self.shipment_mapping = {}
         self.output_column_mapping = None  # Will be initialized in setup_output_mapping_tab
+        self.output_column_order = None  # Will be initialized in setup_output_mapping_tab
         self.profile_header_row = 1  # Default header row (1 = first row)
         self.selected_mid = ""
         self.current_worker = None
@@ -1305,7 +1451,7 @@ class DerivativeMill(QMainWindow):
         left_side.addWidget(file_group)
         left_side.addWidget(values_group)
 
-        # ACTIONS GROUP — Clear All + Export Worksheet buttons (side by side)
+        # ACTIONS GROUP — Process/Export + Reprocess + Clear All buttons
         actions_group = QGroupBox("Actions")
         actions_layout = QHBoxLayout()
         actions_layout.setContentsMargins(5, 5, 5, 5)
@@ -1320,12 +1466,20 @@ class DerivativeMill(QMainWindow):
         self.process_btn.setAutoDefault(True)
         self.process_btn.setDefault(False)  # Don't make it the default for the whole window
 
+        self.reprocess_btn = QPushButton("Reprocess")
+        self.reprocess_btn.setEnabled(False)
+        self.reprocess_btn.setFixedHeight(28)
+        self.reprocess_btn.setStyleSheet(self.get_button_style("info"))
+        self.reprocess_btn.clicked.connect(self.reprocess_invoice)
+        self.reprocess_btn.setToolTip("Re-process invoice to pick up database changes")
+
         self.clear_btn = QPushButton("Clear All")
         self.clear_btn.setFixedHeight(28)
         self.clear_btn.setStyleSheet(self.get_button_style("danger"))
         self.clear_btn.clicked.connect(self.clear_all)
 
         actions_layout.addWidget(self.process_btn)
+        actions_layout.addWidget(self.reprocess_btn)
         actions_layout.addWidget(self.clear_btn)
         actions_group.setLayout(actions_layout)
         left_side.addWidget(actions_group)
@@ -1394,9 +1548,9 @@ class DerivativeMill(QMainWindow):
         preview_layout = QVBoxLayout()
 
         self.table = QTableWidget()
-        self.table.setColumnCount(17)
+        self.table.setColumnCount(19)
         self.table.setHorizontalHeaderLabels([
-            "Product No","Value","HTS","MID","CBP_qty1","Dec","Melt","Cast","Smelt","Flag","Steel%","Al%","Cu%","Wood%","Auto%","Non-232%","232 Status"
+            "Product No","Value","HTS","MID","Net Wt","Pcs","Qty Unit","Dec","Melt","Cast","Smelt","Flag","Steel%","Al%","Cu%","Wood%","Auto%","Non-232%","232 Status"
         ])
         # Make columns manually resizable instead of auto-stretch
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
@@ -1785,33 +1939,60 @@ class DerivativeMill(QMainWindow):
         viewer_group.setLayout(viewer_layout)
         appearance_layout.addWidget(viewer_group)
 
-        # Preview Table Colors Group
+        # Preview Table Colors Group - Professional styled color swatches
+        # Colors are saved per-theme so each theme can have its own color scheme
         colors_group = QGroupBox("Preview Table Row Colors")
-        colors_layout = QGridLayout()
-        colors_layout.setSpacing(8)
-        colors_layout.setContentsMargins(10, 10, 10, 10)
+        colors_main_layout = QVBoxLayout()
+        colors_main_layout.setSpacing(12)
+        colors_main_layout.setContentsMargins(15, 15, 15, 15)
 
-        # Helper function to create color picker button
-        def create_color_button(config_key, default_color):
-            """Create a color picker button with saved color (per-user setting)"""
-            button = QPushButton()
-            button.setFixedSize(60, 20)
+        # Helper function to create a professional color swatch button
+        def create_color_swatch(label_text, config_key, default_color):
+            """Create a styled color swatch button with label inside (theme-specific)"""
+            button = QPushButton(label_text)
+            button.setFixedSize(100, 32)
+            button.setCursor(QCursor(Qt.PointingHandCursor))
 
-            # Load saved color from per-user settings or use default
-            saved_color = get_user_setting(config_key, default_color)
+            # Load saved color from per-user settings (theme-specific) or use default
+            saved_color = get_theme_color(config_key, default_color)
 
-            # Set button style with current color
-            button.setStyleSheet(f"background-color: {saved_color}; border: 1px solid #999;")
+            def get_text_color(bg_color):
+                """Calculate contrasting text color (white or black) based on background"""
+                color = QColor(bg_color)
+                # Calculate luminance
+                luminance = (0.299 * color.red() + 0.587 * color.green() + 0.114 * color.blue()) / 255
+                return '#ffffff' if luminance < 0.5 else '#000000'
+
+            def update_button_style(color_hex):
+                text_color = get_text_color(color_hex)
+                button.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {color_hex};
+                        color: {text_color};
+                        border: 2px solid #555;
+                        border-radius: 4px;
+                        font-weight: bold;
+                        font-size: 11px;
+                    }}
+                    QPushButton:hover {{
+                        border: 2px solid #888;
+                    }}
+                    QPushButton:pressed {{
+                        border: 2px solid #aaa;
+                    }}
+                """)
+
+            update_button_style(saved_color)
 
             def pick_color():
-                current_color = get_user_setting(config_key, default_color)
-                color = QColorDialog.getColor(QColor(current_color), dialog, "Choose Color")
+                current_color = get_theme_color(config_key, default_color)
+                color = QColorDialog.getColor(QColor(current_color), dialog, f"Choose {label_text} Color")
                 if color.isValid():
                     color_hex = color.name()
-                    button.setStyleSheet(f"background-color: {color_hex}; border: 1px solid #999;")
-                    # Save to per-user settings
-                    set_user_setting(config_key, color_hex)
-                    logger.info(f"Saved color preference {config_key}: {color_hex}")
+                    update_button_style(color_hex)
+                    # Save to per-user settings (theme-specific)
+                    set_theme_color(config_key, color_hex)
+                    logger.info(f"Saved color preference {config_key} for current theme: {color_hex}")
                     # Refresh the preview table if it exists
                     if hasattr(self, 'table') and self.table.rowCount() > 0:
                         self.refresh_preview_colors()
@@ -1819,28 +2000,49 @@ class DerivativeMill(QMainWindow):
             button.clicked.connect(pick_color)
             return button
 
-        # Section 232 material type color pickers in grid layout
-        # Row 0: Steel, Aluminum, Copper
-        colors_layout.addWidget(QLabel("Steel:"), 0, 0, Qt.AlignRight)
-        colors_layout.addWidget(create_color_button('preview_steel_color', '#4a4a4a'), 0, 1)
-        colors_layout.addWidget(QLabel("Aluminum:"), 0, 2, Qt.AlignRight)
-        colors_layout.addWidget(create_color_button('preview_aluminum_color', '#3498db'), 0, 3)
-        colors_layout.addWidget(QLabel("Copper:"), 0, 4, Qt.AlignRight)
-        colors_layout.addWidget(create_color_button('preview_copper_color', '#e67e22'), 0, 5)
+        # Section 232 Materials header
+        sec232_label = QLabel("Section 232 Materials")
+        sec232_label.setStyleSheet("font-weight: bold; color: #666; margin-bottom: 4px;")
+        colors_main_layout.addWidget(sec232_label)
 
-        # Row 1: Wood, Auto, Non-232
-        colors_layout.addWidget(QLabel("Wood:"), 1, 0, Qt.AlignRight)
-        colors_layout.addWidget(create_color_button('preview_wood_color', '#27ae60'), 1, 1)
-        colors_layout.addWidget(QLabel("Auto:"), 1, 2, Qt.AlignRight)
-        colors_layout.addWidget(create_color_button('preview_auto_color', '#9b59b6'), 1, 3)
-        colors_layout.addWidget(QLabel("Non-232:"), 1, 4, Qt.AlignRight)
-        colors_layout.addWidget(create_color_button('preview_non232_color', '#ff0000'), 1, 5)
+        # First row: Steel, Aluminum, Copper
+        row1_layout = QHBoxLayout()
+        row1_layout.setSpacing(10)
+        row1_layout.addWidget(create_color_swatch("Steel", 'preview_steel_color', '#4a4a4a'))
+        row1_layout.addWidget(create_color_swatch("Aluminum", 'preview_aluminum_color', '#3498db'))
+        row1_layout.addWidget(create_color_swatch("Copper", 'preview_copper_color', '#e67e22'))
+        row1_layout.addStretch()
+        colors_main_layout.addLayout(row1_layout)
 
-        # Row 2: Sec301 Background (spans multiple columns)
-        colors_layout.addWidget(QLabel("Sec301 Background:"), 2, 0, 1, 2, Qt.AlignRight)
-        colors_layout.addWidget(create_color_button('preview_sec301_bg_color', '#ffc8c8'), 2, 2)
+        # Second row: Wood, Auto, Non-232
+        row2_layout = QHBoxLayout()
+        row2_layout.setSpacing(10)
+        row2_layout.addWidget(create_color_swatch("Wood", 'preview_wood_color', '#27ae60'))
+        row2_layout.addWidget(create_color_swatch("Auto", 'preview_auto_color', '#9b59b6'))
+        row2_layout.addWidget(create_color_swatch("Non-232", 'preview_non232_color', '#ff0000'))
+        row2_layout.addStretch()
+        colors_main_layout.addLayout(row2_layout)
 
-        colors_group.setLayout(colors_layout)
+        # Separator line
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        separator.setStyleSheet("margin: 8px 0;")
+        colors_main_layout.addWidget(separator)
+
+        # Other Indicators header
+        other_label = QLabel("Other Indicators")
+        other_label.setStyleSheet("font-weight: bold; color: #666; margin-bottom: 4px;")
+        colors_main_layout.addWidget(other_label)
+
+        # Sec301 row
+        row3_layout = QHBoxLayout()
+        row3_layout.setSpacing(10)
+        row3_layout.addWidget(create_color_swatch("Sec 301", 'preview_sec301_bg_color', '#ffc8c8'))
+        row3_layout.addStretch()
+        colors_main_layout.addLayout(row3_layout)
+
+        colors_group.setLayout(colors_main_layout)
         appearance_layout.addWidget(colors_group)
 
         # Preview Column Visibility Group
@@ -1849,7 +2051,7 @@ class DerivativeMill(QMainWindow):
         
         # Column names and their default visibility
         column_names = [
-            "Product No", "Value", "HTS", "MID", "CBP_qty1", "Dec",
+            "Product No", "Value", "HTS", "MID", "Net Wt", "Pcs", "Qty Unit", "Dec",
             "Melt", "Cast", "Smelt", "Flag", "Steel%", "Al%", "Cu%", "Wood%", "Auto%", "Non-232%", "232 Status"
         ]
         
@@ -2205,10 +2407,14 @@ class DerivativeMill(QMainWindow):
 
         # Update table stylesheet for new theme
         self.update_table_stylesheet()
-        
+
         # Save theme preference (per-user setting)
         set_user_setting('theme', theme_name)
         logger.info(f"Theme changed to: {theme_name}")
+
+        # Refresh preview colors for the new theme (colors are stored per-theme)
+        if hasattr(self, 'table') and self.table.rowCount() > 0:
+            self.refresh_preview_colors()
 
     def apply_font_size(self, size):
         """Apply the selected font size to the application"""
@@ -2492,7 +2698,7 @@ class DerivativeMill(QMainWindow):
             material_flag: String like '232_Steel', '232_Aluminum', '232_Copper', '232_Wood', '232_Auto', 'Non_232', or boolean for backward compatibility
 
         Returns:
-            QColor: Color for the row based on material type
+            QColor: Color for the row based on material type (theme-specific)
         """
         # Default colors for each material type
         default_colors = {
@@ -2522,18 +2728,18 @@ class DerivativeMill(QMainWindow):
             color_key = 'preview_non232_color'
             default_color = default_colors['Non_232']
 
-        # Get color from per-user settings
-        saved_color = get_user_setting(color_key, default_color)
+        # Get color from per-user settings (theme-specific)
+        saved_color = get_theme_color(color_key, default_color)
         return QColor(saved_color)
 
     def get_sec301_bg_color(self):
-        """Get the background color for Section 301 exclusion rows (per-user setting)
+        """Get the background color for Section 301 exclusion rows (theme-specific)
 
         Returns:
             QColor: Background color for Sec301 exclusion rows
         """
         default_color = '#ffc8c8'  # Light red background
-        saved_color = get_user_setting('preview_sec301_bg_color', default_color)
+        saved_color = get_theme_color('preview_sec301_bg_color', default_color)
         return QColor(saved_color)
 
     def refresh_preview_colors(self):
@@ -2545,19 +2751,31 @@ class DerivativeMill(QMainWindow):
             # Temporarily disconnect itemChanged signal to avoid triggering edits
             self.table.blockSignals(True)
 
+            # Get the current Sec301 background color setting
+            sec301_bg_color = self.get_sec301_bg_color()
+
             for row in range(self.table.rowCount()):
-                # Check the 232 Status column (index 16) to determine material type
-                status_item = self.table.item(row, 16)
+                # Check the 232 Status column (index 18) to determine material type
+                # Column order: 0=Product No, 1=Value, 2=HTS, 3=MID, 4=Net Wt, 5=Pcs, 6=Qty Unit, 7=Dec,
+                # 8=Melt, 9=Cast, 10=Smelt, 11=Flag, 12=Steel%, 13=Al%, 14=Cu%, 15=Wood%, 16=Auto%, 17=Non-232%, 18=232 Status
+                status_item = self.table.item(row, 18)
                 status_text = status_item.text() if status_item else ''
 
                 # Get color based on material flag (232_Steel, 232_Aluminum, etc.)
                 row_color = self.get_preview_row_color(status_text)
+
+                # Check if this row has Sec301 exclusion (stored in UserRole + 1)
+                first_item = self.table.item(row, 0)
+                has_sec301 = first_item and first_item.data(Qt.UserRole + 1) == 'sec301_exclusion'
 
                 # Update color for all items in this row
                 for col in range(self.table.columnCount()):
                     item = self.table.item(row, col)
                     if item:
                         item.setForeground(row_color)
+                        # Apply Sec301 background color if applicable
+                        if has_sec301:
+                            item.setBackground(sec301_bg_color)
 
             self.table.blockSignals(False)
         except Exception as e:
@@ -2806,12 +3024,14 @@ class DerivativeMill(QMainWindow):
         self.table.setRowCount(0)
         self.process_btn.setEnabled(False)
         self.process_btn.setText("Process Invoice")  # Reset button text
+        self.reprocess_btn.setEnabled(False)  # Disable reprocess button
         self.progress.setVisible(False)
         self.invoice_check_label.setText("No file loaded")
         self.csv_total_value = 0.0
         self.edit_values_btn.setVisible(False)
         self.bottom_status.setText("Cleared")
         self.status.setStyleSheet("font-size:14pt; padding:8px; background:#f0f0f0;")
+        self.last_processed_df = None  # Clear cached processed data
         logger.info("Process tab cleared")
 
     def browse_file(self):
@@ -2996,6 +3216,8 @@ class DerivativeMill(QMainWindow):
                     else:
                         self.process_btn.setEnabled(False)
                         self.process_btn.setText("Export Worksheet")
+                    # Enable reprocess button when data has been processed
+                    self.reprocess_btn.setEnabled(True)
 
             # Always ensure input fields stay enabled
             self._enable_input_fields()
@@ -3144,7 +3366,7 @@ class DerivativeMill(QMainWindow):
             self.mid_combo.setStyleSheet("border: 2px solid #ff4444; background-color: #ffebee;")
             QTimer.singleShot(1200, lambda: self.mid_combo.setStyleSheet(""))
             self.mid_combo.setFocus()
-            QMessageBox.warning(self, "MID Required", "Please select a MID (Melt ID) before processing.")
+            QMessageBox.warning(self, "MID Required", "Please select a MID (Manufacturer ID) before processing.")
             return
 
         self.process_btn.setEnabled(False)
@@ -3186,34 +3408,32 @@ class DerivativeMill(QMainWindow):
             # Invoice diff
             self.handle_invoice_diff(csv_total, user_ci)
             conn = sqlite3.connect(str(DB_PATH))
-            parts = pd.read_sql("SELECT part_number, hts_code, steel_ratio, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio, non_steel_ratio, cbp_qty1, country_of_melt, country_of_cast, country_of_smelt, Sec301_Exclusion_Tariff FROM parts_master", conn)
+            parts = pd.read_sql("SELECT part_number, hts_code, steel_ratio, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio, non_steel_ratio, qty_unit, country_of_melt, country_of_cast, country_of_smelt, Sec301_Exclusion_Tariff FROM parts_master", conn)
             conn.close()
             df = df.merge(parts, on='part_number', how='left', suffixes=('', '_master'), indicator=True)
             # Track parts not found in the database
             df['_not_in_db'] = df['_merge'] == 'left_only'
             df = df.drop(columns=['_merge'])
 
-            # Merge strategy: Prefer invoice values over database values for all optional fields
-            # For each field, if invoice has it, use it; otherwise fall back to database value
-            merge_fields = ['hts_code', 'steel_ratio', 'aluminum_ratio', 'copper_ratio', 'wood_ratio', 'auto_ratio', 'non_steel_ratio', 'cbp_qty1']
+            # Merge strategy: Prefer database (master) values over invoice values
+            # Database values take precedence; invoice values are only used as fallback when not in DB
+            merge_fields = ['hts_code', 'steel_ratio', 'aluminum_ratio', 'copper_ratio', 'wood_ratio', 'auto_ratio', 'non_steel_ratio', 'qty_unit']
             for field in merge_fields:
                 master_col = f'{field}_master'
-                if field in df.columns and master_col in df.columns:
-                    # Invoice has this column mapped - prefer invoice value, fall back to master
-                    # Use combine_first to handle both NaN and empty strings
-                    df[field] = df[field].replace('', pd.NA).fillna(df[master_col])
-                elif field not in df.columns and master_col in df.columns:
-                    # Invoice doesn't have this column - use master value
-                    df[field] = df[master_col]
+                if master_col in df.columns:
+                    # Database has this field - prefer database value, fall back to invoice if DB is empty
+                    df[field] = df[master_col].replace('', pd.NA).combine_first(
+                        df[field].replace('', pd.NA) if field in df.columns else pd.Series([pd.NA] * len(df))
+                    )
                 elif field not in df.columns:
-                    # Neither invoice nor master has it - set default
+                    # Neither invoice nor database has it - set default
                     if field in ['steel_ratio', 'aluminum_ratio', 'copper_ratio', 'wood_ratio', 'auto_ratio', 'non_steel_ratio']:
                         df[field] = 0.0
                     else:
                         df[field] = ''
 
-            # Convert ratio fields to numeric
-            df['steel_ratio'] = pd.to_numeric(df['steel_ratio'], errors='coerce').fillna(1.0)
+            # Convert ratio fields to numeric (values are percentages 0-100)
+            df['steel_ratio'] = pd.to_numeric(df['steel_ratio'], errors='coerce').fillna(100.0)
             df['aluminum_ratio'] = pd.to_numeric(df['aluminum_ratio'], errors='coerce').fillna(0.0)
             df['copper_ratio'] = pd.to_numeric(df['copper_ratio'], errors='coerce').fillna(0.0)
             df['wood_ratio'] = pd.to_numeric(df['wood_ratio'], errors='coerce').fillna(0.0)
@@ -3226,7 +3446,7 @@ class DerivativeMill(QMainWindow):
             ].copy()
             if not missing.empty:
                 missing = missing[['part_number', 'hts_code', 'value_usd', 'steel_ratio']].copy()
-                missing.columns = ['Part Number', 'HTS Code', 'Value USD', 'Sec 232 Ratio']
+                missing.columns = ['Part Number', 'HTS Code', 'Value USD', 'Sec 232 %']
                 missing = missing.fillna('')
                 self.log_missing_data_warning(missing)
             self._process_with_complete_data(df, vr, user_ci, wt)
@@ -3250,44 +3470,45 @@ class DerivativeMill(QMainWindow):
         df['NonSteelRatio'] = pd.to_numeric(df.get('non_steel_ratio', 0.0), errors='coerce').fillna(0.0)
 
         # Split rows by steel/aluminum/copper/wood/non-232 content BEFORE calculating CalcWtNet
+        # Note: Ratios are stored as percentages (0-100) in the database
         original_row_count = len(df)
         expanded_rows = []
         for _, row in df.iterrows():
-            steel_ratio = row['SteelRatio']
-            aluminum_ratio = row['AluminumRatio']
-            copper_ratio = row['CopperRatio']
-            wood_ratio = row['WoodRatio']
-            auto_ratio = row['AutoRatio']
-            non_steel_ratio = row['NonSteelRatio']
+            steel_pct = row['SteelRatio']
+            aluminum_pct = row['AluminumRatio']
+            copper_pct = row['CopperRatio']
+            wood_pct = row['WoodRatio']
+            auto_pct = row['AutoRatio']
+            non_steel_pct = row['NonSteelRatio']
             original_value = row['value_usd']
 
-            # If no ratios are set, use HTS lookup to determine material type
-            if steel_ratio == 0 and aluminum_ratio == 0 and copper_ratio == 0 and wood_ratio == 0 and auto_ratio == 0 and non_steel_ratio == 0:
+            # If no percentages are set, use HTS lookup to determine material type
+            if steel_pct == 0 and aluminum_pct == 0 and copper_pct == 0 and wood_pct == 0 and auto_pct == 0 and non_steel_pct == 0:
                 # Look up HTS code to determine material type
                 hts = row.get('hts_code', '')
                 material, _, _ = get_232_info(hts)
                 if material == 'Aluminum':
-                    aluminum_ratio = 1.0
+                    aluminum_pct = 100.0
                 elif material == 'Copper':
-                    copper_ratio = 1.0
+                    copper_pct = 100.0
                 elif material == 'Wood':
-                    wood_ratio = 1.0
+                    wood_pct = 100.0
                 elif material == 'Auto':
-                    auto_ratio = 1.0
+                    auto_pct = 100.0
                 elif material == 'Steel':
-                    steel_ratio = 1.0
+                    steel_pct = 100.0
                 else:
                     # Default to 100% steel for backward compatibility if no material found
-                    steel_ratio = 1.0
+                    steel_pct = 100.0
 
             # Create derivative rows in order: Steel first, then Aluminum, Copper, Wood, Auto, Non-232 last
             # This ensures derivatives appear BELOW the primary row in the preview
 
-            # Create steel portion row (if steel_ratio > 0)
-            if steel_ratio > 0:
+            # Create steel portion row (if steel_pct > 0)
+            if steel_pct > 0:
                 steel_row = row.copy()
-                steel_row['value_usd'] = original_value * steel_ratio
-                steel_row['SteelRatio'] = steel_ratio
+                steel_row['value_usd'] = original_value * steel_pct / 100.0
+                steel_row['SteelRatio'] = steel_pct
                 steel_row['AluminumRatio'] = 0.0
                 steel_row['CopperRatio'] = 0.0
                 steel_row['WoodRatio'] = 0.0
@@ -3296,12 +3517,12 @@ class DerivativeMill(QMainWindow):
                 steel_row['_content_type'] = 'steel'
                 expanded_rows.append(steel_row)
 
-            # Create aluminum portion row (if aluminum_ratio > 0)
-            if aluminum_ratio > 0:
+            # Create aluminum portion row (if aluminum_pct > 0)
+            if aluminum_pct > 0:
                 aluminum_row = row.copy()
-                aluminum_row['value_usd'] = original_value * aluminum_ratio
+                aluminum_row['value_usd'] = original_value * aluminum_pct / 100.0
                 aluminum_row['SteelRatio'] = 0.0
-                aluminum_row['AluminumRatio'] = aluminum_ratio
+                aluminum_row['AluminumRatio'] = aluminum_pct
                 aluminum_row['CopperRatio'] = 0.0
                 aluminum_row['WoodRatio'] = 0.0
                 aluminum_row['AutoRatio'] = 0.0
@@ -3309,55 +3530,55 @@ class DerivativeMill(QMainWindow):
                 aluminum_row['_content_type'] = 'aluminum'
                 expanded_rows.append(aluminum_row)
 
-            # Create copper portion row (if copper_ratio > 0)
-            if copper_ratio > 0:
+            # Create copper portion row (if copper_pct > 0)
+            if copper_pct > 0:
                 copper_row = row.copy()
-                copper_row['value_usd'] = original_value * copper_ratio
+                copper_row['value_usd'] = original_value * copper_pct / 100.0
                 copper_row['SteelRatio'] = 0.0
                 copper_row['AluminumRatio'] = 0.0
-                copper_row['CopperRatio'] = copper_ratio
+                copper_row['CopperRatio'] = copper_pct
                 copper_row['WoodRatio'] = 0.0
                 copper_row['AutoRatio'] = 0.0
                 copper_row['NonSteelRatio'] = 0.0
                 copper_row['_content_type'] = 'copper'
                 expanded_rows.append(copper_row)
 
-            # Create wood portion row (if wood_ratio > 0)
-            if wood_ratio > 0:
+            # Create wood portion row (if wood_pct > 0)
+            if wood_pct > 0:
                 wood_row = row.copy()
-                wood_row['value_usd'] = original_value * wood_ratio
+                wood_row['value_usd'] = original_value * wood_pct / 100.0
                 wood_row['SteelRatio'] = 0.0
                 wood_row['AluminumRatio'] = 0.0
                 wood_row['CopperRatio'] = 0.0
-                wood_row['WoodRatio'] = wood_ratio
+                wood_row['WoodRatio'] = wood_pct
                 wood_row['AutoRatio'] = 0.0
                 wood_row['NonSteelRatio'] = 0.0
                 wood_row['_content_type'] = 'wood'
                 expanded_rows.append(wood_row)
 
-            # Create auto portion row (if auto_ratio > 0)
-            if auto_ratio > 0:
+            # Create auto portion row (if auto_pct > 0)
+            if auto_pct > 0:
                 auto_row = row.copy()
-                auto_row['value_usd'] = original_value * auto_ratio
+                auto_row['value_usd'] = original_value * auto_pct / 100.0
                 auto_row['SteelRatio'] = 0.0
                 auto_row['AluminumRatio'] = 0.0
                 auto_row['CopperRatio'] = 0.0
                 auto_row['WoodRatio'] = 0.0
-                auto_row['AutoRatio'] = auto_ratio
+                auto_row['AutoRatio'] = auto_pct
                 auto_row['NonSteelRatio'] = 0.0
                 auto_row['_content_type'] = 'auto'
                 expanded_rows.append(auto_row)
 
-            # Create non-232 portion row (if non_steel_ratio > 0)
-            if non_steel_ratio > 0:
+            # Create non-232 portion row (if non_steel_pct > 0)
+            if non_steel_pct > 0:
                 non_232_row = row.copy()
-                non_232_row['value_usd'] = original_value * non_steel_ratio
+                non_232_row['value_usd'] = original_value * non_steel_pct / 100.0
                 non_232_row['SteelRatio'] = 0.0
                 non_232_row['AluminumRatio'] = 0.0
                 non_232_row['CopperRatio'] = 0.0
                 non_232_row['WoodRatio'] = 0.0
                 non_232_row['AutoRatio'] = 0.0
-                non_232_row['NonSteelRatio'] = non_steel_ratio
+                non_232_row['NonSteelRatio'] = non_steel_pct
                 non_232_row['_content_type'] = 'non_232'
                 expanded_rows.append(non_232_row)
 
@@ -3372,18 +3593,19 @@ class DerivativeMill(QMainWindow):
         else:
             df['CalcWtNet'] = (df['value_usd'] / total_value) * wt
 
-        # Calculate cbp_qty based on cbp_qty1 unit type
-        # KG = use net weight (CalcWtNet), NO = use quantity, blank/empty/other = empty
-        def get_cbp_qty(row):
-            cbp_qty1 = str(row.get('cbp_qty1', '')).strip().upper() if pd.notna(row.get('cbp_qty1')) else ''
-            if cbp_qty1 == '':
-                # Blank/empty defaults to empty
+        # Calculate Qty1 and Qty2 based on qty_unit type
+        # KG = Qty1 is CalcWtNet, Qty2 empty
+        # NO = Qty1 is Pcs, Qty2 empty
+        # NO/KG = Qty1 is Pcs, Qty2 is CalcWtNet
+        def get_qty1(row):
+            qty_unit = str(row.get('qty_unit', '')).strip().upper() if pd.notna(row.get('qty_unit')) else ''
+            if qty_unit == '':
                 return ''
-            elif cbp_qty1 == 'KG':
-                # KG uses net weight
-                return str(int(round(row['CalcWtNet'])))
-            elif cbp_qty1 == 'NO':
-                # NO uses quantity from invoice
+            elif qty_unit == 'KG':
+                # KG: Qty1 is net weight
+                return str(int(round(row['CalcWtNet']))) if row['CalcWtNet'] > 0 else ''
+            elif qty_unit in ['NO', 'NO/KG']:
+                # NO or NO/KG: Qty1 is piece count
                 qty = row.get('quantity', '')
                 if pd.notna(qty) and str(qty).strip():
                     try:
@@ -3392,10 +3614,22 @@ class DerivativeMill(QMainWindow):
                         return ''
                 return ''
             else:
-                # Unknown unit type, return empty
                 return ''
-        
-        df['cbp_qty'] = df.apply(get_cbp_qty, axis=1)
+
+        def get_qty2(row):
+            qty_unit = str(row.get('qty_unit', '')).strip().upper() if pd.notna(row.get('qty_unit')) else ''
+            if qty_unit == 'NO/KG':
+                # NO/KG: Qty2 is net weight
+                return str(int(round(row['CalcWtNet']))) if row['CalcWtNet'] > 0 else ''
+            else:
+                # All other cases: Qty2 is empty
+                return ''
+
+        df['Qty1'] = df.apply(get_qty1, axis=1)
+        df['Qty2'] = df.apply(get_qty2, axis=1)
+
+        # Keep cbp_qty for backward compatibility (uses Qty1 logic)
+        df['cbp_qty'] = df['Qty1']
 
         # Set HTSCode and MID
         df['HTSCode'] = df.get('hts_code', '')
@@ -3476,9 +3710,13 @@ class DerivativeMill(QMainWindow):
         df['Product No'] = df['part_number']
         df['ValueUSD'] = df['value_usd']
 
+        # Ensure quantity column exists (may not be mapped)
+        if 'quantity' not in df.columns:
+            df['quantity'] = ''
+
         # Include invoice_number if mapped (for split by invoice export feature)
         base_preview_cols = [
-            'Product No','ValueUSD','HTSCode','MID','cbp_qty','DecTypeCd',
+            'Product No','ValueUSD','HTSCode','MID','CalcWtNet','quantity','qty_unit','Qty1','Qty2','cbp_qty','DecTypeCd',
             'CountryofMelt','CountryOfCast','PrimCountryOfSmelt','PrimSmeltFlag',
             'SteelRatio','AluminumRatio','CopperRatio','WoodRatio','AutoRatio','NonSteelRatio','_232_flag','_not_in_db','Sec301_Exclusion_Tariff'
         ]
@@ -3709,12 +3947,13 @@ class DerivativeMill(QMainWindow):
                 auto_display = ""
                 non_steel_display = ""
             else:
-                steel_display = f"{steel_ratio_val*100:.1f}%" if steel_ratio_val > 0 else ""
-                aluminum_display = f"{aluminum_ratio_val*100:.1f}%" if aluminum_ratio_val > 0 else ""
-                copper_display = f"{copper_ratio_val*100:.1f}%" if copper_ratio_val > 0 else ""
-                wood_display = f"{wood_ratio_val*100:.1f}%" if wood_ratio_val > 0 else ""
-                auto_display = f"{auto_ratio_val*100:.1f}%" if auto_ratio_val > 0 else ""
-                non_steel_display = f"{non_steel_ratio_val*100:.1f}%" if non_steel_ratio_val > 0 else ""
+                # Values are now stored as percentages (0-100) in the database
+                steel_display = f"{steel_ratio_val:.1f}%" if steel_ratio_val > 0 else ""
+                aluminum_display = f"{aluminum_ratio_val:.1f}%" if aluminum_ratio_val > 0 else ""
+                copper_display = f"{copper_ratio_val:.1f}%" if copper_ratio_val > 0 else ""
+                wood_display = f"{wood_ratio_val:.1f}%" if wood_ratio_val > 0 else ""
+                auto_display = f"{auto_ratio_val:.1f}%" if auto_ratio_val > 0 else ""
+                non_steel_display = f"{non_steel_ratio_val:.1f}%" if non_steel_ratio_val > 0 else ""
 
             # Get Sec301 exclusion tariff value
             sec301_exclusion = str(r.get('Sec301_Exclusion_Tariff', '')).strip()
@@ -3727,29 +3966,43 @@ class DerivativeMill(QMainWindow):
 
             product_no = str(r['Product No'])
 
+            # Get net weight (CalcWtNet) and quantity for display
+            calc_wt_net = r.get('CalcWtNet', 0.0)
+            net_wt_display = str(int(round(calc_wt_net))) if pd.notna(calc_wt_net) and calc_wt_net > 0 else ""
+            quantity = r.get('quantity', '')
+            try:
+                pcs_display = str(int(float(str(quantity).replace(',', '')))) if pd.notna(quantity) and str(quantity).strip() else ""
+            except (ValueError, TypeError):
+                pcs_display = ""
+
+            # Get qty_unit from database (KG, NO, etc.) for display
+            qty_unit_display = str(r.get('qty_unit', '')).strip().upper() if pd.notna(r.get('qty_unit')) else ""
+
             items = [
-                QTableWidgetItem(product_no),
-                value_item,
-                hts_item,
-                QTableWidgetItem(str(r.get('MID',''))),
-                QTableWidgetItem(str(r.get('cbp_qty', ''))),
-                QTableWidgetItem(str(r.get('DecTypeCd',''))),
-                QTableWidgetItem(str(r.get('CountryofMelt',''))),
-                QTableWidgetItem(str(r.get('CountryOfCast',''))),
-                QTableWidgetItem(str(r.get('PrimCountryOfSmelt',''))),
-                QTableWidgetItem(str(r.get('PrimSmeltFlag',''))),
-                QTableWidgetItem(steel_display),
-                QTableWidgetItem(aluminum_display),
-                QTableWidgetItem(copper_display),
-                QTableWidgetItem(wood_display),
-                QTableWidgetItem(auto_display),
-                QTableWidgetItem(non_steel_display),
-                QTableWidgetItem(status_display)
+                QTableWidgetItem(product_no),                        # 0: Product No
+                value_item,                                          # 1: Value
+                hts_item,                                            # 2: HTS
+                QTableWidgetItem(str(r.get('MID',''))),              # 3: MID
+                QTableWidgetItem(net_wt_display),                    # 4: Net Wt
+                QTableWidgetItem(pcs_display),                       # 5: Pcs
+                QTableWidgetItem(qty_unit_display),                  # 6: Qty Unit
+                QTableWidgetItem(str(r.get('DecTypeCd',''))),        # 7: Dec
+                QTableWidgetItem(str(r.get('CountryofMelt',''))),    # 8: Melt
+                QTableWidgetItem(str(r.get('CountryOfCast',''))),    # 9: Cast
+                QTableWidgetItem(str(r.get('PrimCountryOfSmelt',''))), # 10: Smelt
+                QTableWidgetItem(str(r.get('PrimSmeltFlag',''))),    # 11: Flag
+                QTableWidgetItem(steel_display),                     # 12: Steel%
+                QTableWidgetItem(aluminum_display),                  # 13: Al%
+                QTableWidgetItem(copper_display),                    # 14: Cu%
+                QTableWidgetItem(wood_display),                      # 15: Wood%
+                QTableWidgetItem(auto_display),                      # 16: Auto%
+                QTableWidgetItem(non_steel_display),                 # 17: Non-232%
+                QTableWidgetItem(status_display)                     # 18: 232 Status
             ]
 
-            # Make all items editable except Steel%, Al%, Cu%, Wood%, Auto%, Non-232%, and 232 Status
+            # Make all items editable except Net Wt, Pcs, Steel%, Al%, Cu%, Wood%, Auto%, Non-232%, 232 Status
             for idx, item in enumerate(items):
-                if idx not in [10, 11, 12, 13, 14, 15, 16]:  # Not Steel%, Al%, Cu%, Wood%, Auto%, Non-232%, 232 Status
+                if idx not in [4, 5, 12, 13, 14, 15, 16, 17, 18]:  # Not Net Wt, Pcs, Steel%, Al%, Cu%, Wood%, Auto%, Non-232%, 232 Status
                     item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable)
 
             # Set font colors based on Section 232 material type
@@ -3783,6 +4036,9 @@ class DerivativeMill(QMainWindow):
         self.table.itemChanged.connect(self.on_preview_value_edited)
         self.recalculate_total_and_check_match()
         self.apply_column_visibility()  # Apply saved column visibility settings
+
+        # Enable reprocess button after data has been populated
+        self.reprocess_btn.setEnabled(True)
 
         # if has_232:
         #     self.status.setText("SECTION 232 ITEMS • EDIT VALUES • EXPORT WHEN READY")
@@ -3882,12 +4138,12 @@ class DerivativeMill(QMainWindow):
             "part_number": "Part Number *",
             "hts_code": "HTS Code *",
             "mid": "MID *",
-            "steel_ratio": "Steel Ratio *",
-            "aluminum_ratio": "Aluminum Ratio",
-            "copper_ratio": "Copper Ratio",
-            "wood_ratio": "Wood Ratio",
-            "auto_ratio": "Auto Ratio",
-            "cbp_qty1": "CBP Qty1",
+            "steel_ratio": "Steel % *",
+            "aluminum_ratio": "Aluminum %",
+            "copper_ratio": "Copper %",
+            "wood_ratio": "Wood %",
+            "auto_ratio": "Auto %",
+            "qty_unit": "Qty Unit",
             "country_of_melt": "Country of Melt",
             "country_of_cast": "Country of Cast",
             "country_of_smelt": "Country of Smelt",
@@ -4077,13 +4333,13 @@ class DerivativeMill(QMainWindow):
                 'value_usd': 'Value (USD)',
                 'hts_code': 'HTS Code',
                 'mid': 'MID',
-                'cbp_qty1': 'CBP_qty1',
-                'steel_ratio': 'Steel Ratio',
-                'aluminum_ratio': 'Aluminum Ratio',
-                'copper_ratio': 'Copper Ratio',
-                'wood_ratio': 'Wood Ratio',
-                'auto_ratio': 'Auto Ratio',
-                'non_steel_ratio': 'Non-Steel Ratio',
+                'qty_unit': 'Qty Unit',
+                'steel_ratio': 'Steel %',
+                'aluminum_ratio': 'Aluminum %',
+                'copper_ratio': 'Copper %',
+                'wood_ratio': 'Wood %',
+                'auto_ratio': 'Auto %',
+                'non_steel_ratio': 'Non-Steel %',
             }
         try:
             if self.import_csv_path.lower().endswith('.xlsx'):
@@ -4099,47 +4355,49 @@ class DerivativeMill(QMainWindow):
                 QMessageBox.critical(self, "Error", f"Missing required fields: {', '.join(missing)}")
                 self.status.setText("Import failed")
                 return
-            # First pass: validate ratios and collect any rows with total > 1.0
+            # First pass: validate percentages and collect any rows with total > 100%
             invalid_ratio_rows = []
             for idx, r in df.iterrows():
                 part = str(r.get('part_number', '')).strip()
                 if not part:
                     continue
 
-                # Helper function to parse ratio values for validation
-                def parse_ratio_val(value_str):
+                # Helper function to parse percentage values for validation
+                # Database now stores percentages (0-100) instead of ratios (0-1)
+                def parse_percentage_val(value_str):
                     try:
                         if value_str:
-                            ratio = float(value_str)
-                            if ratio > 1.0:
-                                ratio /= 100.0
-                            return max(0.0, ratio)
+                            pct = float(value_str)
+                            # If value is <= 1, assume it's a ratio and convert to percentage
+                            if 0 < pct <= 1.0:
+                                pct *= 100.0
+                            return max(0.0, pct)
                         return 0.0
                     except:
                         return 0.0
 
-                steel_val = parse_ratio_val(str(r.get('steel_ratio', r.get('Sec 232 Content Ratio', r.get('Steel %', '')))).strip())
-                aluminum_val = parse_ratio_val(str(r.get('aluminum_ratio', r.get('Aluminum %', ''))).strip())
-                copper_val = parse_ratio_val(str(r.get('copper_ratio', r.get('Copper %', ''))).strip())
-                wood_val = parse_ratio_val(str(r.get('wood_ratio', r.get('Wood %', ''))).strip())
-                auto_val = parse_ratio_val(str(r.get('auto_ratio', r.get('Auto %', ''))).strip())
-                non_steel_val = parse_ratio_val(str(r.get('non_steel_ratio', r.get('Non-Steel %', ''))).strip())
+                steel_val = parse_percentage_val(str(r.get('steel_ratio', r.get('Sec 232 Content Ratio', r.get('Steel %', '')))).strip())
+                aluminum_val = parse_percentage_val(str(r.get('aluminum_ratio', r.get('Aluminum %', ''))).strip())
+                copper_val = parse_percentage_val(str(r.get('copper_ratio', r.get('Copper %', ''))).strip())
+                wood_val = parse_percentage_val(str(r.get('wood_ratio', r.get('Wood %', ''))).strip())
+                auto_val = parse_percentage_val(str(r.get('auto_ratio', r.get('Auto %', ''))).strip())
+                non_steel_val = parse_percentage_val(str(r.get('non_steel_ratio', r.get('Non-Steel %', ''))).strip())
 
-                total_ratio = steel_val + aluminum_val + copper_val + wood_val + auto_val + non_steel_val
-                if total_ratio > 1.01:  # Allow small floating point tolerance
-                    invalid_ratio_rows.append((part, total_ratio))
+                total_pct = steel_val + aluminum_val + copper_val + wood_val + auto_val + non_steel_val
+                if total_pct > 101.0:  # Allow small floating point tolerance
+                    invalid_ratio_rows.append((part, total_pct))
 
             # If there are invalid rows, reject the import
             if invalid_ratio_rows:
-                msg = f"Import failed. The following {len(invalid_ratio_rows)} part(s) have total ratios exceeding 100%:\n\n"
+                msg = f"Import failed. The following {len(invalid_ratio_rows)} part(s) have total percentages exceeding 100%:\n\n"
                 for part, total in invalid_ratio_rows[:15]:  # Show first 15
-                    msg += f"  {part}: {total*100:.1f}%\n"
+                    msg += f"  {part}: {total:.1f}%\n"
                 if len(invalid_ratio_rows) > 15:
                     msg += f"  ... and {len(invalid_ratio_rows) - 15} more\n"
                 msg += "\nPlease correct these rows in your import file and try again."
 
-                QMessageBox.critical(self, "Invalid Ratios Detected", msg)
-                self.status.setText("Import failed - invalid ratios")
+                QMessageBox.critical(self, "Invalid Percentages Detected", msg)
+                self.status.setText("Import failed - invalid percentages")
                 return
 
             conn = sqlite3.connect(str(DB_PATH))
@@ -4155,8 +4413,8 @@ class DerivativeMill(QMainWindow):
                 mid = str(r.get('mid', '')).strip()
                 # Get client_code if it was mapped, otherwise empty string
                 client_code = str(r.get('client_code', '')).strip() if 'client_code' in df.columns else ""
-                # Get cbp_qty1 if it was mapped, otherwise empty string
-                cbp_qty1 = str(r.get('cbp_qty1', '')).strip() if 'cbp_qty1' in df.columns else ""
+                # Get qty_unit if it was mapped, otherwise empty string
+                qty_unit = str(r.get('qty_unit', '')).strip() if 'qty_unit' in df.columns else ""
                 # Get country codes if mapped, otherwise empty string
                 country_of_melt = str(r.get('country_of_melt', '')).strip().upper()[:2] if 'country_of_melt' in df.columns else ""
                 country_of_cast = str(r.get('country_of_cast', '')).strip().upper()[:2] if 'country_of_cast' in df.columns else ""
@@ -4164,39 +4422,41 @@ class DerivativeMill(QMainWindow):
                 # Get Sec301_Exclusion_Tariff if mapped, otherwise empty string
                 sec301_exclusion = str(r.get('Sec301_Exclusion_Tariff', '')).strip() if 'Sec301_Exclusion_Tariff' in df.columns else ""
 
-                # Helper function to parse ratio values
-                def parse_ratio(value_str):
+                # Helper function to parse percentage values (database stores 0-100)
+                def parse_percentage(value_str):
                     try:
                         if value_str:
-                            ratio = float(value_str)
-                            if ratio > 1.0: ratio /= 100.0
-                            return max(0.0, min(1.0, ratio))
+                            pct = float(value_str)
+                            # If value is <= 1, assume it's a ratio and convert to percentage
+                            if 0 < pct <= 1.0:
+                                pct *= 100.0
+                            return max(0.0, min(100.0, pct))
                         return 0.0
                     except:
                         return 0.0
 
-                # Parse all ratio fields
+                # Parse all percentage fields
                 steel_str = str(r.get('steel_ratio', r.get('Sec 232 Content Ratio', r.get('Steel %', '')))).strip()
-                steel_ratio = parse_ratio(steel_str)
+                steel_ratio = parse_percentage(steel_str)
 
                 aluminum_str = str(r.get('aluminum_ratio', r.get('Aluminum %', ''))).strip()
-                aluminum_ratio = parse_ratio(aluminum_str)
+                aluminum_ratio = parse_percentage(aluminum_str)
 
                 copper_str = str(r.get('copper_ratio', r.get('Copper %', ''))).strip()
-                copper_ratio = parse_ratio(copper_str)
+                copper_ratio = parse_percentage(copper_str)
 
                 wood_str = str(r.get('wood_ratio', r.get('Wood %', ''))).strip()
-                wood_ratio = parse_ratio(wood_str)
+                wood_ratio = parse_percentage(wood_str)
 
                 auto_str = str(r.get('auto_ratio', r.get('Auto %', ''))).strip()
-                auto_ratio = parse_ratio(auto_str)
+                auto_ratio = parse_percentage(auto_str)
 
-                # Calculate non_steel_ratio as remainder (1.0 minus all 232 ratios)
+                # Calculate non_steel_ratio as remainder (100 minus all 232 percentages)
                 total_232 = steel_ratio + aluminum_ratio + copper_ratio + wood_ratio + auto_ratio
-                non_steel_ratio = max(0.0, 1.0 - total_232)
+                non_steel_ratio = max(0.0, 100.0 - total_232)
 
                 c.execute("""INSERT INTO parts_master (part_number, description, hts_code, country_origin, mid, client_code,
-                          steel_ratio, non_steel_ratio, last_updated, cbp_qty1, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio,
+                          steel_ratio, non_steel_ratio, last_updated, qty_unit, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio,
                           country_of_melt, country_of_cast, country_of_smelt, Sec301_Exclusion_Tariff)
                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                           ON CONFLICT(part_number) DO UPDATE SET
@@ -4204,13 +4464,13 @@ class DerivativeMill(QMainWindow):
                           country_origin=excluded.country_origin, mid=excluded.mid,
                           client_code=excluded.client_code, steel_ratio=excluded.steel_ratio,
                           non_steel_ratio=excluded.non_steel_ratio, last_updated=excluded.last_updated,
-                          cbp_qty1=excluded.cbp_qty1, aluminum_ratio=excluded.aluminum_ratio,
+                          qty_unit=excluded.qty_unit, aluminum_ratio=excluded.aluminum_ratio,
                           copper_ratio=excluded.copper_ratio, wood_ratio=excluded.wood_ratio,
                           auto_ratio=excluded.auto_ratio, country_of_melt=excluded.country_of_melt,
                           country_of_cast=excluded.country_of_cast, country_of_smelt=excluded.country_of_smelt,
                           Sec301_Exclusion_Tariff=excluded.Sec301_Exclusion_Tariff""",
                           (part, desc, hts, origin, mid, client_code, steel_ratio, non_steel_ratio, now,
-                           cbp_qty1, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio,
+                           qty_unit, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio,
                            country_of_melt, country_of_cast, country_of_smelt, sec301_exclusion))
                 if c.rowcount:
                     inserted += 1 if conn.total_changes > updated+inserted else 0
@@ -4516,7 +4776,7 @@ class DerivativeMill(QMainWindow):
             "invoice_number": "Invoice Number",
             "quantity": "Quantity",
             "hts_code": "HTS Code",
-            "cbp_qty1": "CBP Qty1"
+            "qty_unit": "Qty Unit"
         }
         for key, name in optional_fields.items():
             target = DropTarget(key, name)
@@ -4559,9 +4819,13 @@ class DerivativeMill(QMainWindow):
         btn_reset_output.setStyleSheet(self.get_button_style("info"))
         btn_reset_output.clicked.connect(self.reset_output_mapping)
 
-        btn_save_output = QPushButton("Save Current Mapping As...")
+        btn_save_output = QPushButton("Save As New...")
         btn_save_output.setStyleSheet(self.get_button_style("success"))
         btn_save_output.clicked.connect(self.save_output_mapping_profile)
+
+        btn_edit_output = QPushButton("Update Profile")
+        btn_edit_output.setStyleSheet(self.get_button_style("warning"))
+        btn_edit_output.clicked.connect(self.update_output_mapping_profile)
 
         btn_delete_output = QPushButton("Delete Profile")
         btn_delete_output.setStyleSheet(self.get_button_style("danger"))
@@ -4569,6 +4833,7 @@ class DerivativeMill(QMainWindow):
 
         top_bar.addWidget(btn_reset_output)
         top_bar.addWidget(btn_save_output)
+        top_bar.addWidget(btn_edit_output)
         top_bar.addWidget(btn_delete_output)
         top_bar.addStretch()
         layout.addWidget(top_bar_widget)
@@ -4707,60 +4972,123 @@ class DerivativeMill(QMainWindow):
         layout.addWidget(options_widget)
 
         # === COLUMN MAPPING SECTION ===
-        mapping_group = QGroupBox("Column Name Mapping")
+        mapping_group = QGroupBox("Column Name Mapping (drag to reorder)")
         mapping_layout = QVBoxLayout(mapping_group)
         mapping_layout.setContentsMargins(10, 10, 10, 10)
 
         # Scrollable area for column mappings
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll_widget = QWidget()
-        scroll_layout = QVBoxLayout(scroll_widget)
+        scroll.setMinimumHeight(300)
+        self.column_mapping_scroll_widget = QWidget()
+        self.column_mapping_scroll_layout = QVBoxLayout(self.column_mapping_scroll_widget)
+        self.column_mapping_scroll_layout.setSpacing(2)
+        self.column_mapping_scroll_layout.setContentsMargins(5, 5, 5, 5)
 
-        # Create form for column name mappings
-        form_widget = QWidget()
-        form_layout = QFormLayout(form_widget)
-        form_layout.setLabelAlignment(Qt.AlignRight)
+        # Default column order and mappings
+        # Qty1/Qty2 are conditional: based on qty_unit (KG, NO, NO/KG)
+        self.default_output_column_order = [
+            'Product No', 'ValueUSD', 'HTSCode', 'MID', 'Qty1', 'Qty2',
+            'DecTypeCd', 'CountryofMelt', 'CountryOfCast', 'PrimCountryOfSmelt',
+            'PrimSmeltFlag', 'SteelRatio', 'AluminumRatio', 'CopperRatio',
+            'WoodRatio', 'AutoRatio', 'NonSteelRatio', '232_Status'
+        ]
 
         # Default column mappings (internal_name: display_name)
-        self.default_output_columns = {
-            'Product No': 'Product No',
-            'ValueUSD': 'ValueUSD',
-            'HTSCode': 'HTSCode',
-            'MID': 'MID',
-            'CalcWtNet': 'CalcWtNet',
-            'DecTypeCd': 'DecTypeCd',
-            'CountryofMelt': 'CountryofMelt',
-            'CountryOfCast': 'CountryOfCast',
-            'PrimCountryOfSmelt': 'PrimCountryOfSmelt',
-            'PrimSmeltFlag': 'PrimSmeltFlag',
-            'SteelRatio': 'SteelRatio',
-            'AluminumRatio': 'AluminumRatio',
-            'CopperRatio': 'CopperRatio',
-            'WoodRatio': 'WoodRatio',
-            'AutoRatio': 'AutoRatio',
-            'NonSteelRatio': 'NonSteelRatio',
-            '232_Status': '232_Status'
-        }
+        self.default_output_columns = {name: name for name in self.default_output_column_order}
 
-        # Initialize current mapping if not exists or is None
+        # Initialize current mapping and order if not exists or is None
         if not hasattr(self, 'output_column_mapping') or self.output_column_mapping is None:
             self.output_column_mapping = self.default_output_columns.copy()
+        if not hasattr(self, 'output_column_order') or self.output_column_order is None:
+            self.output_column_order = self.default_output_column_order.copy()
 
-        # Create text inputs for each column
-        self.output_column_inputs = {}
-        for internal_name, display_name in self.output_column_mapping.items():
-            line_edit = QLineEdit(display_name)
-            line_edit.setMinimumWidth(200)
-            line_edit.textChanged.connect(lambda text, key=internal_name: self.update_output_column_name(key, text))
-            self.output_column_inputs[internal_name] = line_edit
-            form_layout.addRow(f"{internal_name}:", line_edit)
+        # Build the column rows UI
+        self.rebuild_column_mapping_ui()
 
-        scroll_layout.addWidget(form_widget)
-        scroll.setWidget(scroll_widget)
+        scroll.setWidget(self.column_mapping_scroll_widget)
         mapping_layout.addWidget(scroll)
         layout.addWidget(mapping_group, 1)
         self.tab_output_map.setLayout(layout)
+
+    def rebuild_column_mapping_ui(self):
+        """Rebuild the column mapping UI based on current order"""
+        # Clear existing widgets
+        while self.column_mapping_scroll_layout.count():
+            item = self.column_mapping_scroll_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        self.output_column_inputs = {}
+        self.output_column_rows = {}
+
+        for idx, internal_name in enumerate(self.output_column_order):
+            row_widget = QWidget()
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(5)
+
+            # Up button
+            btn_up = QPushButton("▲")
+            btn_up.setFixedSize(25, 25)
+            btn_up.setEnabled(idx > 0)
+            btn_up.clicked.connect(lambda checked, name=internal_name: self.move_column_up(name))
+            btn_up.setToolTip("Move column up")
+
+            # Down button
+            btn_down = QPushButton("▼")
+            btn_down.setFixedSize(25, 25)
+            btn_down.setEnabled(idx < len(self.output_column_order) - 1)
+            btn_down.clicked.connect(lambda checked, name=internal_name: self.move_column_down(name))
+            btn_down.setToolTip("Move column down")
+
+            # Internal name label
+            label = QLabel(f"{internal_name}:")
+            label.setFixedWidth(140)
+            label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+            # Display name input
+            display_name = self.output_column_mapping.get(internal_name, internal_name)
+            line_edit = QLineEdit(display_name)
+            line_edit.setMinimumWidth(150)
+            line_edit.textChanged.connect(lambda text, key=internal_name: self.update_output_column_name(key, text))
+            self.output_column_inputs[internal_name] = line_edit
+
+            row_layout.addWidget(btn_up)
+            row_layout.addWidget(btn_down)
+            row_layout.addWidget(label)
+            row_layout.addWidget(line_edit)
+            row_layout.addStretch()
+
+            self.output_column_rows[internal_name] = row_widget
+            self.column_mapping_scroll_layout.addWidget(row_widget)
+
+        # Add stretch at the end
+        self.column_mapping_scroll_layout.addStretch()
+
+    def move_column_up(self, internal_name):
+        """Move a column up in the order"""
+        if internal_name not in self.output_column_order:
+            return
+        idx = self.output_column_order.index(internal_name)
+        if idx > 0:
+            # Swap with previous
+            self.output_column_order[idx], self.output_column_order[idx - 1] = \
+                self.output_column_order[idx - 1], self.output_column_order[idx]
+            self.rebuild_column_mapping_ui()
+            logger.info(f"Moved column '{internal_name}' up to position {idx}")
+
+    def move_column_down(self, internal_name):
+        """Move a column down in the order"""
+        if internal_name not in self.output_column_order:
+            return
+        idx = self.output_column_order.index(internal_name)
+        if idx < len(self.output_column_order) - 1:
+            # Swap with next
+            self.output_column_order[idx], self.output_column_order[idx + 1] = \
+                self.output_column_order[idx + 1], self.output_column_order[idx]
+            self.rebuild_column_mapping_ui()
+            logger.info(f"Moved column '{internal_name}' down to position {idx + 2}")
 
     def update_output_column_name(self, internal_name, new_name):
         """Update the output column mapping when user changes a name"""
@@ -4810,14 +5138,12 @@ class DerivativeMill(QMainWindow):
             self.bottom_status.setText(f"Output font color set to {color_hex}")
 
     def reset_output_mapping(self):
-        """Reset output column mapping to default values"""
+        """Reset output column mapping to default values and order"""
         self.output_column_mapping = self.default_output_columns.copy()
-        if hasattr(self, 'output_column_inputs'):
-            for internal_name, line_edit in self.output_column_inputs.items():
-                if is_widget_valid(line_edit):
-                    line_edit.blockSignals(True)
-                    line_edit.setText(self.default_output_columns[internal_name])
-                    line_edit.blockSignals(False)
+        self.output_column_order = self.default_output_column_order.copy()
+        # Rebuild the UI with default order
+        if hasattr(self, 'column_mapping_scroll_layout'):
+            self.rebuild_column_mapping_ui()
         self.bottom_status.setText("Output mapping reset to default")
         logger.info("Output column mapping reset to default")
 
@@ -4892,21 +5218,19 @@ class DerivativeMill(QMainWindow):
                 if 'column_mapping' in profile_data:
                     # New format
                     self.output_column_mapping = profile_data.get('column_mapping', {})
+                    self.output_column_order = profile_data.get('column_order', self.default_output_column_order)
                     column_visibility = profile_data.get('column_visibility', {})
                     split_by_invoice = profile_data.get('split_by_invoice', False)
                 else:
                     # Old format - just column mapping
                     self.output_column_mapping = profile_data
+                    self.output_column_order = self.default_output_column_order.copy()
                     column_visibility = {}
                     split_by_invoice = False
 
-                # Update column name inputs (if Configuration dialog is still open)
-                if hasattr(self, 'output_column_inputs'):
-                    for internal_name, line_edit in self.output_column_inputs.items():
-                        if is_widget_valid(line_edit):
-                            line_edit.blockSignals(True)
-                            line_edit.setText(self.output_column_mapping.get(internal_name, internal_name))
-                            line_edit.blockSignals(False)
+                # Rebuild column mapping UI with new order (if Configuration dialog is still open)
+                if hasattr(self, 'column_mapping_scroll_layout'):
+                    self.rebuild_column_mapping_ui()
 
                 # Update column visibility checkboxes (if Configuration dialog is still open)
                 if hasattr(self, 'output_column_visibility'):
@@ -4971,9 +5295,13 @@ class DerivativeMill(QMainWindow):
             # Get split by invoice setting
             split_by_invoice = self.split_by_invoice if hasattr(self, 'split_by_invoice') else False
 
+            # Get column order
+            column_order = self.output_column_order if hasattr(self, 'output_column_order') else self.default_output_column_order
+
             # Save all settings in new format
             profile_data = {
                 'column_mapping': self.output_column_mapping,
+                'column_order': column_order,
                 'column_visibility': column_visibility,
                 'split_by_invoice': split_by_invoice
             }
@@ -4994,6 +5322,59 @@ class DerivativeMill(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save profile:\n{e}")
             logger.error(f"Failed to save output mapping profile: {e}")
+
+    def update_output_mapping_profile(self):
+        """Update the currently selected output mapping profile with current settings"""
+        if not is_widget_valid(self.output_profile_combo):
+            return
+        profile_name = self.output_profile_combo.currentText()
+        if not profile_name or profile_name == "-- Select Profile --":
+            QMessageBox.information(self, "No Profile Selected", "Please select a profile to update.")
+            return
+
+        reply = QMessageBox.question(self, "Confirm Update",
+                                     f"Update profile '{profile_name}' with current settings?",
+                                     QMessageBox.Yes | QMessageBox.No)
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+
+            # Build column visibility dict from checkboxes
+            column_visibility = {}
+            if hasattr(self, 'output_column_visibility'):
+                for col_name, checkbox in self.output_column_visibility.items():
+                    column_visibility[col_name] = checkbox.isChecked()
+
+            # Get split by invoice setting
+            split_by_invoice = self.split_by_invoice if hasattr(self, 'split_by_invoice') else False
+
+            # Get column order
+            column_order = self.output_column_order if hasattr(self, 'output_column_order') else self.default_output_column_order
+
+            # Save all settings in new format
+            profile_data = {
+                'column_mapping': self.output_column_mapping,
+                'column_order': column_order,
+                'column_visibility': column_visibility,
+                'split_by_invoice': split_by_invoice
+            }
+            mapping_str = json.dumps(profile_data)
+            now = datetime.now().isoformat()
+
+            c.execute("""UPDATE output_column_mappings SET mapping_json=?, created_date=?
+                         WHERE profile_name=?""", (mapping_str, now, profile_name))
+            conn.commit()
+            conn.close()
+
+            self.bottom_status.setText(f"Updated output mapping profile: {profile_name}")
+            logger.info(f"Updated output mapping profile: {profile_name}")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to update profile:\n{e}")
+            logger.error(f"Failed to update output mapping profile: {e}")
 
     def delete_output_mapping_profile(self):
         """Delete selected output mapping profile"""
@@ -5428,14 +5809,19 @@ class DerivativeMill(QMainWindow):
         btn_import_units = QPushButton("Import HTS Units")
         btn_import_units.setStyleSheet(self.get_button_style("secondary"))
         btn_import_units.setToolTip("Import CBP Qty1 units from HTS reference file")
+        btn_export_missing = QPushButton("Export Missing HTS")
+        btn_export_missing.setStyleSheet(self.get_button_style("secondary"))
+        btn_export_missing.setToolTip("Export HTS codes missing CBP Qty1 to the reference file for lookup")
         btn_add.clicked.connect(self.add_part_row)
         btn_del.clicked.connect(self.delete_selected_parts)
         btn_save.clicked.connect(self.save_parts_table)
         btn_refresh.clicked.connect(self.refresh_parts_table)
         btn_import_units.clicked.connect(self.import_hts_units)
+        btn_export_missing.clicked.connect(self.export_missing_hts_codes)
         edit_box.addWidget(QLabel("Edit:"))
         edit_box.addWidget(btn_add); edit_box.addWidget(btn_del); edit_box.addWidget(btn_save); edit_box.addWidget(btn_refresh)
         edit_box.addWidget(btn_import_units)
+        edit_box.addWidget(btn_export_missing)
         edit_box.addStretch()
         layout.addLayout(edit_box)
 
@@ -5447,7 +5833,15 @@ class DerivativeMill(QMainWindow):
         query_controls.addWidget(QLabel("SELECT * FROM parts_master WHERE"))
         
         self.query_field = QComboBox()
-        self.query_field.addItems(["part_number", "description", "hts_code", "country_origin", "mid", "client_code", "steel_ratio", "aluminum_ratio", "copper_ratio", "wood_ratio", "non_steel_ratio", "cbp_qty1", "Sec301_Exclusion_Tariff"])
+        # Display user-friendly labels but map to actual database column names
+        self.query_field_map = {
+            "part_number": "part_number", "description": "description", "hts_code": "hts_code",
+            "country_origin": "country_origin", "mid": "mid", "client_code": "client_code",
+            "steel_%": "steel_ratio", "aluminum_%": "aluminum_ratio", "copper_%": "copper_ratio",
+            "wood_%": "wood_ratio", "non_steel_%": "non_steel_ratio", "qty_unit": "qty_unit",
+            "Sec301_Exclusion_Tariff": "Sec301_Exclusion_Tariff"
+        }
+        self.query_field.addItems(list(self.query_field_map.keys()))
         query_controls.addWidget(self.query_field)
         
         self.query_operator = QComboBox()
@@ -5498,7 +5892,7 @@ class DerivativeMill(QMainWindow):
         search_box = QHBoxLayout()
         search_box.addWidget(QLabel("Quick Search:"))
         self.search_field_combo = QComboBox()
-        self.search_field_combo.addItems(["All Fields","part_number","description","hts_code","country_origin","mid","client_code","steel_ratio","aluminum_ratio","copper_ratio","wood_ratio","auto_ratio","non_steel_ratio","cbp_qty1","Sec301_Exclusion_Tariff"])
+        self.search_field_combo.addItems(["All Fields","part_number","description","hts_code","country_origin","mid","client_code","steel_%","aluminum_%","copper_%","wood_%","auto_%","non_steel_%","qty_unit","Sec301_Exclusion_Tariff"])
         # Refocus search input after combo selection
         self.search_field_combo.currentIndexChanged.connect(lambda: self.search_input.setFocus())
         search_box.addWidget(self.search_field_combo)
@@ -5516,7 +5910,7 @@ class DerivativeMill(QMainWindow):
         self.parts_table = QTableWidget()
         self.parts_table.setColumnCount(15)
         self.parts_table.setHorizontalHeaderLabels([
-            "part_number", "description", "hts_code", "country_origin", "mid", "client_code", "steel_ratio", "aluminum_ratio", "copper_ratio", "wood_ratio", "auto_ratio", "non_steel_ratio", "cbp_qty1", "Sec301_Exclusion_Tariff", "updated_date"
+            "part_number", "description", "hts_code", "country_origin", "mid", "client_code", "steel_%", "aluminum_%", "copper_%", "wood_%", "auto_%", "non_steel_%", "qty_unit", "Sec301_Exclusion_Tariff", "updated_date"
         ])
         self.parts_table.setEditTriggers(QTableWidget.AllEditTriggers)
         self.parts_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -5536,7 +5930,7 @@ class DerivativeMill(QMainWindow):
             df = pd.read_sql("""
                 SELECT part_number, description, hts_code, country_origin, mid, client_code,
                        steel_ratio, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio, non_steel_ratio,
-                       cbp_qty1, Sec301_Exclusion_Tariff, last_updated as updated_date
+                       qty_unit, Sec301_Exclusion_Tariff, last_updated as updated_date
                 FROM parts_master ORDER BY part_number
             """, conn)
             conn.close()
@@ -5546,11 +5940,86 @@ class DerivativeMill(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Cannot load parts:\n{e}")
 
+    def import_hts_units_silent(self, part_numbers=None):
+        """
+        Silently import CBP Qty1 units from HTS reference file for specific parts.
+        Called automatically after saving new parts to database.
+
+        Args:
+            part_numbers: List of part numbers to update (if None, updates all parts)
+
+        Returns:
+            Number of parts updated, or -1 if reference file not found
+        """
+        ref_file = BASE_DIR / "Resources" / "References" / "HTS_qty1.xlsx"
+
+        if not ref_file.exists():
+            logger.debug("HTS_qty1.xlsx reference file not found, skipping HTS units import")
+            return -1
+
+        try:
+            # Read the reference file
+            if ref_file.suffix.lower() in ['.xlsx', '.xls']:
+                df_ref = pd.read_excel(ref_file)
+            else:
+                df_ref = pd.read_csv(ref_file)
+
+            # Expect columns: 'Tariff No' and 'Uom 1'
+            if 'Tariff No' not in df_ref.columns or 'Uom 1' not in df_ref.columns:
+                logger.warning("HTS reference file missing required columns")
+                return -1
+
+            # Clean up HTS codes (remove dots for matching)
+            def normalize_hts(hts):
+                if pd.isna(hts):
+                    return ""
+                return str(hts).replace(".", "").strip()
+
+            # Create lookup dictionary
+            hts_units = {}
+            for _, row in df_ref.iterrows():
+                hts_code = normalize_hts(row['Tariff No'])
+                unit = str(row['Uom 1']).strip() if pd.notna(row['Uom 1']) else ""
+                if hts_code and unit:
+                    hts_units[hts_code] = unit
+
+            # Update database
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+
+            # Get parts with HTS codes (filter by part_numbers if provided)
+            if part_numbers:
+                placeholders = ','.join(['?' for _ in part_numbers])
+                c.execute(f"SELECT part_number, hts_code FROM parts_master WHERE hts_code IS NOT NULL AND hts_code != '' AND part_number IN ({placeholders})", part_numbers)
+            else:
+                c.execute("SELECT part_number, hts_code FROM parts_master WHERE hts_code IS NOT NULL AND hts_code != ''")
+            parts = c.fetchall()
+
+            updated = 0
+            for part_number, hts_code in parts:
+                normalized = normalize_hts(hts_code)
+                if normalized in hts_units:
+                    c.execute("UPDATE parts_master SET qty_unit=? WHERE part_number=?",
+                              (hts_units[normalized], part_number))
+                    updated += c.rowcount
+
+            conn.commit()
+            conn.close()
+
+            if updated > 0:
+                logger.info(f"Silently updated {updated} parts with Qty Unit values")
+
+            return updated
+
+        except Exception as e:
+            logger.error(f"Silent HTS units import failed: {e}")
+            return -1
+
     def import_hts_units(self):
         """Import CBP Qty1 units from HTS reference file and update parts_master"""
         # Look for the reference file in Resources/References
         ref_file = BASE_DIR / "Resources" / "References" / "HTS_qty1.xlsx"
-        
+
         if not ref_file.exists():
             # Allow user to select a file
             file_path, _ = QFileDialog.getOpenFileName(
@@ -5601,22 +6070,123 @@ class DerivativeMill(QMainWindow):
             for part_number, hts_code in parts:
                 normalized = normalize_hts(hts_code)
                 if normalized in hts_units:
-                    c.execute("UPDATE parts_master SET cbp_qty1=? WHERE part_number=?",
+                    c.execute("UPDATE parts_master SET qty_unit=? WHERE part_number=?",
                               (hts_units[normalized], part_number))
                     updated += c.rowcount
-            
+
             conn.commit()
             conn.close()
-            
+
             # Refresh the table
             self.refresh_parts_table()
-            
-            QMessageBox.information(self, "Import Complete", 
-                f"Updated {updated} parts with CBP Qty1 units.\n"
+
+            QMessageBox.information(self, "Import Complete",
+                f"Updated {updated} parts with Qty Unit values.\n"
                 f"Reference file had {len(hts_units)} HTS codes.")
             
         except Exception as e:
             QMessageBox.critical(self, "Import Error", f"Failed to import HTS units:\n{e}")
+
+    def export_missing_hts_codes(self):
+        """Export HTS codes that are missing Qty Unit values to the reference file for lookup."""
+        ref_file = BASE_DIR / "Resources" / "References" / "HTS_qty1.xlsx"
+
+        try:
+            # Query database for unique HTS codes missing qty_unit
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+            c.execute("""
+                SELECT DISTINCT hts_code
+                FROM parts_master
+                WHERE hts_code IS NOT NULL
+                AND hts_code != ''
+                AND (qty_unit IS NULL OR qty_unit = '')
+                ORDER BY hts_code
+            """)
+            missing_hts = [row[0] for row in c.fetchall()]
+            conn.close()
+
+            if not missing_hts:
+                QMessageBox.information(self, "No Missing HTS Codes",
+                    "All parts with HTS codes already have Qty Unit values assigned.")
+                return
+
+            # Load existing reference file if it exists
+            existing_hts = set()
+            if ref_file.exists():
+                try:
+                    df_existing = pd.read_excel(ref_file)
+                    if 'Tariff No' in df_existing.columns:
+                        # Normalize existing HTS codes for comparison
+                        for hts in df_existing['Tariff No']:
+                            if pd.notna(hts):
+                                normalized = str(hts).replace(".", "").strip()
+                                existing_hts.add(normalized)
+                except Exception as e:
+                    logger.warning(f"Could not read existing reference file: {e}")
+
+            # Filter out HTS codes that already exist in the reference file
+            def normalize_hts(hts):
+                return str(hts).replace(".", "").strip()
+
+            new_hts_codes = []
+            for hts in missing_hts:
+                normalized = normalize_hts(hts)
+                if normalized not in existing_hts:
+                    new_hts_codes.append(hts)
+
+            if not new_hts_codes:
+                QMessageBox.information(self, "No New HTS Codes",
+                    f"All {len(missing_hts)} HTS codes missing Qty Unit are already in the reference file.\n\n"
+                    "Try clicking 'Import HTS Units' to update the database from the reference file.")
+                return
+
+            # Create or append to the reference file
+            if ref_file.exists():
+                # Read existing file and append new rows
+                df_existing = pd.read_excel(ref_file)
+
+                # Create dataframe for new HTS codes with empty Uom 1
+                df_new = pd.DataFrame({
+                    'Tariff No': new_hts_codes,
+                    'Uom 1': [''] * len(new_hts_codes)
+                })
+
+                # Append new rows
+                df_combined = pd.concat([df_existing, df_new], ignore_index=True)
+                df_combined.to_excel(ref_file, index=False)
+
+                QMessageBox.information(self, "Export Complete",
+                    f"Added {len(new_hts_codes)} new HTS codes to the reference file.\n\n"
+                    f"File: {ref_file}\n\n"
+                    "Please fill in the 'Uom 1' column for the new entries, then click 'Import HTS Units' to update the database.")
+            else:
+                # Create new file
+                # Ensure directory exists
+                ref_file.parent.mkdir(parents=True, exist_ok=True)
+
+                df_new = pd.DataFrame({
+                    'Tariff No': new_hts_codes,
+                    'Uom 1': [''] * len(new_hts_codes)
+                })
+                df_new.to_excel(ref_file, index=False)
+
+                QMessageBox.information(self, "Export Complete",
+                    f"Created reference file with {len(new_hts_codes)} HTS codes.\n\n"
+                    f"File: {ref_file}\n\n"
+                    "Please fill in the 'Uom 1' column, then click 'Import HTS Units' to update the database.")
+
+            # Ask if user wants to open the file
+            reply = QMessageBox.question(self, "Open File?",
+                "Would you like to open the reference file now?",
+                QMessageBox.Yes | QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                import subprocess
+                subprocess.Popen(['start', '', str(ref_file)], shell=True)
+
+        except Exception as e:
+            logger.error(f"Failed to export missing HTS codes: {e}")
+            QMessageBox.critical(self, "Export Error", f"Failed to export missing HTS codes:\n{e}")
 
     def add_part_row(self):
         row = self.parts_table.rowCount()
@@ -5658,37 +6228,38 @@ class DerivativeMill(QMainWindow):
                 origin = (items[3].text() or "").upper()[:2]
                 mid = items[4].text() if items[4] else ""
                 client_code = items[5].text() if items[5] else ""
+                # Parse percentage values (0-100 format)
                 try:
                     steel = float(items[6].text()) if items[6] and items[6].text() else 0.0
-                    steel = max(0.0, min(1.0, steel))
+                    steel = max(0.0, min(100.0, steel))
                 except:
                     steel = 0.0
                 try:
                     aluminum = float(items[7].text()) if items[7] and items[7].text() else 0.0
-                    aluminum = max(0.0, min(1.0, aluminum))
+                    aluminum = max(0.0, min(100.0, aluminum))
                 except:
                     aluminum = 0.0
                 try:
                     copper = float(items[8].text()) if items[8] and items[8].text() else 0.0
-                    copper = max(0.0, min(1.0, copper))
+                    copper = max(0.0, min(100.0, copper))
                 except:
                     copper = 0.0
                 try:
                     wood = float(items[9].text()) if items[9] and items[9].text() else 0.0
-                    wood = max(0.0, min(1.0, wood))
+                    wood = max(0.0, min(100.0, wood))
                 except:
                     wood = 0.0
                 try:
                     auto = float(items[10].text()) if items[10] and items[10].text() else 0.0
-                    auto = max(0.0, min(1.0, auto))
+                    auto = max(0.0, min(100.0, auto))
                 except:
                     auto = 0.0
-                # Non-232 ratio is remainder after all Section 232 materials
-                non_steel = max(0.0, 1.0 - steel - aluminum - copper - wood - auto)
-                cbp_qty1 = items[12].text() if items[12] else ""
+                # Non-232 percentage is remainder after all Section 232 materials
+                non_steel = max(0.0, 100.0 - steel - aluminum - copper - wood - auto)
+                qty_unit = items[12].text() if items[12] else ""
                 sec301_exclusion = items[13].text() if items[13] else ""
                 c.execute("""INSERT INTO parts_master (part_number, description, hts_code, country_origin, mid, client_code,
-                          steel_ratio, non_steel_ratio, last_updated, cbp_qty1, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio,
+                          steel_ratio, non_steel_ratio, last_updated, qty_unit, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio,
                           Sec301_Exclusion_Tariff)
                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                           ON CONFLICT(part_number) DO UPDATE SET
@@ -5696,10 +6267,10 @@ class DerivativeMill(QMainWindow):
                           country_origin=excluded.country_origin, mid=excluded.mid,
                           client_code=excluded.client_code, steel_ratio=excluded.steel_ratio,
                           non_steel_ratio=excluded.non_steel_ratio, last_updated=excluded.last_updated,
-                          cbp_qty1=excluded.cbp_qty1, aluminum_ratio=excluded.aluminum_ratio,
+                          qty_unit=excluded.qty_unit, aluminum_ratio=excluded.aluminum_ratio,
                           copper_ratio=excluded.copper_ratio, wood_ratio=excluded.wood_ratio,
                           auto_ratio=excluded.auto_ratio, Sec301_Exclusion_Tariff=excluded.Sec301_Exclusion_Tariff""",
-                          (part, desc, hts, origin, mid, client_code, steel, non_steel, now, cbp_qty1, aluminum, copper, wood, auto, sec301_exclusion))
+                          (part, desc, hts, origin, mid, client_code, steel, non_steel, now, qty_unit, aluminum, copper, wood, auto, sec301_exclusion))
                 if c.rowcount: saved += 1
             conn.commit(); conn.close()
             QMessageBox.information(self, "Success", f"Saved {saved} parts!")
@@ -5756,11 +6327,12 @@ class DerivativeMill(QMainWindow):
                 hts_code = self.table.item(table_row, 2).text() if self.table.item(table_row, 2) else ""
 
                 # Insert the part with minimal information (part_number and MID)
+                # Percentages are in 0-100 format; default to 100% non-232
                 c.execute("""INSERT INTO parts_master (part_number, description, hts_code, country_origin, mid, client_code,
-                          steel_ratio, non_steel_ratio, last_updated, cbp_qty1, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio,
+                          steel_ratio, non_steel_ratio, last_updated, qty_unit, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio,
                           Sec301_Exclusion_Tariff)
                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                          (part_number, '', hts_code, '', mid, '', 0.0, 1.0, now, '', 0.0, 0.0, 0.0, 0.0, ''))
+                          (part_number, '', hts_code, '', mid, '', 0.0, 100.0, now, '', 0.0, 0.0, 0.0, 0.0, ''))
 
                 if c.rowcount:
                     added_count += 1
@@ -5794,14 +6366,16 @@ class DerivativeMill(QMainWindow):
     def run_custom_query(self):
         """Execute SQL query builder query"""
         try:
-            field = self.query_field.currentText()
+            display_field = self.query_field.currentText()
+            # Map display name to actual database column name
+            field = self.query_field_map.get(display_field, display_field)
             operator = self.query_operator.currentText()
             value = self.query_value.text().strip()
-            
+
             if not value:
                 QMessageBox.warning(self, "Query Error", "Please enter a value to search for.")
                 return
-            
+
             # Build WHERE clause
             if operator == "LIKE":
                 where_clause = f"{field} LIKE ?"
@@ -5865,9 +6439,9 @@ class DerivativeMill(QMainWindow):
         self.parts_table.blockSignals(True)
         self.parts_table.setRowCount(len(df))
         # Map table column headers to dataframe columns
-        # Headers: part_number, description, hts_code, country_origin, mid, client_code, 
-        #          steel_ratio, aluminum_ratio, copper_ratio, wood_ratio, non_steel_ratio, 
-        #          cbp_qty1, updated_date
+        # Headers: part_number, description, hts_code, country_origin, mid, client_code,
+        #          steel_ratio, aluminum_ratio, copper_ratio, wood_ratio, non_steel_ratio,
+        #          qty_unit, updated_date
         for i, row in df.iterrows():
             # Column 0: part_number
             self.parts_table.setItem(i, 0, QTableWidgetItem(str(row.get('part_number', '')) if pd.notna(row.get('part_number')) else ""))
@@ -5893,8 +6467,8 @@ class DerivativeMill(QMainWindow):
             self.parts_table.setItem(i, 10, QTableWidgetItem(str(row.get('auto_ratio', 0.0)) if pd.notna(row.get('auto_ratio')) else "0.0"))
             # Column 11: non_steel_ratio
             self.parts_table.setItem(i, 11, QTableWidgetItem(str(row.get('non_steel_ratio', 0.0)) if pd.notna(row.get('non_steel_ratio')) else "0.0"))
-            # Column 12: cbp_qty1
-            self.parts_table.setItem(i, 12, QTableWidgetItem(str(row.get('cbp_qty1', '')) if pd.notna(row.get('cbp_qty1')) else ""))
+            # Column 12: qty_unit
+            self.parts_table.setItem(i, 12, QTableWidgetItem(str(row.get('qty_unit', '')) if pd.notna(row.get('qty_unit')) else ""))
             # Column 13: Sec301_Exclusion_Tariff
             self.parts_table.setItem(i, 13, QTableWidgetItem(str(row.get('Sec301_Exclusion_Tariff', '')) if pd.notna(row.get('Sec301_Exclusion_Tariff')) else ""))
             # Column 14: updated_date
@@ -6829,9 +7403,118 @@ class DerivativeMill(QMainWindow):
         else:
             self.final_export()
 
+    def reprocess_invoice(self):
+        """Re-process the current invoice to pick up database changes (e.g., deleted/updated parts)."""
+        if not self.current_csv:
+            QMessageBox.warning(self, "No File", "No invoice file is currently loaded.")
+            return
+
+        # First, save any "Not Found" parts that have been edited in the preview table
+        # This saves HTS codes, MIDs, etc. that the user has entered for new parts
+        added_count = self.save_preview_parts_to_db()
+        if added_count > 0:
+            self.status.setText(f"Saved {added_count} new part(s) to database, reprocessing...")
+            logger.info(f"Saved {added_count} new parts to database before reprocessing")
+
+        # Clear the cached processed data so start_processing will run fresh
+        self.last_processed_df = None
+        self.table.setRowCount(0)
+
+        # Reset button states
+        self.process_btn.setText("Process Invoice")
+        self.process_btn.setEnabled(True)
+        self.reprocess_btn.setEnabled(False)
+
+        # Run processing
+        self.status.setText("Reprocessing invoice...")
+        self.start_processing()
+        logger.info("Reprocessed invoice to pick up database changes")
+
+    def save_preview_parts_to_db(self):
+        """
+        Save parts from the preview table to the database.
+        This saves "Not Found" parts with their edited HTS codes, MIDs, etc.
+        Returns the count of parts added/updated.
+        """
+        if self.table.rowCount() == 0:
+            return 0
+
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+            now = datetime.now().isoformat()
+            added_count = 0
+            updated_count = 0
+
+            # Track which parts we've already processed (avoid duplicates from derivative rows)
+            processed_parts = set()
+            # Track parts that were added or updated (for HTS units import)
+            saved_part_numbers = []
+
+            for row in range(self.table.rowCount()):
+                # Get part number from column 0
+                part_item = self.table.item(row, 0)
+                if not part_item:
+                    continue
+                part_number = part_item.text().strip()
+                if not part_number or part_number in processed_parts:
+                    continue
+                processed_parts.add(part_number)
+
+                # Get values from the preview table
+                hts_code = self.table.item(row, 2).text().strip() if self.table.item(row, 2) else ""
+                mid = self.table.item(row, 3).text().strip() if self.table.item(row, 3) else ""
+
+                # Check if part exists in database
+                c.execute("SELECT hts_code, mid FROM parts_master WHERE part_number = ?", (part_number,))
+                existing = c.fetchone()
+
+                if existing:
+                    # Part exists - update if HTS or MID changed and current values are not empty
+                    existing_hts, existing_mid = existing
+                    if hts_code and hts_code != existing_hts:
+                        c.execute("UPDATE parts_master SET hts_code = ?, last_updated = ? WHERE part_number = ?",
+                                  (hts_code, now, part_number))
+                        updated_count += 1
+                        saved_part_numbers.append(part_number)
+                        logger.info(f"Updated HTS code for {part_number}: {existing_hts} -> {hts_code}")
+                else:
+                    # Part doesn't exist - add it if we have at least an HTS code or MID
+                    # Percentages are in 0-100 format; default to 100% non-232
+                    if hts_code or mid:
+                        c.execute("""INSERT INTO parts_master (part_number, description, hts_code, country_origin, mid, client_code,
+                                  steel_ratio, non_steel_ratio, last_updated, qty_unit, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio,
+                                  Sec301_Exclusion_Tariff)
+                                  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                                  (part_number, '', hts_code, '', mid, '', 0.0, 100.0, now, '', 0.0, 0.0, 0.0, 0.0, ''))
+                        added_count += 1
+                        saved_part_numbers.append(part_number)
+                        logger.info(f"Added new part to database: {part_number} (HTS: {hts_code}, MID: {mid})")
+
+            conn.commit()
+            conn.close()
+
+            total = added_count + updated_count
+            if total > 0:
+                # Refresh the MID dropdown and parts table
+                self.load_available_mids()
+
+                # Import HTS units for the saved parts (updates CBP Qty1 field)
+                if saved_part_numbers:
+                    units_updated = self.import_hts_units_silent(saved_part_numbers)
+                    if units_updated > 0:
+                        logger.info(f"Updated CBP Qty1 units for {units_updated} saved parts")
+
+            return total
+
+        except Exception as e:
+            logger.error(f"Failed to save preview parts to database: {e}")
+            return 0
+
     def _export_single_file(self, df_out, cols, filename, is_network, steel_mask, aluminum_mask, copper_mask, wood_mask, auto_mask, non232_mask, sec301_mask):
         """Export a single Excel file with formatting. Used by both regular export and split-by-invoice export."""
         from openpyxl.styles import PatternFill
+        from openpyxl.worksheet.page import PrintPageSetup
 
         # Helper function to get export color from per-user settings
         def get_export_color(config_key, default_color):
@@ -6908,6 +7591,12 @@ class DerivativeMill(QMainWindow):
                         if is_sec301:
                             cell.fill = orange_fill
 
+                # Set page setup: landscape orientation, fit all columns on one page
+                ws.page_setup.orientation = 'landscape'
+                ws.page_setup.fitToPage = True
+                ws.page_setup.fitToWidth = 1
+                ws.page_setup.fitToHeight = 0  # 0 means unlimited pages vertically
+
             # Copy to network location
             out = OUTPUT_DIR / filename
             shutil.copy2(temp_path, out)
@@ -6967,6 +7656,12 @@ class DerivativeMill(QMainWindow):
                     adjusted_width = max_length + 2
                     ws.column_dimensions[column_letter].width = adjusted_width
 
+                # Set page setup: landscape orientation, fit all columns on one page
+                ws.page_setup.orientation = 'landscape'
+                ws.page_setup.fitToPage = True
+                ws.page_setup.fitToWidth = 1
+                ws.page_setup.fitToHeight = 0  # 0 means unlimited pages vertically
+
         logger.info(f"Exported: {out.name}")
         return out
 
@@ -7005,19 +7700,19 @@ class DerivativeMill(QMainWindow):
             value = value_cell.data(Qt.UserRole) if value_cell else 0.0
             
             # Get ratio percentages as floats (handle empty values)
-            # Column indices: 10=Steel%, 11=Al%, 12=Cu%, 13=Wood%, 14=Auto%, 15=Non-232%, 16=232 Status
-            steel_text = self.table.item(i, 10).text() if self.table.item(i, 10) else ""
-            aluminum_text = self.table.item(i, 11).text() if self.table.item(i, 11) else ""
-            copper_text = self.table.item(i, 12).text() if self.table.item(i, 12) else ""
-            wood_text = self.table.item(i, 13).text() if self.table.item(i, 13) else ""
-            auto_text = self.table.item(i, 14).text() if self.table.item(i, 14) else ""
+            # Column indices: 12=Steel%, 13=Al%, 14=Cu%, 15=Wood%, 16=Auto%, 17=Non-232%, 18=232 Status
+            steel_text = self.table.item(i, 12).text() if self.table.item(i, 12) else ""
+            aluminum_text = self.table.item(i, 13).text() if self.table.item(i, 13) else ""
+            copper_text = self.table.item(i, 14).text() if self.table.item(i, 14) else ""
+            wood_text = self.table.item(i, 15).text() if self.table.item(i, 15) else ""
+            auto_text = self.table.item(i, 16).text() if self.table.item(i, 16) else ""
 
-            # Parse percentages safely
+            # Parse percentages safely (values are already in 0-100 format)
             def parse_pct(text):
                 if not text or text.strip() == '':
                     return 0.0
                 try:
-                    return float(text.replace('%', '').strip()) / 100.0
+                    return float(text.replace('%', '').strip())
                 except (ValueError, TypeError):
                     return 0.0
 
@@ -7027,13 +7722,15 @@ class DerivativeMill(QMainWindow):
             wood_ratio = parse_pct(wood_text)
             auto_ratio = parse_pct(auto_text)
 
-            # Get Non-232% ratio from column 15
-            non_steel_text = self.table.item(i, 15).text() if self.table.item(i, 15) else ""
+            # Get Non-232% ratio from column 17
+            non_steel_text = self.table.item(i, 17).text() if self.table.item(i, 17) else ""
             non_steel_ratio = parse_pct(non_steel_text)
 
-            # Get Sec301 exclusion data from last_processed_df if available
+            # Get Sec301 exclusion data and Qty1/Qty2 from last_processed_df if available
             sec301_exclusion = ""
             invoice_number = ""
+            qty1_value = ""
+            qty2_value = ""
             if self.last_processed_df is not None and i < len(self.last_processed_df):
                 sec301_exclusion = str(self.last_processed_df.iloc[i].get('Sec301_Exclusion_Tariff', '')).strip()
                 if sec301_exclusion in ['', 'nan', 'None']:
@@ -7042,25 +7739,38 @@ class DerivativeMill(QMainWindow):
                 invoice_number = str(self.last_processed_df.iloc[i].get('invoice_number', '')).strip()
                 if invoice_number in ['', 'nan', 'None']:
                     invoice_number = ""
+                # Get Qty1 and Qty2 (calculated based on qty_unit during processing)
+                qty1_value = str(self.last_processed_df.iloc[i].get('Qty1', '')).strip()
+                if qty1_value in ['nan', 'None']:
+                    qty1_value = ""
+                qty2_value = str(self.last_processed_df.iloc[i].get('Qty2', '')).strip()
+                if qty2_value in ['nan', 'None']:
+                    qty2_value = ""
 
+            # Column indices after adding Net Wt and Pcs:
+            # 0=Product No, 1=Value, 2=HTS, 3=MID, 4=Net Wt, 5=Pcs, 6=Qty Unit, 7=Dec,
+            # 8=Melt, 9=Cast, 10=Smelt, 11=Flag, 12=Steel%, 13=Al%, 14=Cu%, 15=Wood%, 16=Auto%, 17=Non-232%, 18=232 Status
             row_data = {
                 'Product No': self.table.item(i, 0).text() if self.table.item(i, 0) else "",
                 'ValueUSD': value,
                 'HTSCode': self.table.item(i, 2).text() if self.table.item(i, 2) else "",
                 'MID': self.table.item(i, 3).text() if self.table.item(i, 3) else "",
                 'CalcWtNet': round(float(self.table.item(i, 4).text())) if self.table.item(i, 4) and self.table.item(i, 4).text() else 0,
-                'DecTypeCd': self.table.item(i, 5).text() if self.table.item(i, 5) else "CO",
-                'CountryofMelt': self.table.item(i, 6).text() if self.table.item(i, 6) else "",
-                'CountryOfCast': self.table.item(i, 7).text() if self.table.item(i, 7) else "",
-                'PrimCountryOfSmelt': self.table.item(i, 8).text() if self.table.item(i, 8) else "",
-                'PrimSmeltFlag': self.table.item(i, 9).text() if self.table.item(i, 9) else "",
+                'Pcs': int(self.table.item(i, 5).text()) if self.table.item(i, 5) and self.table.item(i, 5).text() else 0,
+                'Qty1': int(qty1_value) if qty1_value else '',
+                'Qty2': int(qty2_value) if qty2_value else '',
+                'DecTypeCd': self.table.item(i, 7).text() if self.table.item(i, 7) else "CO",
+                'CountryofMelt': self.table.item(i, 8).text() if self.table.item(i, 8) else "",
+                'CountryOfCast': self.table.item(i, 9).text() if self.table.item(i, 9) else "",
+                'PrimCountryOfSmelt': self.table.item(i, 10).text() if self.table.item(i, 10) else "",
+                'PrimSmeltFlag': self.table.item(i, 11).text() if self.table.item(i, 11) else "",
                 'SteelRatio': steel_ratio,
                 'AluminumRatio': aluminum_ratio,
                 'CopperRatio': copper_ratio,
                 'WoodRatio': wood_ratio,
                 'AutoRatio': auto_ratio,
                 'NonSteelRatio': non_steel_ratio,
-                '_232_flag': self.table.item(i, 16).text() if self.table.item(i, 16) else "",  # Column 16 is 232_Status
+                '_232_flag': self.table.item(i, 18).text() if self.table.item(i, 18) else "",  # Column 18 is 232_Status
                 '_sec301_exclusion': sec301_exclusion,
                 '_invoice_number': invoice_number
             }
@@ -7080,40 +7790,47 @@ class DerivativeMill(QMainWindow):
         sec301_mask = df_out['_sec301_exclusion'].fillna('').astype(str).str.strip().ne('') & \
                       ~df_out['_sec301_exclusion'].fillna('').astype(str).str.contains('nan|None', case=False, na=False)
         
-        # Convert ratios to percentage strings for export
-        df_out['SteelRatio'] = (df_out['SteelRatio'] * 100).round(1).astype(str) + "%"
-        df_out['AluminumRatio'] = (df_out['AluminumRatio'] * 100).round(1).astype(str) + "%"
-        df_out['CopperRatio'] = (df_out['CopperRatio'] * 100).round(1).astype(str) + "%"
-        df_out['WoodRatio'] = (df_out['WoodRatio'] * 100).round(1).astype(str) + "%"
-        df_out['AutoRatio'] = (df_out['AutoRatio'] * 100).round(1).astype(str) + "%"
-        df_out['NonSteelRatio'] = (df_out['NonSteelRatio'] * 100).round(1).astype(str) + "%"
+        # Convert ratio values to percentage strings for export (values are already 0-100)
+        df_out['SteelRatio'] = df_out['SteelRatio'].round(1).astype(str) + "%"
+        df_out['AluminumRatio'] = df_out['AluminumRatio'].round(1).astype(str) + "%"
+        df_out['CopperRatio'] = df_out['CopperRatio'].round(1).astype(str) + "%"
+        df_out['WoodRatio'] = df_out['WoodRatio'].round(1).astype(str) + "%"
+        df_out['AutoRatio'] = df_out['AutoRatio'].round(1).astype(str) + "%"
+        df_out['NonSteelRatio'] = df_out['NonSteelRatio'].round(1).astype(str) + "%"
         df_out['232_Status'] = df_out['_232_flag'].fillna('')
 
-        # Build initial columns list
-        cols = ['Product No','ValueUSD','HTSCode','MID','CalcWtNet','DecTypeCd',
-            'CountryofMelt','CountryOfCast','PrimCountryOfSmelt','PrimSmeltFlag']
+        # Build columns list using saved column order (or default order)
+        # Qty1/Qty2 replace CalcWtNet/Pcs for conditional quantity output based on qty_unit
+        if hasattr(self, 'output_column_order') and self.output_column_order:
+            all_columns = self.output_column_order
+        else:
+            all_columns = ['Product No', 'ValueUSD', 'HTSCode', 'MID', 'Qty1', 'Qty2',
+                'DecTypeCd', 'CountryofMelt', 'CountryOfCast', 'PrimCountryOfSmelt',
+                'PrimSmeltFlag', 'SteelRatio', 'AluminumRatio', 'CopperRatio',
+                'WoodRatio', 'AutoRatio', 'NonSteelRatio', '232_Status']
 
-        # Add ratio columns based on visibility settings
+        # Filter columns based on visibility settings
+        cols = []
         ratio_columns = ['SteelRatio', 'AluminumRatio', 'CopperRatio', 'WoodRatio', 'AutoRatio', 'NonSteelRatio']
-        for col in ratio_columns:
-            # Check if column is visible (default to True if not set)
-            is_visible = True
-            try:
-                conn = sqlite3.connect(str(DB_PATH))
-                c = conn.cursor()
-                c.execute("SELECT value FROM app_config WHERE key = ?", (f'export_col_visible_{col}',))
-                row = c.fetchone()
-                conn.close()
-                if row:
-                    is_visible = row[0] == 'True'
-            except:
-                pass
-
-            if is_visible:
+        for col in all_columns:
+            # Check visibility for ratio columns
+            if col in ratio_columns:
+                is_visible = True
+                try:
+                    conn = sqlite3.connect(str(DB_PATH))
+                    c = conn.cursor()
+                    c.execute("SELECT value FROM app_config WHERE key = ?", (f'export_col_visible_{col}',))
+                    row = c.fetchone()
+                    conn.close()
+                    if row:
+                        is_visible = row[0] == 'True'
+                except:
+                    pass
+                if is_visible:
+                    cols.append(col)
+            else:
+                # Non-ratio columns are always included
                 cols.append(col)
-
-        # Always add 232_Status at the end
-        cols.append('232_Status')
 
         # Apply custom column mapping if set
         if hasattr(self, 'output_column_mapping') and self.output_column_mapping:
@@ -7548,16 +8265,33 @@ class DerivativeMill(QMainWindow):
 
     def load_available_mids(self):
         try:
+            # Preserve current selection before reloading
+            current_selection = self.selected_mid
+
             conn = sqlite3.connect(str(DB_PATH))
             df = pd.read_sql("SELECT DISTINCT mid FROM parts_master WHERE mid IS NOT NULL AND mid != '' ORDER BY mid", conn)
             conn.close()
             self.available_mids = df['mid'].tolist()
             if self.available_mids:
+                self.mid_combo.blockSignals(True)  # Prevent signal during reload
                 self.mid_combo.clear()
                 self.mid_combo.addItem("-- Select MID --")  # Placeholder item
                 self.mid_combo.addItems(self.available_mids)
-                self.mid_combo.setCurrentIndex(0)  # Start with placeholder
-                self.selected_mid = ""  # No default selection
+
+                # Restore previous selection if it exists in the new list
+                if current_selection and current_selection in self.available_mids:
+                    index = self.mid_combo.findText(current_selection)
+                    if index >= 0:
+                        self.mid_combo.setCurrentIndex(index)
+                        self.selected_mid = current_selection
+                    else:
+                        self.mid_combo.setCurrentIndex(0)
+                        self.selected_mid = ""
+                else:
+                    self.mid_combo.setCurrentIndex(0)  # Start with placeholder
+                    self.selected_mid = ""  # No default selection
+
+                self.mid_combo.blockSignals(False)
         except Exception as e:
             logger.error(f"MID load failed: {e}")
 
