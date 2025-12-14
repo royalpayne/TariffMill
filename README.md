@@ -1,289 +1,184 @@
 # DerivativeMill
 
-**Derivative Tariff Compliance and Invoice Processing System**
+**Professional Customs Documentation Processing System**
 
-DerivativeMill is a professional-grade application for processing customs invoices, managing parts databases, and ensuring Section 232 tariff compliance. It's designed for customs brokers, supply chain professionals, and enterprises managing complex tariff requirements.
+DerivativeMill is a desktop application for import/export businesses, customs brokers, and trade compliance professionals. It automates invoice processing, manages parts databases, and ensures compliance with Section 232 and Section 301 tariff requirements.
 
-## Features
+## Key Features
 
-- **Invoice Processing**: Automated extraction and processing of invoice data (PDF, CSV, XLSX)
-- **Parts Database Management**: Import, search, and manage parts with HTS codes and tariff information
-- **Tariff Compliance**: Integrated Section 232 tariff database for derivative content classification
-- **Customizable Mapping**: Create and save invoice mapping profiles for different suppliers
-- **Professional Reporting**: Export compliant CSV reports for customs documentation
-- **Cross-Platform**: Runs on Windows, macOS, and Linux
-- **No OCR Required**: Focuses on structured data extraction from tables
+### Invoice Processing
+- Process commercial invoices (CSV, XLSX formats)
+- Generate CBP-compliant upload worksheets
+- Automatic value distribution and calculations
+- Preview and edit data before export
+- Split exports by invoice number
 
-## Quick Start
+### Parts Master Database
+- Maintain comprehensive parts inventory with HTS codes
+- Track country of origin, melt, cast, and smelt locations
+- Store material ratios (steel, aluminum, copper, wood, automotive)
+- Import parts from CSV files
+- Advanced search and query builder
 
-### Windows 11 Users
+### Tariff Compliance
+- **Section 232**: Automatic tracking of steel, aluminum, copper, wood, and automotive tariffs
+- **Section 301**: Identify products with exclusion tariffs
+- Color-coded indicators for quick identification
+- Material classification with customizable colors
 
-**For Windows 11 installation, see [DerivativeMill_Win11_Install/README.md](DerivativeMill_Win11_Install/README.md)**
+### Flexible Configuration
+- Save and reuse invoice mapping profiles for different suppliers
+- Customizable output column mapping
+- Export profiles for different broker requirements
+- Theme support (Light/Dark modes)
 
-The Windows installer package includes:
-- Automated build scripts (batch and PowerShell)
-- Portable standalone executable
-- Professional installer
-- Complete installation documentation
+## Screenshots
 
-### Minimum Requirements
-- Python 3.8 or higher
-- 4GB RAM, 500MB disk space
+The application features:
+- Modern tabbed interface
+- Real-time preview table with color-coded rows
+- Configurable input/output directories
+- Integrated MID (Manufacturer ID) management
 
-### Installation (5 minutes)
+## System Requirements
 
-**1. Clone or download the application:**
+- **OS**: Windows 10 or Windows 11
+- **RAM**: 4GB minimum (8GB recommended)
+- **Disk**: 200MB free space
+- **Display**: 1280x720 minimum (1920x1080 recommended)
+
+## Installation
+
+### Windows Executable (Recommended)
+
+Download the latest `DerivativeMill.exe` from the [Releases](https://github.com/royalpayne/DerivativeMill/releases) page.
+
+No installation required - just run the executable.
+
+### From Source
+
+1. **Clone the repository:**
 ```bash
-cd /path/to/DerivativeMill
+git clone https://github.com/royalpayne/DerivativeMill.git
+cd DerivativeMill
 ```
 
-**2. Create virtual environment:**
+2. **Create virtual environment:**
 ```bash
-# Windows
 python -m venv venv
-.\venv\Scripts\activate.bat
-
-# macOS/Linux
-python3 -m venv venv
-source venv/bin/activate
+.\venv\Scripts\activate  # Windows
 ```
 
-**3. Install dependencies:**
+3. **Install dependencies:**
 ```bash
 pip install -r requirements.txt
 ```
 
-**4. Run the application:**
+4. **Run the application:**
 ```bash
 python DerivativeMill/derivativemill.py
 ```
 
-See [QUICKSTART.md](QUICKSTART.md) for more details.
+## Usage
 
-## Documentation
+### Basic Workflow
 
-- **[QUICKSTART.md](QUICKSTART.md)** - Get running in 5 minutes
-- **[SETUP.md](SETUP.md)** - Detailed platform-specific setup instructions
-- **[TESTING_CHECKLIST.md](TESTING_CHECKLIST.md)** - Quality assurance and testing guide
+1. **Configure Input/Output Folders** - Settings menu to set your working directories
+2. **Load Invoice** - Select a CSV or XLSX invoice file
+3. **Map Columns** - Create or select a mapping profile for the invoice format
+4. **Enter Values** - Set commercial invoice total and select MID
+5. **Process** - Click "Process Invoice" to generate the preview
+6. **Review** - Check the preview table, edit values if needed
+7. **Export** - Click "Export Worksheet" to generate the final file
 
-## Supported Platforms
+### Parts Database
 
-| Platform | Version | Status |
-|----------|---------|--------|
-| Windows | 10, 11 | ✓ Fully Supported |
-| macOS | 10.13+ | ✓ Fully Supported |
-| Linux | Most distributions | ✓ Fully Supported |
+- **Import**: Use the Parts Import dialog to bulk import from CSV
+- **Search**: Quick search or use the Query Builder for advanced searches
+- **Edit**: Double-click cells in the Parts Master tab to edit
+- **HTS Lookup**: Automatic CBP quantity unit lookup for HTS codes
 
-## Key Capabilities
+### Output Mapping
 
-### Invoice Processing
-- Load PDF, CSV, or Excel invoices
-- Extract and validate data automatically
-- Map invoice columns to standard fields
-- Preview and edit extracted data before processing
+Customize which columns appear in your export:
+1. Go to Configuration → Output Mapping tab
+2. Drag columns to reorder
+3. Check/uncheck columns to include/exclude
+4. Save as a profile for reuse
 
-### Parts Management
-- Import parts database from CSV
-- Search parts by number, HTS code, or description
-- View derivative content ratios
-- Track Section 232 classification
-
-### Tariff Compliance
-- Integrated HTS code lookup
-- Section 232 derivative content database
-- Material classification system
-- Compliance documentation export
-
-### Data Organization
-- Supplier folder management
-- Automatic file archiving
-- Version-controlled exports
-- Audit trail via Log View
-
-## Architecture
+## File Structure
 
 ```
 DerivativeMill/
-├── derivativemill.py      (Main application)
-├── platform_utils.py      (Cross-platform utilities)
+├── derivativemill.py     # Main application
+├── version.py            # Version management
 ├── Resources/
-│   ├── derivativemill.db  (SQLite database)
-│   └── [...icons, data...]
-├── Input/                 (Supplier invoice folders)
-├── Output/                (Processed exports)
-└── ProcessedPDFs/         (Archived files)
-```
-
-## Technology Stack
-
-- **PyQt5**: Cross-platform desktop GUI
-- **Pandas**: Data manipulation and analysis
-- **pdfplumber**: PDF table extraction
-- **SQLite3**: Local database
-- **OpenPyXL**: Excel file handling
-- **Pillow**: Image processing
-
-## Installation Methods
-
-### From Source
-```bash
-python DerivativeMill/derivativemill.py
-```
-
-### As Package
-```bash
-pip install -e .
-derivativemill
-```
-
-### As Executable (Optional)
-```bash
-pip install PyInstaller
-pyinstaller --onefile DerivativeMill/derivativemill.py
+│   ├── derivativemill.db # SQLite database
+│   └── icon.ico          # Application icon
+├── Input/                # Invoice files to process
+│   └── Processed/        # Archived processed files
+└── Output/               # Generated export files
+    └── Processed/        # Archived exports
 ```
 
 ## Configuration
 
-All settings are stored in a local SQLite database:
-- Theme preferences
-- Folder locations
-- Column mappings
-- Supplier configurations
-- User preferences
+Settings are stored in:
+- **Database**: `Resources/derivativemill.db` (shared settings, parts data)
+- **Registry**: Windows Registry (per-user preferences like theme, colors)
 
-Settings are automatically loaded on startup and saved when changed.
+### Customizable Options
 
-## Data Storage
+- Input/Output directory locations
+- Preview table row colors (per material type)
+- Font size and theme
+- Column visibility
+- Auto-refresh interval
+- Excel viewer application
 
-### Windows
-- Data: `%APPDATA%\DerivativeMill\`
-- Application files: `.\Resources\`
+## Technology Stack
 
-### macOS
-- Data: `~/Library/Application Support/DerivativeMill/`
-- Cache: `~/Library/Caches/DerivativeMill/`
-
-### Linux
-- Data: `~/.local/share/DerivativeMill/` (XDG compliant)
-- Config: `~/.config/DerivativeMill/`
-- Cache: `~/.cache/DerivativeMill/`
-
-## Troubleshooting
-
-### Application won't start
-1. Verify Python 3.8+: `python --version`
-2. Activate virtual environment
-3. Reinstall dependencies: `pip install -r requirements.txt --force-reinstall`
-4. Check Log View tab for errors
-
-### File operations fail
-1. Verify folder permissions (Settings → Folder Locations)
-2. Check disk space (500MB+ required)
-3. Avoid network drives for best performance
-
-### Database issues
-- Database is automatically backed up before updates
-- Check Log View for database errors
-- Delete `Resources/derivativemill.db` to reset (will lose settings)
-
-See [SETUP.md](SETUP.md) for comprehensive troubleshooting.
-
-## Performance
-
-| Operation | Time |
-|-----------|------|
-| Startup | 5-15 seconds |
-| Loading 5000-row CSV | 2-5 seconds |
-| Processing invoice | 1-3 seconds |
-| Exporting data | 2-5 seconds |
-
-Performance depends on:
-- File size
-- System RAM and CPU
-- Disk speed (local drives faster than network)
-
-## System Specifications
-
-**Minimum**:
-- Python 3.8
-- 4GB RAM
-- 500MB disk space
-- 1280x720 display
-
-**Recommended**:
-- Python 3.10+
-- 8GB+ RAM
-- SSD with 1GB+ free space
-- 1920x1080+ display
-
-## Compliance
-
-- Section 232 tariff rules (August 18, 2025)
-- HTS code classification
-- Customs documentation standards
-- Data validation and error checking
-
-## Development
-
-### Create Virtual Environment
-```bash
-python3 -m venv venv
-source venv/bin/activate  # or .\venv\Scripts\activate on Windows
-```
-
-### Install Development Dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### Run Tests
-See [TESTING_CHECKLIST.md](TESTING_CHECKLIST.md) for comprehensive testing.
-
-### Build Executable
-```bash
-pip install PyInstaller
-pyinstaller --onefile --windowed DerivativeMill/derivativemill.py
-```
+- **PyQt5**: Desktop GUI framework
+- **Pandas**: Data processing
+- **SQLite**: Local database
+- **OpenPyXL**: Excel file handling
 
 ## Version
 
-**Current Version**: v1.08
+**Current Version**: v0.90.2
 
-**Release Date**: December 2024
+Version is automatically derived from git tags. See [version.py](DerivativeMill/version.py) for details.
 
-**Compatibility**: Python 3.8+, All major platforms
+## Recent Changes
 
-## License
+### v0.90.2
+- Add landscape page setup for exported Excel files
+- Add reprocess button for re-processing after database changes
+- Fix merge strategy to prefer database values over invoice values
+- Add animated spinner to splash screen
+- Add license system framework (disabled, for future use)
 
-See LICENSE file for details.
+### v0.90.1
+- Export profiles and output column mapping
+- Section 301 exclusion tariff tracking
+- Theme-specific color settings
+- UI improvements and bug fixes
+
+### v0.90.0
+- Major refactoring and modernization
+- Improved Parts Master management
+- Query builder for advanced searches
+- Multiple invoice mapping profiles
 
 ## Support
 
-- **Documentation**: [SETUP.md](SETUP.md), [QUICKSTART.md](QUICKSTART.md)
-- **Issues**: Check Log View tab for application errors
-- **Testing**: Use [TESTING_CHECKLIST.md](TESTING_CHECKLIST.md)
+- **Issues**: [GitHub Issues](https://github.com/royalpayne/DerivativeMill/issues)
+- **Documentation**: See this README and in-app help
 
-## Contributing
+## License
 
-For improvements or bug reports:
-1. Test thoroughly using TESTING_CHECKLIST.md
-2. Document platform-specific issues
-3. Include version and platform information
-
-## Changelog
-
-### v1.08
-- Removed OCR functionality
-- Removed batch processing
-- Cross-platform compatibility improvements
-- Enhanced documentation
-- Standardized file path handling
-- Added platform utilities module
-- Improved Linux XDG compliance
-
-### v1.07 and earlier
-See git history for details.
+Proprietary software. See LICENSE file for details.
 
 ---
 
-**Ready to process your first invoice?** Start with [QUICKSTART.md](QUICKSTART.md)!
+**Ready to streamline your customs documentation?** Download the latest release and get started!
