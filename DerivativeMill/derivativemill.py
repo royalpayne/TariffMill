@@ -6838,16 +6838,21 @@ class DerivativeMill(QMainWindow):
         btn_export_missing = QPushButton("Export Missing HTS")
         btn_export_missing.setStyleSheet(self.get_button_style("secondary"))
         btn_export_missing.setToolTip("Export HTS codes missing CBP Qty1 to the reference file for lookup")
+        btn_export_by_client = QPushButton("Export by Client")
+        btn_export_by_client.setStyleSheet(self.get_button_style("primary"))
+        btn_export_by_client.setToolTip("Export parts list filtered by client code to Excel")
         btn_add.clicked.connect(self.add_part_row)
         btn_del.clicked.connect(self.delete_selected_parts)
         btn_save.clicked.connect(self.save_parts_table)
         btn_refresh.clicked.connect(self.refresh_parts_table)
         btn_import_units.clicked.connect(self.import_hts_units)
         btn_export_missing.clicked.connect(self.export_missing_hts_codes)
+        btn_export_by_client.clicked.connect(self.export_parts_by_client)
         edit_box.addWidget(QLabel("Edit:"))
         edit_box.addWidget(btn_add); edit_box.addWidget(btn_del); edit_box.addWidget(btn_save); edit_box.addWidget(btn_refresh)
         edit_box.addWidget(btn_import_units)
         edit_box.addWidget(btn_export_missing)
+        edit_box.addWidget(btn_export_by_client)
         edit_box.addStretch()
         layout.addLayout(edit_box)
 
@@ -7219,6 +7224,134 @@ class DerivativeMill(QMainWindow):
         except Exception as e:
             logger.error(f"Failed to export missing HTS codes: {e}")
             QMessageBox.critical(self, "Export Error", f"Failed to export missing HTS codes:\n{e}")
+
+    def export_parts_by_client(self):
+        """Export parts list filtered by client code to Excel."""
+        try:
+            # Get list of unique client codes from database
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+            c.execute("""
+                SELECT DISTINCT client_code
+                FROM parts_master
+                WHERE client_code IS NOT NULL AND client_code != ''
+                ORDER BY client_code
+            """)
+            client_codes = [row[0] for row in c.fetchall()]
+            conn.close()
+
+            if not client_codes:
+                QMessageBox.warning(self, "No Client Codes",
+                    "No parts have client codes assigned.\n\n"
+                    "Add client codes to parts in the Parts Master table first.")
+                return
+
+            # Show dialog to select client code
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Export Parts by Client")
+            dialog.resize(400, 300)
+            layout = QVBoxLayout(dialog)
+
+            layout.addWidget(QLabel("<h3>Select Client Code to Export</h3>"))
+
+            # Client code selection
+            client_list = QListWidget()
+            client_list.addItems(client_codes)
+            client_list.setSelectionMode(QListWidget.SingleSelection)
+            if client_codes:
+                client_list.setCurrentRow(0)
+            layout.addWidget(client_list)
+
+            # Export all option
+            export_all_cb = QCheckBox("Export ALL parts (ignore client filter)")
+            layout.addWidget(export_all_cb)
+
+            # Buttons
+            btn_layout = QHBoxLayout()
+            btn_export = QPushButton("Export to Excel")
+            btn_export.setStyleSheet(self.get_button_style("primary"))
+            btn_cancel = QPushButton("Cancel")
+            btn_layout.addStretch()
+            btn_layout.addWidget(btn_export)
+            btn_layout.addWidget(btn_cancel)
+            layout.addLayout(btn_layout)
+
+            btn_cancel.clicked.connect(dialog.reject)
+
+            def do_export():
+                if export_all_cb.isChecked():
+                    selected_client = None
+                else:
+                    selected_items = client_list.selectedItems()
+                    if not selected_items:
+                        QMessageBox.warning(dialog, "No Selection", "Please select a client code or check 'Export ALL'.")
+                        return
+                    selected_client = selected_items[0].text()
+
+                # Query parts
+                conn = sqlite3.connect(str(DB_PATH))
+                if selected_client:
+                    df = pd.read_sql("""
+                        SELECT part_number, description, hts_code, country_origin, mid, client_code,
+                               steel_ratio as 'steel_%', aluminum_ratio as 'aluminum_%',
+                               copper_ratio as 'copper_%', wood_ratio as 'wood_%',
+                               auto_ratio as 'auto_%', non_steel_ratio as 'non_steel_%',
+                               qty_unit, Sec301_Exclusion_Tariff, last_updated
+                        FROM parts_master
+                        WHERE client_code = ?
+                        ORDER BY part_number
+                    """, conn, params=[selected_client])
+                else:
+                    df = pd.read_sql("""
+                        SELECT part_number, description, hts_code, country_origin, mid, client_code,
+                               steel_ratio as 'steel_%', aluminum_ratio as 'aluminum_%',
+                               copper_ratio as 'copper_%', wood_ratio as 'wood_%',
+                               auto_ratio as 'auto_%', non_steel_ratio as 'non_steel_%',
+                               qty_unit, Sec301_Exclusion_Tariff, last_updated
+                        FROM parts_master
+                        ORDER BY client_code, part_number
+                    """, conn)
+                conn.close()
+
+                if df.empty:
+                    QMessageBox.warning(dialog, "No Parts", "No parts found for the selected criteria.")
+                    return
+
+                # Choose save location
+                default_name = f"parts_{selected_client}.xlsx" if selected_client else "parts_all.xlsx"
+                save_path, _ = QFileDialog.getSaveFileName(
+                    dialog, "Save Parts Export", str(OUTPUT_DIR / default_name),
+                    "Excel Files (*.xlsx)"
+                )
+
+                if not save_path:
+                    return
+
+                # Export to Excel
+                try:
+                    df.to_excel(save_path, index=False)
+                    dialog.accept()
+
+                    QMessageBox.information(self, "Export Complete",
+                        f"Exported {len(df)} parts to:\n{save_path}")
+
+                    # Ask to open file
+                    reply = QMessageBox.question(self, "Open File?",
+                        "Would you like to open the exported file?",
+                        QMessageBox.Yes | QMessageBox.No)
+                    if reply == QMessageBox.Yes:
+                        import subprocess
+                        subprocess.Popen(['start', '', save_path], shell=True)
+
+                except Exception as e:
+                    QMessageBox.critical(dialog, "Export Error", f"Failed to save file:\n{e}")
+
+            btn_export.clicked.connect(do_export)
+            dialog.exec_()
+
+        except Exception as e:
+            logger.error(f"Failed to export parts by client: {e}")
+            QMessageBox.critical(self, "Export Error", f"Failed to export parts:\n{e}")
 
     def add_part_row(self):
         row = self.parts_table.rowCount()
