@@ -923,6 +923,40 @@ def get_232_info(hts_code):
     # No match found in tariff_232 database
     return None, "", ""
 
+def get_hts_qty_unit(hts_code):
+    """
+    Lookup the quantity unit (Uom 1) for an HTS code from hts_units table.
+
+    Args:
+        hts_code: HTS code string (with or without dots)
+
+    Returns:
+        qty_unit string (e.g., "KG", "NO", "M2") or empty string if not found
+    """
+    if not hts_code:
+        return ""
+
+    # Normalize HTS code: remove dots, strip whitespace
+    hts_clean = str(hts_code).replace(".", "").strip()
+
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        c = conn.cursor()
+        # Try exact 10-digit match first
+        c.execute("SELECT qty_unit FROM hts_units WHERE hts_code = ?", (hts_clean[:10],))
+        row = c.fetchone()
+        if not row and len(hts_clean) >= 8:
+            # Try 8-digit match
+            c.execute("SELECT qty_unit FROM hts_units WHERE hts_code = ?", (hts_clean[:8],))
+            row = c.fetchone()
+        conn.close()
+        if row:
+            return row[0]
+    except Exception as e:
+        logger.error(f"Error querying hts_units for HTS {hts_clean}: {e}")
+
+    return ""
+
 # ==============================================================================
 # Database Initialization
 # ==============================================================================
@@ -974,6 +1008,10 @@ def init_database():
             manufacturer_name TEXT,
             customer_id TEXT,
             related_parties TEXT DEFAULT 'N'
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS hts_units (
+            hts_code TEXT PRIMARY KEY,
+            qty_unit TEXT
         )""")
 
         # Migration: Add manufacturer_name and customer_id columns to mid_table if they don't exist
@@ -1438,6 +1476,40 @@ def init_database():
                 logger.info(f"Migration: Added {inserted} Section 232 Automotive tariff codes")
         except Exception as e:
             logger.warning(f"Failed to migrate auto tariffs: {e}")
+
+        # Migration: Populate hts_units table from HTS_qty1.xlsx if empty
+        try:
+            c.execute("SELECT COUNT(*) FROM hts_units")
+            hts_units_count = c.fetchone()[0]
+
+            if hts_units_count == 0:
+                # Try to load from bundled Excel file
+                hts_qty_file = TEMP_RESOURCES_DIR / "References" / "HTS_qty1.xlsx"
+                if not hts_qty_file.exists():
+                    hts_qty_file = RESOURCES_DIR / "References" / "HTS_qty1.xlsx"
+
+                if hts_qty_file.exists():
+                    try:
+                        hts_df = pd.read_excel(str(hts_qty_file))
+                        inserted = 0
+                        for _, row in hts_df.iterrows():
+                            hts_code = str(row.get('Tariff No', '')).strip().replace(".", "")
+                            qty_unit = str(row.get('Uom 1', '')).strip()
+                            if hts_code and qty_unit:
+                                try:
+                                    c.execute("INSERT OR IGNORE INTO hts_units (hts_code, qty_unit) VALUES (?, ?)",
+                                             (hts_code, qty_unit))
+                                    if c.rowcount > 0:
+                                        inserted += 1
+                                except:
+                                    pass
+                        logger.info(f"Migration: Imported {inserted} HTS unit codes from HTS_qty1.xlsx")
+                    except Exception as e:
+                        logger.warning(f"Failed to import HTS units from Excel: {e}")
+                else:
+                    logger.debug("HTS_qty1.xlsx not found, skipping hts_units import")
+        except Exception as e:
+            logger.warning(f"Failed to migrate hts_units: {e}")
 
         conn.commit()
         conn.close()
@@ -5833,8 +5905,10 @@ class DerivativeMill(QMainWindow):
                 mid = str(r.get('mid', '')).strip()
                 # Get client_code if it was mapped, otherwise empty string
                 client_code = str(r.get('client_code', '')).strip() if 'client_code' in df.columns else ""
-                # Get qty_unit if it was mapped, otherwise empty string
+                # Get qty_unit if it was mapped, otherwise try to auto-lookup from hts_units table
                 qty_unit = str(r.get('qty_unit', '')).strip() if 'qty_unit' in df.columns else ""
+                if not qty_unit and hts:
+                    qty_unit = get_hts_qty_unit(hts)
                 # Get country codes if mapped, otherwise empty string
                 country_of_melt = str(r.get('country_of_melt', '')).strip().upper()[:2] if 'country_of_melt' in df.columns else ""
                 country_of_cast = str(r.get('country_of_cast', '')).strip().upper()[:2] if 'country_of_cast' in df.columns else ""
@@ -7877,6 +7951,9 @@ class DerivativeMill(QMainWindow):
                 # Non-232 percentage is remainder after all Section 232 materials
                 non_steel = max(0.0, 100.0 - steel - aluminum - copper - wood - auto)
                 qty_unit = items[12].text() if items[12] else ""
+                # Auto-lookup qty_unit from hts_units table if not set but HTS exists
+                if not qty_unit and hts:
+                    qty_unit = get_hts_qty_unit(hts)
                 sec301_exclusion = items[13].text() if items[13] else ""
                 c.execute("""INSERT INTO parts_master (part_number, description, hts_code, country_origin, mid, client_code,
                           steel_ratio, non_steel_ratio, last_updated, qty_unit, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio,
@@ -7946,13 +8023,16 @@ class DerivativeMill(QMainWindow):
                 mid = self.table.item(table_row, 3).text() if self.table.item(table_row, 3) else ""
                 hts_code = self.table.item(table_row, 2).text() if self.table.item(table_row, 2) else ""
 
+                # Auto-lookup qty_unit from hts_units table based on HTS code
+                qty_unit = get_hts_qty_unit(hts_code) if hts_code else ""
+
                 # Insert the part with minimal information (part_number and MID)
                 # Percentages are in 0-100 format; default to 100% non-232
                 c.execute("""INSERT INTO parts_master (part_number, description, hts_code, country_origin, mid, client_code,
                           steel_ratio, non_steel_ratio, last_updated, qty_unit, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio,
                           Sec301_Exclusion_Tariff)
                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                          (part_number, '', hts_code, '', mid, '', 0.0, 100.0, now, '', 0.0, 0.0, 0.0, 0.0, ''))
+                          (part_number, '', hts_code, '', mid, '', 0.0, 100.0, now, qty_unit, 0.0, 0.0, 0.0, 0.0, ''))
 
                 if c.rowcount:
                     added_count += 1
@@ -9102,11 +9182,13 @@ class DerivativeMill(QMainWindow):
                     # Part doesn't exist - add it if we have at least an HTS code or MID
                     # Percentages are in 0-100 format; default to 100% non-232
                     if hts_code or mid:
+                        # Auto-lookup qty_unit from hts_units table based on HTS code
+                        qty_unit = get_hts_qty_unit(hts_code) if hts_code else ""
                         c.execute("""INSERT INTO parts_master (part_number, description, hts_code, country_origin, mid, client_code,
                                   steel_ratio, non_steel_ratio, last_updated, qty_unit, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio,
                                   Sec301_Exclusion_Tariff)
                                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                                  (part_number, '', hts_code, '', mid, '', 0.0, 100.0, now, '', 0.0, 0.0, 0.0, 0.0, ''))
+                                  (part_number, '', hts_code, '', mid, '', 0.0, 100.0, now, qty_unit, 0.0, 0.0, 0.0, 0.0, ''))
                         added_count += 1
                         saved_part_numbers.append(part_number)
                         logger.info(f"Added new part to database: {part_number} (HTS: {hts_code}, MID: {mid})")
