@@ -1284,8 +1284,7 @@ def init_database():
                             pass
 
                     logger.info(f"Migration: Added {inserted} Section 232 Automotive tariff codes")
-
-                c.execute("INSERT INTO app_config (key, value) VALUES ('auto_tariffs_migration_v1', '1')")
+                    c.execute("INSERT INTO app_config (key, value) VALUES ('auto_tariffs_migration_v1', '1')")
         except Exception as e:
             logger.warning(f"Failed to migrate auto tariffs: {e}")
 
