@@ -1266,17 +1266,15 @@ def init_database():
             logger.warning(f"Failed to migrate output columns: {e}")
 
         # Migration: Add Section 232 Automotive tariff codes if not present
+        # Always check if Auto tariffs exist, regardless of migration flag (fixes earlier bug)
         try:
-            c.execute("SELECT value FROM app_config WHERE key = 'auto_tariffs_migration_v1'")
-            if not c.fetchone():
-                # Check if Auto material already exists in tariff_232
-                c.execute("SELECT COUNT(*) FROM tariff_232 WHERE material = 'Auto'")
-                auto_count = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) FROM tariff_232 WHERE material = 'Auto'")
+            auto_count = c.fetchone()[0]
 
-                if auto_count == 0:
-                    # Define automotive tariff codes from Attachment 2_Auto Parts HTS List
-                    # Reference: U.S. note 33, subchapter III of chapter 99, headings 9903.94.05 and 9903.94.06
-                    auto_tariffs = [
+            if auto_count == 0:
+                # Define automotive tariff codes from Attachment 2_Auto Parts HTS List
+                # Reference: U.S. note 33, subchapter III of chapter 99, headings 9903.94.05 and 9903.94.06
+                auto_tariffs = [
                         # Rubber parts (Chapter 40)
                         ('4009120020', 'Auto', 'Automotive Rubber Parts', '40', 'Chapter 40: Rubber and articles thereof', '12 - AUTO PARTS', 'Section 232 Automotive Tariff - 25% additional duty'),
                         ('4009220020', 'Auto', 'Automotive Rubber Parts', '40', 'Chapter 40: Rubber and articles thereof', '12 - AUTO PARTS', 'Section 232 Automotive Tariff - 25% additional duty'),
@@ -1424,21 +1422,20 @@ def init_database():
                         ('9029204080', 'Auto', 'Automotive Instruments', '90', 'Chapter 90: Optical and measuring instruments', '12 - AUTO PARTS', 'Section 232 Automotive Tariff - 25% additional duty'),
                         # Seats (Chapter 94)
                         ('94012000', 'Auto', 'Automotive Seats', '94', 'Chapter 94: Furniture', '12 - AUTO PARTS', 'Section 232 Automotive Tariff - 25% additional duty'),
-                    ]
+                ]
 
-                    inserted = 0
-                    for tariff in auto_tariffs:
-                        try:
-                            c.execute("""INSERT OR IGNORE INTO tariff_232
-                                        (hts_code, material, classification, chapter, chapter_description, declaration_required, notes)
-                                        VALUES (?, ?, ?, ?, ?, ?, ?)""", tariff)
-                            if c.rowcount > 0:
-                                inserted += 1
-                        except:
-                            pass
+                inserted = 0
+                for tariff in auto_tariffs:
+                    try:
+                        c.execute("""INSERT OR IGNORE INTO tariff_232
+                                    (hts_code, material, classification, chapter, chapter_description, declaration_required, notes)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?)""", tariff)
+                        if c.rowcount > 0:
+                            inserted += 1
+                    except:
+                        pass
 
-                    logger.info(f"Migration: Added {inserted} Section 232 Automotive tariff codes")
-                    c.execute("INSERT INTO app_config (key, value) VALUES ('auto_tariffs_migration_v1', '1')")
+                logger.info(f"Migration: Added {inserted} Section 232 Automotive tariff codes")
         except Exception as e:
             logger.warning(f"Failed to migrate auto tariffs: {e}")
 
@@ -8133,7 +8130,7 @@ class DerivativeMill(QMainWindow):
         filter_bar.addWidget(self.tariff_filter)
 
         self.tariff_material_filter = QComboBox()
-        self.tariff_material_filter.addItems(["All", "Steel", "Aluminum", "Wood", "Copper"])
+        self.tariff_material_filter.addItems(["All", "Steel", "Aluminum", "Wood", "Copper", "Auto"])
         self.tariff_material_filter.currentTextChanged.connect(self.filter_tariff_table)
         filter_bar.addWidget(QLabel("Material:"))
         filter_bar.addWidget(self.tariff_material_filter)
@@ -8462,7 +8459,7 @@ class DerivativeMill(QMainWindow):
         filter_bar.addWidget(self.actions_filter)
         
         self.actions_material_filter = QComboBox()
-        self.actions_material_filter.addItems(["All", "Steel", "Aluminum", "Copper", "Wood"])
+        self.actions_material_filter.addItems(["All", "Steel", "Aluminum", "Copper", "Wood", "Auto"])
         self.actions_material_filter.currentTextChanged.connect(self.filter_actions_table)
         filter_bar.addWidget(QLabel("Commodity:"))
         filter_bar.addWidget(self.actions_material_filter)
