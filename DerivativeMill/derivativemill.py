@@ -498,6 +498,160 @@ class LicenseManager:
 
 
 # ==============================================================================
+# Self-Update Mechanism
+# ==============================================================================
+# Detects if the exe is running from a different location (e.g., Downloads)
+# than the installed location, and offers to update the installed version.
+
+INSTALL_PATH_FILE = Path(os.environ.get('APPDATA', '')) / "DerivativeMill" / "install_path.txt"
+
+def get_installed_path():
+    """Get the stored installation path, if any."""
+    try:
+        if INSTALL_PATH_FILE.exists():
+            return Path(INSTALL_PATH_FILE.read_text().strip())
+    except Exception:
+        pass
+    return None
+
+def save_installed_path(path):
+    """Save the current exe path as the installation path."""
+    try:
+        INSTALL_PATH_FILE.parent.mkdir(parents=True, exist_ok=True)
+        INSTALL_PATH_FILE.write_text(str(path))
+    except Exception as e:
+        print(f"Warning: Could not save install path: {e}")
+
+def check_and_perform_self_update():
+    """
+    Check if we're running from a different location than installed.
+    If so, offer to update the installed version.
+    Returns True if update was performed (caller should exit), False otherwise.
+    """
+    if not getattr(sys, 'frozen', False):
+        return False  # Only for frozen exe
+
+    current_exe = Path(sys.executable)
+    installed_path = get_installed_path()
+
+    # If no install path saved, or we're running from the installed location, continue normally
+    if installed_path is None:
+        return False
+
+    # Normalize paths for comparison
+    try:
+        current_exe_resolved = current_exe.resolve()
+        installed_path_resolved = installed_path.resolve()
+    except Exception:
+        return False
+
+    # If running from the same location, continue normally
+    if current_exe_resolved == installed_path_resolved:
+        return False
+
+    # Check if installed path still exists and is a DerivativeMill exe
+    if not installed_path.exists():
+        return False
+
+    # We're running from a different location - likely an update download
+    # Show a simple message box asking if user wants to update
+    from PyQt5.QtWidgets import QApplication, QMessageBox
+
+    # Need a QApplication for message boxes
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication(sys.argv)
+
+    # Get version info for display
+    current_version = VERSION
+
+    msg = QMessageBox()
+    msg.setIcon(QMessageBox.Question)
+    msg.setWindowTitle("Update DerivativeMill")
+    msg.setText(f"A DerivativeMill installation was found at:\n{installed_path.parent}\n\n"
+                f"Would you like to update it with this version ({current_version})?")
+    msg.setInformativeText("The application will restart after updating.")
+    msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+    msg.setDefaultButton(QMessageBox.Yes)
+
+    # Add "Run from here" option
+    run_here_btn = msg.addButton("Run from here", QMessageBox.ActionRole)
+
+    result = msg.exec_()
+
+    if msg.clickedButton() == run_here_btn:
+        # User wants to run from current location - save this as new install path
+        save_installed_path(current_exe)
+        return False
+
+    if result == QMessageBox.Yes:
+        # Perform the update
+        try:
+            return perform_update(current_exe, installed_path)
+        except Exception as e:
+            QMessageBox.critical(None, "Update Failed",
+                               f"Could not update the installation:\n{str(e)}\n\n"
+                               "You can manually copy the new exe to replace the old one.")
+            return False
+    elif result == QMessageBox.No:
+        # Don't update, just exit
+        return True
+    else:
+        # Cancel - exit without doing anything
+        return True
+
+def perform_update(source_exe, target_exe):
+    """
+    Perform the update by copying source to target.
+    Uses a batch script to complete the copy after we exit.
+    Returns True if update initiated (caller should exit).
+    """
+    import tempfile
+
+    # Create a batch script that will:
+    # 1. Wait for this process to exit
+    # 2. Copy the new exe over the old one
+    # 3. Launch the updated exe
+    # 4. Delete itself
+
+    batch_content = f'''@echo off
+:: Wait for the updater process to exit
+timeout /t 2 /nobreak >nul
+
+:: Copy the new exe
+copy /Y "{source_exe}" "{target_exe}"
+if errorlevel 1 (
+    echo Update failed - could not copy file
+    pause
+    exit /b 1
+)
+
+:: Launch the updated application
+start "" "{target_exe}"
+
+:: Delete this batch file
+del "%~f0"
+'''
+
+    # Write batch file to temp directory
+    batch_path = Path(tempfile.gettempdir()) / "derivativemill_update.bat"
+    batch_path.write_text(batch_content)
+
+    # Run the batch file hidden
+    import subprocess
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = 0  # SW_HIDE
+
+    subprocess.Popen(
+        ['cmd', '/c', str(batch_path)],
+        startupinfo=startupinfo,
+        creationflags=subprocess.CREATE_NO_WINDOW
+    )
+
+    return True
+
+# ==============================================================================
 # Application Paths
 # ==============================================================================
 # Handles path resolution for both PyInstaller-bundled executables and
@@ -10151,6 +10305,14 @@ if __name__ == "__main__":
     # Prevent PyInstaller multiprocessing from spawning console windows on Windows
     import multiprocessing
     multiprocessing.freeze_support()
+
+    # Check for self-update scenario (exe running from different location than installed)
+    if check_and_perform_self_update():
+        sys.exit(0)  # Update initiated or user declined, exit
+
+    # Save current location as install path (for future update detection)
+    if getattr(sys, 'frozen', False):
+        save_installed_path(Path(sys.executable))
 
     import traceback
     app = QApplication(sys.argv)
