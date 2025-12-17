@@ -1562,7 +1562,8 @@ class DropTarget(QLabel):
     def dropEvent(self, e):
         col = e.mimeData().text()
         self.column_name = col
-        self.setText(f"{self.field_key}\n<- {col}")
+        self.setText("✓")
+        self.setStyleSheet("padding: 4px 8px; background: #d4edda; border: 1px solid #28a745; border-radius: 4px; color: #28a745; font-size: 16px; font-weight: bold;")
         self.setProperty("occupied", True)
         self.style().unpolish(self); self.style().polish(self)
         self.dropped.emit(self.field_key, col)
@@ -1786,15 +1787,6 @@ class DerivativeMill(QMainWindow):
             pass
 
         central = QWidget()
-        # Apply gradient background: logo blue on left to transparent on right
-        central.setStyleSheet("""
-            QWidget#centralWidget {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 rgba(52, 152, 219, 0.20),
-                    stop:1 transparent);
-            }
-        """)
-        central.setObjectName("centralWidget")
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
 
@@ -2991,6 +2983,10 @@ class DerivativeMill(QMainWindow):
         dialog.resize(700, 750)  # Increased size for better layout
         layout = QVBoxLayout(dialog)
 
+        # Determine theme-aware colors for dialog elements
+        is_dark = hasattr(self, 'current_theme') and self.current_theme in ["Fusion (Dark)", "Ocean"]
+        info_text_color = "#aaa" if is_dark else "#666"
+
         # Create tab widget for better organization
         tabs = QTabWidget()
 
@@ -3020,7 +3016,7 @@ class DerivativeMill(QMainWindow):
 
         theme_info = QLabel("<small>Theme changes apply immediately. System Default uses your Windows theme settings.</small>")
         theme_info.setWordWrap(True)
-        theme_info.setStyleSheet("color:#666; padding:5px;")
+        theme_info.setStyleSheet(f"color:{info_text_color}; padding:5px;")
         theme_layout.addRow("", theme_info)
 
         # Font Size Slider
@@ -3112,7 +3108,7 @@ class DerivativeMill(QMainWindow):
 
         viewer_info = QLabel("<small>Choose which application opens exported Excel files. (Linux only)</small>")
         viewer_info.setWordWrap(True)
-        viewer_info.setStyleSheet("color:#666; padding:5px;")
+        viewer_info.setStyleSheet(f"color:{info_text_color}; padding:5px;")
         viewer_layout.addRow("", viewer_info)
 
         viewer_group.setLayout(viewer_layout)
@@ -3126,7 +3122,7 @@ class DerivativeMill(QMainWindow):
         colors_main_layout.setContentsMargins(15, 15, 15, 15)
 
         # Helper function to create a compact color swatch with label
-        def create_color_swatch(label_text, config_key, default_color):
+        def create_color_swatch(label_text, config_key, default_color, label_width=70):
             """Create a label with small color swatch button (theme-specific)"""
             container = QWidget()
             container.setMinimumHeight(28)
@@ -3134,8 +3130,9 @@ class DerivativeMill(QMainWindow):
             layout.setContentsMargins(0, 2, 8, 2)
             layout.setSpacing(6)
 
-            # Text label - let it size naturally based on content
+            # Text label with fixed width for alignment
             label = QLabel(label_text + ":")
+            label.setFixedWidth(label_width)
             layout.addWidget(label)
 
             # Small color swatch button
@@ -3182,7 +3179,7 @@ class DerivativeMill(QMainWindow):
 
         # Section 232 Materials header
         sec232_label = QLabel("Section 232 Materials")
-        sec232_label.setStyleSheet("font-weight: bold; color: #666; margin-bottom: 4px; padding: 4px 0;")
+        sec232_label.setStyleSheet(f"font-weight: bold; color: {info_text_color}; margin-bottom: 4px; padding: 4px 0;")
         sec232_label.setMinimumHeight(24)
         colors_main_layout.addWidget(sec232_label)
 
@@ -3213,7 +3210,7 @@ class DerivativeMill(QMainWindow):
 
         # Other Indicators header
         other_label = QLabel("Other Indicators")
-        other_label.setStyleSheet("font-weight: bold; color: #666; margin-bottom: 4px; padding: 4px 0;")
+        other_label.setStyleSheet(f"font-weight: bold; color: {info_text_color}; margin-bottom: 4px; padding: 4px 0;")
         other_label.setMinimumHeight(24)
         colors_main_layout.addWidget(other_label)
 
@@ -3288,7 +3285,7 @@ class DerivativeMill(QMainWindow):
         
         columns_info = QLabel("<small>Toggle columns to show or hide them in the Result Preview table.</small>")
         columns_info.setWordWrap(True)
-        columns_info.setStyleSheet("color:#666; padding:5px;")
+        columns_info.setStyleSheet(f"color:{info_text_color}; padding:5px;")
         columns_layout.addWidget(columns_info)
         
         columns_group.setLayout(columns_layout)
@@ -3477,7 +3474,7 @@ class DerivativeMill(QMainWindow):
             "Avoid having multiple users edit the same record simultaneously.</small>"
         )
         warning_label.setWordWrap(True)
-        warning_label.setStyleSheet("color:#666; padding:5px;")
+        warning_label.setStyleSheet(f"color:{info_text_color}; padding:5px;")
         shared_layout.addWidget(warning_label)
 
         shared_group.setLayout(shared_layout)
@@ -3512,7 +3509,7 @@ class DerivativeMill(QMainWindow):
             "No personal data is sent - only a simple API request to check the latest version.</small>"
         )
         update_info.setWordWrap(True)
-        update_info.setStyleSheet("color:#666; padding:5px;")
+        update_info.setStyleSheet(f"color:{info_text_color}; padding:5px;")
         update_settings_layout.addWidget(update_info)
 
         update_settings_group.setLayout(update_settings_layout)
@@ -3575,6 +3572,50 @@ class DerivativeMill(QMainWindow):
             teal_palette = self.get_teal_professional_palette()
             app.setPalette(teal_palette)
         
+        # Apply global stylesheet for QGroupBox and other widgets that don't fully respect QPalette
+        is_dark = theme_name in ["Fusion (Dark)", "Ocean"]
+        if is_dark:
+            app.setStyleSheet("""
+                QGroupBox {
+                    font-weight: bold;
+                    border: 1px solid #555;
+                    border-radius: 4px;
+                    margin-top: 8px;
+                    padding-top: 8px;
+                    background-color: #4a4a4a;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    subcontrol-position: top left;
+                    left: 10px;
+                    padding: 0 5px;
+                    color: #ddd;
+                }
+                QTabWidget::pane {
+                    border: 1px solid #555;
+                    border-radius: 4px;
+                }
+                QTabBar::tab {
+                    background: #3a3a3a;
+                    color: #ccc;
+                    padding: 6px 12px;
+                    border: 1px solid #555;
+                    border-bottom: none;
+                    border-top-left-radius: 4px;
+                    border-top-right-radius: 4px;
+                }
+                QTabBar::tab:selected {
+                    background: #4a4a4a;
+                    color: #fff;
+                }
+                QTabBar::tab:hover:!selected {
+                    background: #454545;
+                }
+            """)
+        else:
+            # Clear any dark theme stylesheet for light themes
+            app.setStyleSheet("")
+
         # Refresh button styles to match new theme
         self.refresh_button_styles()
 
@@ -4390,9 +4431,9 @@ class DerivativeMill(QMainWindow):
         
         palette = QPalette()
         # Windows 11 dark theme colors
-        palette.setColor(QPalette.Window, QColor(41, 41, 41))  # Main background
+        palette.setColor(QPalette.Window, QColor(45, 45, 45))  # Main background
         palette.setColor(QPalette.WindowText, QColor(243, 243, 243))  # Primary text
-        palette.setColor(QPalette.Base, QColor(85, 83, 83))  # Result preview background (#555353)
+        palette.setColor(QPalette.Base, QColor(45, 45, 45))  # Text box background (matches main background)
         palette.setColor(QPalette.AlternateBase, QColor(115, 115, 115))  # Tertiary background for alternating rows
         palette.setColor(QPalette.ToolTipBase, QColor(45, 45, 45))  # Tertiary background
         palette.setColor(QPalette.ToolTipText, QColor(243, 243, 243))  # Primary text

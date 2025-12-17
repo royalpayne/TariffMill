@@ -18,7 +18,7 @@ import subprocess
 import os
 
 # Fallback version if git is not available
-__fallback_version__ = "v0.93.0"
+__fallback_version__ = "v0.93.1"
 
 def get_version():
     """
