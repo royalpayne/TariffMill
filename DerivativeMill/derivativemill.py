@@ -2325,7 +2325,7 @@ class DerivativeMill(QMainWindow):
         self.table = QTableWidget()
         self.table.setColumnCount(19)
         self.table.setHorizontalHeaderLabels([
-            "Product No","Value","HTS","MID","Net Wt","Pcs","Qty Unit","Dec","Melt","Cast","Smelt","Flag","Steel%","Al%","Cu%","Wood%","Auto%","Non-232%","232 Status"
+            "Product No","Value","HTS","MID","Qty1","Qty2","Qty Unit","Dec","Melt","Cast","Smelt","Flag","Steel%","Al%","Cu%","Wood%","Auto%","Non-232%","232 Status"
         ])
         # Make columns manually resizable instead of auto-stretch
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
@@ -3645,7 +3645,7 @@ class DerivativeMill(QMainWindow):
         
         # Column names and their default visibility
         column_names = [
-            "Product No", "Value", "HTS", "MID", "Net Wt", "Pcs", "Qty Unit", "Dec",
+            "Product No", "Value", "HTS", "MID", "Qty1", "Qty2", "Qty Unit", "Dec",
             "Melt", "Cast", "Smelt", "Flag", "Steel%", "Al%", "Cu%", "Wood%", "Auto%", "Non-232%", "232 Status"
         ]
         
@@ -4702,7 +4702,7 @@ class DerivativeMill(QMainWindow):
 
             for row in range(self.table.rowCount()):
                 # Check the 232 Status column (index 18) to determine material type
-                # Column order: 0=Product No, 1=Value, 2=HTS, 3=MID, 4=Net Wt, 5=Pcs, 6=Qty Unit, 7=Dec,
+                # Column order: 0=Product No, 1=Value, 2=HTS, 3=MID, 4=Qty1, 5=Qty2, 6=Qty Unit, 7=Dec,
                 # 8=Melt, 9=Cast, 10=Smelt, 11=Flag, 12=Steel%, 13=Al%, 14=Cu%, 15=Wood%, 16=Auto%, 17=Non-232%, 18=232 Status
                 status_item = self.table.item(row, 18)
                 status_text = status_item.text() if status_item else ''
@@ -10037,8 +10037,8 @@ class DerivativeMill(QMainWindow):
                 if qty2_value in ['nan', 'None']:
                     qty2_value = ""
 
-            # Column indices after adding Net Wt and Pcs:
-            # 0=Product No, 1=Value, 2=HTS, 3=MID, 4=Net Wt, 5=Pcs, 6=Qty Unit, 7=Dec,
+            # Column indices:
+            # 0=Product No, 1=Value, 2=HTS, 3=MID, 4=Qty1, 5=Qty2, 6=Qty Unit, 7=Dec,
             # 8=Melt, 9=Cast, 10=Smelt, 11=Flag, 12=Steel%, 13=Al%, 14=Cu%, 15=Wood%, 16=Auto%, 17=Non-232%, 18=232 Status
             row_data = {
                 'Product No': self.table.item(i, 0).text() if self.table.item(i, 0) else "",
