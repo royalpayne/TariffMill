@@ -1886,12 +1886,6 @@ class DerivativeMill(QMainWindow):
         config_action.triggered.connect(self.show_configuration_dialog)
         config_menu.addAction(config_action)
 
-        # MID Management action
-        mid_icon = self.style().standardIcon(QStyle.SP_FileDialogContentsView)
-        mid_action = QAction(mid_icon, "MID Management...", self)
-        mid_action.triggered.connect(self.show_mid_management_dialog)
-        config_menu.addAction(mid_action)
-
         # Add Help menu
         help_menu = menubar.addMenu("Help")
 
@@ -2256,18 +2250,6 @@ class DerivativeMill(QMainWindow):
         actions_layout.addWidget(self.clear_btn)
         actions_group.setLayout(actions_layout)
         left_side.addWidget(actions_group)
-
-        # EXPORT PROFILE GROUP — quick access to output mapping profiles
-        export_profile_group = QGroupBox("Export Profile")
-        export_profile_layout = QVBoxLayout()
-        export_profile_layout.setContentsMargins(5, 5, 5, 5)
-
-        self.quick_export_profile_combo = QComboBox()
-        self.quick_export_profile_combo.currentTextChanged.connect(self.on_quick_export_profile_changed)
-        export_profile_layout.addWidget(self.quick_export_profile_combo)
-
-        export_profile_group.setLayout(export_profile_layout)
-        left_side.addWidget(export_profile_group)
 
         # EXPORTED FILES GROUP — shows recent exports
         exports_group = QGroupBox("Exported Files")
@@ -7209,20 +7191,6 @@ class DerivativeMill(QMainWindow):
                     self.output_profile_combo.addItem(name)
                 self.output_profile_combo.blockSignals(False)
 
-            # Update the quick access combo box on Process Shipment tab (if still valid)
-            if hasattr(self, 'quick_export_profile_combo') and is_widget_valid(self.quick_export_profile_combo):
-                current_selection = self.quick_export_profile_combo.currentText()
-                self.quick_export_profile_combo.blockSignals(True)
-                self.quick_export_profile_combo.clear()
-                self.quick_export_profile_combo.addItem("-- Select Profile --")
-                for name in profile_names:
-                    self.quick_export_profile_combo.addItem(name)
-                # Restore selection if it still exists
-                idx = self.quick_export_profile_combo.findText(current_selection)
-                if idx >= 0:
-                    self.quick_export_profile_combo.setCurrentIndex(idx)
-                self.quick_export_profile_combo.blockSignals(False)
-
             logger.info(f"Loaded {len(df)} output mapping profiles")
         except Exception as e:
             logger.error(f"Failed to load output mapping profiles: {e}")
@@ -7297,12 +7265,6 @@ class DerivativeMill(QMainWindow):
                 self.split_by_invoice = split_by_invoice
                 # Save to database regardless of widget state
                 self.update_split_by_invoice_setting(2 if split_by_invoice else 0)
-
-                # Sync the quick export profile combo on Process Shipment tab
-                if hasattr(self, 'quick_export_profile_combo') and is_widget_valid(self.quick_export_profile_combo):
-                    self.quick_export_profile_combo.blockSignals(True)
-                    self.quick_export_profile_combo.setCurrentText(profile_name)
-                    self.quick_export_profile_combo.blockSignals(False)
 
                 self.bottom_status.setText(f"Loaded output mapping profile: {profile_name}")
                 logger.info(f"Loaded output mapping profile: {profile_name}")
