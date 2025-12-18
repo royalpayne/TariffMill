@@ -16,9 +16,19 @@ Semantic Versioning:
 
 import subprocess
 import os
+import sys
 
 # Fallback version if git is not available
-__fallback_version__ = "v0.93.2"
+__fallback_version__ = "v0.93.3"
+
+def _get_subprocess_startupinfo():
+    """Get startupinfo to hide console window on Windows"""
+    if sys.platform == 'win32':
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+        return startupinfo
+    return None
 
 def get_version():
     """
@@ -33,7 +43,8 @@ def get_version():
         version = subprocess.check_output(
             ['git', 'describe', '--tags', '--always'],
             cwd=file_dir,
-            stderr=subprocess.DEVNULL
+            stderr=subprocess.DEVNULL,
+            startupinfo=_get_subprocess_startupinfo()
         ).decode().strip()
 
         # Ensure it starts with 'v'
@@ -52,19 +63,22 @@ def get_version_info():
     """
     try:
         file_dir = os.path.dirname(os.path.abspath(__file__))
+        startupinfo = _get_subprocess_startupinfo()
 
         # Get full describe output (e.g., v0.90.1-5-g1234abc)
         full_version = subprocess.check_output(
             ['git', 'describe', '--tags', '--long', '--always'],
             cwd=file_dir,
-            stderr=subprocess.DEVNULL
+            stderr=subprocess.DEVNULL,
+            startupinfo=startupinfo
         ).decode().strip()
 
         # Get current branch
         branch = subprocess.check_output(
             ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
             cwd=file_dir,
-            stderr=subprocess.DEVNULL
+            stderr=subprocess.DEVNULL,
+            startupinfo=startupinfo
         ).decode().strip()
 
         # Parse version components

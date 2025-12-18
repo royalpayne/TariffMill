@@ -1746,6 +1746,8 @@ class DerivativeMill(QMainWindow):
             tab_setup_methods[index]()
     def __init__(self):
         super().__init__()
+        # Hide window during initialization to prevent ghost window flash
+        self.setAttribute(Qt.WA_DontShowOnScreen, True)
         self.setWindowTitle(APP_NAME)
         # Compact default size - fully scalable with no minimum constraint
         self.setGeometry(50, 50, 1200, 700)
@@ -11117,6 +11119,8 @@ if __name__ == "__main__":
                 (screen_geo.width() - win.width()) // 2,
                 (screen_geo.height() - win.height()) // 2
             )
+            # Clear the hidden attribute before showing
+            win.setAttribute(Qt.WA_DontShowOnScreen, False)
             win.show()
             win.raise_()
             win.activateWindow()
