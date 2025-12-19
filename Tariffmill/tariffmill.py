@@ -9195,17 +9195,29 @@ class TariffMill(QMainWindow):
             cursor = conn.cursor()
 
             if search_term:
-                # Search in full_code and description
-                # Use FTS if available, otherwise use LIKE
-                search_pattern = f"%{search_term}%"
-                cursor.execute("""
-                    SELECT full_code, description, unit_of_quantity, general_rate,
-                           special_rate, column2_rate, chapter
-                    FROM hts_codes
-                    WHERE full_code LIKE ? OR description LIKE ?
-                    ORDER BY full_code
-                    LIMIT 500
-                """, (search_pattern, search_pattern))
+                # Check if search term starts with a digit (HTS code search)
+                if search_term[0].isdigit():
+                    # Search for HTS codes starting with the search term
+                    code_pattern = f"{search_term}%"
+                    cursor.execute("""
+                        SELECT full_code, description, unit_of_quantity, general_rate,
+                               special_rate, column2_rate, chapter
+                        FROM hts_codes
+                        WHERE full_code LIKE ?
+                        ORDER BY full_code
+                        LIMIT 500
+                    """, (code_pattern,))
+                else:
+                    # Search in description for text searches
+                    search_pattern = f"%{search_term}%"
+                    cursor.execute("""
+                        SELECT full_code, description, unit_of_quantity, general_rate,
+                               special_rate, column2_rate, chapter
+                        FROM hts_codes
+                        WHERE description LIKE ?
+                        ORDER BY full_code
+                        LIMIT 500
+                    """, (search_pattern,))
             else:
                 # Show first 500 entries if no search term
                 cursor.execute("""
