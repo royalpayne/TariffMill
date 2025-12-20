@@ -1309,6 +1309,60 @@ def init_database():
         except Exception as e:
             logger.warning(f"Failed to migrate output columns: {e}")
 
+        # Migration: Update output_column_mappings table to replace CalcWtNet/Pcs with Qty1/Qty2
+        try:
+            c.execute("SELECT value FROM app_config WHERE key = 'output_mappings_qty_migration_v1'")
+            if not c.fetchone():
+                import json
+                c.execute("SELECT profile_name, mapping_json FROM output_column_mappings")
+                profiles = c.fetchall()
+                updated = 0
+                for profile_name, mapping_json in profiles:
+                    if mapping_json:
+                        try:
+                            data = json.loads(mapping_json)
+                            changed = False
+                            # Update column_order if present
+                            if 'column_order' in data:
+                                new_order = []
+                                for col in data['column_order']:
+                                    if col == 'CalcWtNet':
+                                        new_order.append('Qty1')
+                                        changed = True
+                                    elif col == 'Pcs':
+                                        new_order.append('Qty2')
+                                        changed = True
+                                    else:
+                                        new_order.append(col)
+                                data['column_order'] = new_order
+                            # Update column_mapping if present
+                            if 'column_mapping' in data:
+                                if 'CalcWtNet' in data['column_mapping']:
+                                    data['column_mapping']['Qty1'] = data['column_mapping'].pop('CalcWtNet')
+                                    changed = True
+                                if 'Pcs' in data['column_mapping']:
+                                    data['column_mapping']['Qty2'] = data['column_mapping'].pop('Pcs')
+                                    changed = True
+                            # Update column_visibility if present
+                            if 'column_visibility' in data:
+                                if 'CalcWtNet' in data['column_visibility']:
+                                    data['column_visibility']['Qty1'] = data['column_visibility'].pop('CalcWtNet')
+                                    changed = True
+                                if 'Pcs' in data['column_visibility']:
+                                    data['column_visibility']['Qty2'] = data['column_visibility'].pop('Pcs')
+                                    changed = True
+                            if changed:
+                                c.execute("UPDATE output_column_mappings SET mapping_json = ? WHERE profile_name = ?",
+                                         (json.dumps(data), profile_name))
+                                updated += 1
+                        except:
+                            pass
+                if updated > 0:
+                    logger.info(f"Updated {updated} output_column_mappings profiles: CalcWtNet->Qty1, Pcs->Qty2")
+                c.execute("INSERT INTO app_config (key, value) VALUES ('output_mappings_qty_migration_v1', '1')")
+        except Exception as e:
+            logger.warning(f"Failed to migrate output_column_mappings: {e}")
+
         # Migration: Add Section 232 Automotive tariff codes if not present
         # Always check if Auto tariffs exist, regardless of migration flag (fixes earlier bug)
         try:
