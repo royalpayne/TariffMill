@@ -436,20 +436,84 @@ class AutoTemplateBuilderDialog(QDialog):
         try:
             file_path.write_text(code)
 
-            # Show success with registration instructions
-            QMessageBox.information(
-                self, "Template Created",
-                f"Template saved to:\n{file_path}\n\n"
-                f"To activate, add to templates/__init__.py:\n\n"
-                f"from .{name} import {class_name}\n\n"
-                f"TEMPLATE_REGISTRY['{name}'] = {class_name}"
-            )
+            # Auto-register the template
+            registered = self._auto_register_template(templates_dir, name, class_name)
+
+            if registered:
+                QMessageBox.information(
+                    self, "Template Created",
+                    f"Template '{name}' has been created and registered!\n\n"
+                    f"Click 'Refresh' in the Templates tab to see it."
+                )
+            else:
+                QMessageBox.information(
+                    self, "Template Saved",
+                    f"Template saved to:\n{file_path}\n\n"
+                    f"Auto-registration failed. Please manually add to templates/__init__.py:\n\n"
+                    f"from .{name} import {class_name}\n"
+                    f"TEMPLATE_REGISTRY['{name}'] = {class_name}"
+                )
 
             self.template_created.emit(name, str(file_path))
             self.accept()
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save template: {e}")
+
+    def _auto_register_template(self, templates_dir: Path, template_name: str, class_name: str) -> bool:
+        """
+        Auto-register the template in templates/__init__.py.
+        Returns True if successful, False otherwise.
+        """
+        init_file = templates_dir / "__init__.py"
+        if not init_file.exists():
+            return False
+
+        try:
+            content = init_file.read_text()
+
+            # Check if already registered
+            if f"'{template_name}'" in content or f'"{template_name}"' in content:
+                return True  # Already registered
+
+            # Add import statement after other imports
+            import_line = f"from .{template_name} import {class_name}\n"
+
+            # Find the last import line
+            lines = content.split('\n')
+            last_import_idx = 0
+            for i, line in enumerate(lines):
+                if line.startswith('from .') and 'import' in line:
+                    last_import_idx = i
+
+            # Insert new import after last import
+            lines.insert(last_import_idx + 1, import_line.rstrip())
+
+            # Add to TEMPLATE_REGISTRY
+            registry_entry = f"    '{template_name}': {class_name},"
+
+            # Find TEMPLATE_REGISTRY and add entry before closing brace
+            new_lines = []
+            in_registry = False
+            added_entry = False
+
+            for line in lines:
+                if 'TEMPLATE_REGISTRY' in line and '{' in line:
+                    in_registry = True
+                if in_registry and '}' in line and not added_entry:
+                    # Add our entry before the closing brace
+                    new_lines.append(registry_entry)
+                    added_entry = True
+                    in_registry = False
+                new_lines.append(line)
+
+            # Write back
+            init_file.write_text('\n'.join(new_lines))
+            return True
+
+        except Exception as e:
+            print(f"Auto-register failed: {e}")
+            return False
 
     def generate_template_code(self, name: str, class_name: str) -> str:
         """Generate the Python template code."""

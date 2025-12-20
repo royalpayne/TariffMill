@@ -8493,20 +8493,15 @@ class TariffMill(QMainWindow):
         # Template buttons
         template_buttons_layout = QHBoxLayout()
 
-        btn_create_template = QPushButton("Create New Template")
+        btn_create_template = QPushButton("Create Template (AI)")
         btn_create_template.setStyleSheet(self.get_button_style("success"))
-        btn_create_template.clicked.connect(self.ocrmill_create_new_template)
+        btn_create_template.setToolTip("Create a new invoice template using AI (Claude, OpenAI, Ollama, or OpenRouter)")
+        btn_create_template.clicked.connect(self.ocrmill_open_template_builder)
         template_buttons_layout.addWidget(btn_create_template)
 
-        self.ocrmill_create_template_btn = QPushButton("AI-Assisted (Ollama)")
-        self.ocrmill_create_template_btn.setStyleSheet(self.get_button_style("info"))
-        self.ocrmill_create_template_btn.setToolTip("Use local Ollama LLM to create a new invoice template")
-        self.ocrmill_create_template_btn.clicked.connect(self.ocrmill_open_template_builder)
-        template_buttons_layout.addWidget(self.ocrmill_create_template_btn)
-
-        btn_auto_builder = QPushButton("Auto Builder")
-        btn_auto_builder.setStyleSheet(self.get_button_style("warning"))
-        btn_auto_builder.setToolTip("Automatically analyze PDF and generate template with minimal input")
+        btn_auto_builder = QPushButton("Quick Template (No AI)")
+        btn_auto_builder.setStyleSheet(self.get_button_style("info"))
+        btn_auto_builder.setToolTip("Create template using pattern detection - no AI or API key required")
         btn_auto_builder.clicked.connect(self.ocrmill_open_auto_template_builder)
         template_buttons_layout.addWidget(btn_auto_builder)
 

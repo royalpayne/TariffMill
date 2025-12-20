@@ -95,6 +95,123 @@ class PythonHighlighter(QSyntaxHighlighter):
                 self.setFormat(match.start(), match.end() - match.start(), fmt)
 
 
+class OllamaModelWorker(QThread):
+    """Background worker for pulling Ollama models."""
+    finished = pyqtSignal(bool, str)  # success, message
+    progress = pyqtSignal(str)
+
+    def __init__(self, model_name: str):
+        super().__init__()
+        self.model_name = model_name
+
+    def _find_ollama_executable(self):
+        """Find the Ollama executable on the system."""
+        import shutil
+        import os
+
+        # First try PATH
+        ollama_path = shutil.which('ollama')
+        if ollama_path:
+            return ollama_path
+
+        # Common Windows installation paths
+        if os.name == 'nt':
+            # Get username safely
+            try:
+                username = os.getlogin()
+            except OSError:
+                username = os.environ.get('USERNAME', '')
+
+            possible_paths = [
+                # Most common installation location
+                os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Programs', 'Ollama', 'ollama.exe'),
+                # User home directory variations
+                os.path.expanduser(r'~\AppData\Local\Programs\Ollama\ollama.exe'),
+                os.path.join(r'C:\Users', username, 'AppData', 'Local', 'Programs', 'Ollama', 'ollama.exe'),
+                # Program Files locations
+                os.path.join(os.environ.get('PROGRAMFILES', r'C:\Program Files'), 'Ollama', 'ollama.exe'),
+                os.path.join(os.environ.get('PROGRAMFILES(X86)', r'C:\Program Files (x86)'), 'Ollama', 'ollama.exe'),
+                # Fallback hardcoded paths
+                r'C:\Program Files\Ollama\ollama.exe',
+            ]
+
+            for path in possible_paths:
+                if path and os.path.exists(path):
+                    return path
+
+        # macOS/Linux paths
+        else:
+            possible_paths = [
+                '/usr/local/bin/ollama',
+                '/usr/bin/ollama',
+                os.path.expanduser('~/.local/bin/ollama'),
+            ]
+            for path in possible_paths:
+                if os.path.exists(path):
+                    return path
+
+        return None
+
+    def run(self):
+        import subprocess
+        import sys
+        import os
+        try:
+            # Find Ollama executable
+            ollama_exe = self._find_ollama_executable()
+            if not ollama_exe:
+                # Provide helpful error with debug info
+                localappdata = os.environ.get('LOCALAPPDATA', 'not set')
+                expected_path = os.path.join(localappdata, 'Programs', 'Ollama', 'ollama.exe')
+                self.finished.emit(
+                    False,
+                    f"Ollama executable not found.\n"
+                    f"Expected at: {expected_path}\n"
+                    f"Please ensure Ollama is installed from https://ollama.ai"
+                )
+                return
+
+            # Get startupinfo to hide console on Windows
+            startupinfo = None
+            creationflags = 0
+            if sys.platform == 'win32':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                creationflags = subprocess.CREATE_NO_WINDOW
+
+            self.progress.emit(f"Downloading {self.model_name}... This may take several minutes.")
+
+            # Run ollama pull command
+            # Use encoding='utf-8' and errors='replace' to handle special characters in progress output
+            result = subprocess.run(
+                [ollama_exe, 'pull', self.model_name],
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                startupinfo=startupinfo,
+                creationflags=creationflags,
+                timeout=1800  # 30 minute timeout for large models
+            )
+
+            if result.returncode == 0:
+                self.finished.emit(True, f"Model '{self.model_name}' downloaded successfully!")
+            else:
+                # Clean up error message - replace any problematic characters
+                error_msg = result.stderr.strip() if result.stderr else "Unknown error"
+                # Remove non-printable characters
+                error_msg = ''.join(c if c.isprintable() or c in '\n\r\t' else '?' for c in error_msg)
+                self.finished.emit(False, f"Failed: {error_msg}")
+
+        except subprocess.TimeoutExpired:
+            self.finished.emit(False, "Download timed out. Try running 'ollama pull' manually.")
+        except FileNotFoundError:
+            self.finished.emit(False, "Ollama not found. Please install from https://ollama.ai")
+        except Exception as e:
+            self.finished.emit(False, f"Error: {str(e)}")
+
+
 class APIKeyDialog(QDialog):
     """Dialog for configuring AI provider API keys."""
 
@@ -102,7 +219,8 @@ class APIKeyDialog(QDialog):
         super().__init__(parent)
         self.provider_manager = provider_manager
         self.setWindowTitle("Configure AI Providers")
-        self.setMinimumWidth(500)
+        self.setMinimumWidth(550)
+        self.ollama_worker = None
         self.setup_ui()
 
     def setup_ui(self):
@@ -110,12 +228,56 @@ class APIKeyDialog(QDialog):
 
         # Instructions
         instructions = QLabel(
-            "Enter API keys for the AI providers you want to use.\n"
-            "Keys are stored locally in your user profile.\n"
-            "Ollama runs locally and doesn't require an API key."
+            "Configure AI providers for template generation.\n"
+            "Ollama runs locally (free). Cloud providers require API keys."
         )
         instructions.setWordWrap(True)
         layout.addWidget(instructions)
+
+        # Ollama (Local) - First since it's free
+        ollama_group = QGroupBox("Ollama (Local - Free)")
+        ollama_layout = QFormLayout(ollama_group)
+
+        # Model selection dropdown
+        self.ollama_model_combo = QComboBox()
+        self.ollama_model_combo.setMinimumWidth(200)
+        self.ollama_model_combo.addItems([
+            "llama3.2:3b",
+            "llama3.2:1b",
+            "llama3.1:8b",
+            "mistral:7b",
+            "qwen2.5:7b",
+            "codellama:7b",
+            "phi3:mini",
+        ])
+        ollama_layout.addRow("Model to Download:", self.ollama_model_combo)
+
+        # Download button and status
+        ollama_btn_layout = QHBoxLayout()
+        self.ollama_download_btn = QPushButton("Download Model")
+        self.ollama_download_btn.clicked.connect(self.download_ollama_model)
+        self.ollama_status = QLabel("")
+        ollama_btn_layout.addWidget(self.ollama_download_btn)
+        ollama_btn_layout.addWidget(self.ollama_status)
+        ollama_btn_layout.addStretch()
+        ollama_layout.addRow("", ollama_btn_layout)
+
+        # Progress bar for download
+        self.ollama_progress = QProgressBar()
+        self.ollama_progress.setRange(0, 0)  # Indeterminate
+        self.ollama_progress.setVisible(False)
+        ollama_layout.addRow("", self.ollama_progress)
+
+        # Installed models display
+        self.ollama_installed = QLabel("")
+        self.refresh_ollama_models()
+        ollama_layout.addRow("Installed:", self.ollama_installed)
+
+        ollama_link = QLabel('<a href="https://ollama.ai">Download Ollama</a> | <a href="https://ollama.ai/library">Browse Models</a>')
+        ollama_link.setOpenExternalLinks(True)
+        ollama_layout.addRow("", ollama_link)
+
+        layout.addWidget(ollama_group)
 
         # Provider API key inputs
         self.key_inputs = {}
@@ -229,6 +391,57 @@ class APIKeyDialog(QDialog):
                 self.provider_manager.set_api_key(provider_name, key)
 
         self.accept()
+
+    def refresh_ollama_models(self):
+        """Refresh the list of installed Ollama models."""
+        try:
+            from ai_providers import OllamaProvider
+            provider = OllamaProvider()
+            models = provider.get_available_models()
+            if models:
+                # Show first 3 models, add "..." if more
+                display = ", ".join(models[:3])
+                if len(models) > 3:
+                    display += f", ... (+{len(models) - 3} more)"
+                self.ollama_installed.setText(display)
+                self.ollama_installed.setStyleSheet("color: green;")
+            else:
+                self.ollama_installed.setText("No models installed")
+                self.ollama_installed.setStyleSheet("color: orange;")
+        except Exception as e:
+            self.ollama_installed.setText(f"Error: {e}")
+            self.ollama_installed.setStyleSheet("color: red;")
+
+    def download_ollama_model(self):
+        """Download the selected Ollama model."""
+        model = self.ollama_model_combo.currentText()
+        if not model:
+            return
+
+        # Disable button and show progress
+        self.ollama_download_btn.setEnabled(False)
+        self.ollama_progress.setVisible(True)
+        self.ollama_status.setText(f"Downloading {model}...")
+        self.ollama_status.setStyleSheet("color: blue;")
+
+        # Start download worker
+        self.ollama_worker = OllamaModelWorker(model)
+        self.ollama_worker.finished.connect(self.on_ollama_download_complete)
+        self.ollama_worker.progress.connect(lambda msg: self.ollama_status.setText(msg))
+        self.ollama_worker.start()
+
+    def on_ollama_download_complete(self, success: bool, message: str):
+        """Handle Ollama model download completion."""
+        self.ollama_download_btn.setEnabled(True)
+        self.ollama_progress.setVisible(False)
+
+        if success:
+            self.ollama_status.setText("✓ " + message)
+            self.ollama_status.setStyleSheet("color: green;")
+            self.refresh_ollama_models()
+        else:
+            self.ollama_status.setText("✗ " + message)
+            self.ollama_status.setStyleSheet("color: red;")
 
 
 class TemplateBuilderDialog(QDialog):
@@ -975,15 +1188,19 @@ class TemplateBuilderDialog(QDialog):
         self.code_preview.setPlainText(code)
 
     def save_template(self):
-        """Save the template to file."""
+        """Save the template to file and auto-register it."""
         code = self.code_preview.toPlainText()
         if not code.strip():
             QMessageBox.warning(self, "No Code", "Please generate code first.")
             return
 
         template_name = self.template_name.text().strip()
+        class_name = self.class_name.text().strip()
         if not template_name:
             QMessageBox.warning(self, "No Name", "Please enter a template name.")
+            return
+        if not class_name:
+            QMessageBox.warning(self, "No Class Name", "Please enter a class name.")
             return
 
         # Determine templates directory
@@ -1007,16 +1224,85 @@ class TemplateBuilderDialog(QDialog):
         # Write file
         try:
             file_path.write_text(code)
-            QMessageBox.information(
-                self, "Template Saved",
-                f"Template saved to:\n{file_path}\n\n"
-                f"Remember to register it in templates/__init__.py"
-            )
+
+            # Auto-register the template in __init__.py
+            registered = self._auto_register_template(templates_dir, template_name, class_name)
+
+            if registered:
+                QMessageBox.information(
+                    self, "Template Created",
+                    f"Template '{template_name}' has been created and registered!\n\n"
+                    f"Click 'Refresh' in the Templates tab to see it."
+                )
+            else:
+                QMessageBox.information(
+                    self, "Template Saved",
+                    f"Template saved to:\n{file_path}\n\n"
+                    f"Auto-registration failed. Please manually add to templates/__init__.py:\n\n"
+                    f"from .{template_name} import {class_name}\n"
+                    f"TEMPLATE_REGISTRY['{template_name}'] = {class_name}"
+                )
+
             self.template_created.emit(template_name, str(file_path))
             self.accept()
 
         except Exception as e:
             QMessageBox.critical(self, "Save Error", f"Failed to save template: {e}")
+
+    def _auto_register_template(self, templates_dir: Path, template_name: str, class_name: str) -> bool:
+        """
+        Auto-register the template in templates/__init__.py.
+        Returns True if successful, False otherwise.
+        """
+        init_file = templates_dir / "__init__.py"
+        if not init_file.exists():
+            return False
+
+        try:
+            content = init_file.read_text()
+
+            # Check if already registered
+            if f"'{template_name}'" in content or f'"{template_name}"' in content:
+                return True  # Already registered
+
+            # Add import statement after other imports
+            import_line = f"from .{template_name} import {class_name}\n"
+
+            # Find the last import line
+            lines = content.split('\n')
+            last_import_idx = 0
+            for i, line in enumerate(lines):
+                if line.startswith('from .') and 'import' in line:
+                    last_import_idx = i
+
+            # Insert new import after last import
+            lines.insert(last_import_idx + 1, import_line.rstrip())
+
+            # Add to TEMPLATE_REGISTRY
+            registry_entry = f"    '{template_name}': {class_name},"
+
+            # Find TEMPLATE_REGISTRY and add entry before closing brace
+            new_lines = []
+            in_registry = False
+            added_entry = False
+
+            for line in lines:
+                if 'TEMPLATE_REGISTRY' in line and '{' in line:
+                    in_registry = True
+                if in_registry and '}' in line and not added_entry:
+                    # Add our entry before the closing brace
+                    new_lines.append(registry_entry)
+                    added_entry = True
+                    in_registry = False
+                new_lines.append(line)
+
+            # Write back
+            init_file.write_text('\n'.join(new_lines))
+            return True
+
+        except Exception as e:
+            print(f"Auto-register failed: {e}")
+            return False
 
     def update_nav_buttons(self):
         """Update navigation button states."""
