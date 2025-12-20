@@ -7,12 +7,14 @@ from .base_template import BaseTemplate
 from .mmcite_czech import MMCiteCzechTemplate
 from .mmcite_brazilian import MMCiteBrazilianTemplate
 from .bill_of_lading import BillOfLadingTemplate
+from .mmcit_as import MmcitAsTemplate
 
 # Registry of all available templates
 TEMPLATE_REGISTRY = {
     'mmcite_czech': MMCiteCzechTemplate,
     'mmcite_brazilian': MMCiteBrazilianTemplate,
     'bill_of_lading': BillOfLadingTemplate,
+    'mmcit_as': MmcitAsTemplate,
 }
 
 def get_template(name: str) -> BaseTemplate:

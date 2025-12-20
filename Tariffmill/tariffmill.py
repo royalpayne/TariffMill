@@ -721,30 +721,66 @@ def save_shared_config(config):
 def get_database_path():
     """
     Get the database path from shared config or use default.
-    
+    Supports platform-specific paths (linux_path, windows_path) for cross-platform use.
+
     Returns:
         Path object pointing to the SQLite database file.
     """
     config = load_shared_config()
+
+    # Check for platform-specific paths first
+    is_windows = sys.platform == 'win32'
+    platform_key = 'windows_path' if is_windows else 'linux_path'
+
+    if config.has_option('Database', platform_key):
+        platform_path = config.get('Database', platform_key)
+        if platform_path and Path(platform_path).exists():
+            return Path(platform_path)
+
+    # Fall back to generic 'path' setting
     if config.has_option('Database', 'path'):
         custom_path = config.get('Database', 'path')
         if custom_path and Path(custom_path).exists():
             return Path(custom_path)
+
     # Default to local Resources folder
     return RESOURCES_DIR / DB_NAME
 
-def set_database_path(path):
+def set_database_path(path, platform=None):
     """
     Set a custom database path in shared config.
-    
+
     Args:
         path: Path string to the database file (can be network path).
+        platform: Optional - 'linux', 'windows', or None for generic path.
     """
     config = load_shared_config()
     if not config.has_section('Database'):
         config.add_section('Database')
-    config.set('Database', 'path', str(path))
+
+    if platform == 'linux':
+        config.set('Database', 'linux_path', str(path))
+    elif platform == 'windows':
+        config.set('Database', 'windows_path', str(path))
+    else:
+        config.set('Database', 'path', str(path))
+
     save_shared_config(config)
+
+def get_platform_database_paths():
+    """
+    Get configured database paths for each platform.
+
+    Returns:
+        Dict with 'linux_path', 'windows_path', and 'path' (generic) values.
+    """
+    config = load_shared_config()
+    result = {
+        'linux_path': config.get('Database', 'linux_path', fallback=''),
+        'windows_path': config.get('Database', 'windows_path', fallback=''),
+        'path': config.get('Database', 'path', fallback=''),
+    }
+    return result
 
 # Database location - reads from config.ini or defaults to local
 DB_PATH = get_database_path()
@@ -3888,7 +3924,12 @@ class TariffMill(QMainWindow):
 
         # Check if using shared or local database
         config = load_shared_config()
-        if config.has_option('Database', 'path'):
+        is_windows_platform = sys.platform == 'win32'
+        platform_key = 'windows_path' if is_windows_platform else 'linux_path'
+        if config.has_option('Database', platform_key):
+            platform_name = "Windows" if is_windows_platform else "Linux"
+            db_type_text = f"Shared ({platform_name})"
+        elif config.has_option('Database', 'path'):
             db_type_text = "Shared (Network)"
         else:
             db_type_text = "Local"
@@ -3904,86 +3945,140 @@ class TariffMill(QMainWindow):
         shared_group = QGroupBox("Shared Database (Multi-User)")
         shared_layout = QVBoxLayout()
 
+        # Get current platform paths
+        platform_paths = get_platform_database_paths()
+        is_windows = sys.platform == 'win32'
+        current_platform = "Windows" if is_windows else "Linux"
+
         shared_info = QLabel(
-            "Configure a shared database location for multiple users.\n"
-            "This setting is stored in config.ini next to the application and applies to all users.\n\n"
-            "User-specific settings (window size, theme, etc.) remain personal."
+            "Configure platform-specific database paths for cross-platform use.\n"
+            f"Current platform: <b>{current_platform}</b>\n\n"
+            "When running on Linux, the Linux path is used. When running on Windows, the Windows path is used.\n"
+            "This allows the same config.ini to work on both platforms."
         )
         shared_info.setWordWrap(True)
         shared_layout.addWidget(shared_info)
 
-        # Path input row
-        path_row = QHBoxLayout()
-        shared_path_input = QLineEdit()
-        shared_path_input.setPlaceholderText("e.g., \\\\server\\share\\tariffmill.db")
-        if config.has_option('Database', 'path'):
-            shared_path_input.setText(config.get('Database', 'path'))
-        path_row.addWidget(shared_path_input)
+        # Linux path input row
+        linux_row = QHBoxLayout()
+        linux_label = QLabel("Linux Path:")
+        linux_label.setFixedWidth(85)
+        if not is_windows:
+            linux_label.setStyleSheet("font-weight: bold;")
+        linux_row.addWidget(linux_label)
 
-        browse_btn = QPushButton("Browse...")
-        def browse_database():
+        linux_path_input = QLineEdit()
+        linux_path_input.setPlaceholderText("e.g., /home/shared/tariffmill.db")
+        linux_path_input.setText(platform_paths.get('linux_path', ''))
+        linux_row.addWidget(linux_path_input)
+
+        linux_browse_btn = QPushButton("Browse...")
+        def browse_linux_database():
             path, _ = QFileDialog.getOpenFileName(
-                dialog, "Select Database File", 
+                dialog, "Select Linux Database File",
                 str(Path.home()),
                 "SQLite Database (*.db);;All Files (*.*)"
             )
             if path:
-                shared_path_input.setText(path)
-        browse_btn.clicked.connect(browse_database)
-        path_row.addWidget(browse_btn)
-        shared_layout.addLayout(path_row)
+                linux_path_input.setText(path)
+        linux_browse_btn.clicked.connect(browse_linux_database)
+        linux_row.addWidget(linux_browse_btn)
+        shared_layout.addLayout(linux_row)
+
+        # Windows path input row
+        windows_row = QHBoxLayout()
+        windows_label = QLabel("Windows Path:")
+        windows_label.setFixedWidth(85)
+        if is_windows:
+            windows_label.setStyleSheet("font-weight: bold;")
+        windows_row.addWidget(windows_label)
+
+        windows_path_input = QLineEdit()
+        windows_path_input.setPlaceholderText("e.g., \\\\server\\share\\tariffmill.db or Z:\\shared\\tariffmill.db")
+        windows_path_input.setText(platform_paths.get('windows_path', ''))
+        windows_row.addWidget(windows_path_input)
+
+        windows_browse_btn = QPushButton("Browse...")
+        def browse_windows_database():
+            path, _ = QFileDialog.getOpenFileName(
+                dialog, "Select Windows Database File",
+                str(Path.home()),
+                "SQLite Database (*.db);;All Files (*.*)"
+            )
+            if path:
+                windows_path_input.setText(path)
+        windows_browse_btn.clicked.connect(browse_windows_database)
+        windows_row.addWidget(windows_browse_btn)
+        shared_layout.addLayout(windows_row)
 
         # Action buttons
         btn_row = QHBoxLayout()
 
-        apply_btn = QPushButton("Apply Shared Path")
+        apply_btn = QPushButton("Apply Platform Paths")
         apply_btn.setStyleSheet(self.get_button_style("success"))
-        def apply_shared_path():
-            new_path = shared_path_input.text().strip()
-            if not new_path:
-                QMessageBox.warning(dialog, "No Path", "Please enter a database path.")
+        def apply_platform_paths():
+            linux_path = linux_path_input.text().strip()
+            windows_path = windows_path_input.text().strip()
+
+            if not linux_path and not windows_path:
+                QMessageBox.warning(dialog, "No Paths", "Please enter at least one database path.")
                 return
-            
-            path_obj = Path(new_path)
-            if not path_obj.exists():
-                reply = QMessageBox.question(dialog, "Database Not Found",
-                    f"The file does not exist:\n{new_path}\n\n"
-                    "Would you like to create a new database at this location?\n"
-                    "(A copy of your current database will be created)",
-                    QMessageBox.Yes | QMessageBox.No)
-                if reply == QMessageBox.Yes:
-                    try:
-                        # Copy current database to new location
-                        path_obj.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(str(DB_PATH), str(path_obj))
-                    except Exception as e:
-                        QMessageBox.critical(dialog, "Error", f"Failed to create database:\n{e}")
+
+            # Validate current platform's path exists
+            current_path = linux_path if not is_windows else windows_path
+            if current_path:
+                path_obj = Path(current_path)
+                if not path_obj.exists():
+                    reply = QMessageBox.question(dialog, "Database Not Found",
+                        f"The file for your current platform does not exist:\n{current_path}\n\n"
+                        "Would you like to create a new database at this location?\n"
+                        "(A copy of your current database will be created)",
+                        QMessageBox.Yes | QMessageBox.No)
+                    if reply == QMessageBox.Yes:
+                        try:
+                            path_obj.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.copy2(str(DB_PATH), str(path_obj))
+                        except Exception as e:
+                            QMessageBox.critical(dialog, "Error", f"Failed to create database:\n{e}")
+                            return
+                    else:
                         return
-                else:
-                    return
-            
-            # Save to config.ini
-            set_database_path(new_path)
-            db_path_label.setText(new_path)
-            db_type_label.setText("Shared (Network)")
-            QMessageBox.information(dialog, "Success", 
-                f"Database path updated to:\n{new_path}\n\n"
+
+            # Save both paths to config.ini
+            if linux_path:
+                set_database_path(linux_path, platform='linux')
+            if windows_path:
+                set_database_path(windows_path, platform='windows')
+
+            # Update display
+            active_path = linux_path if not is_windows else windows_path
+            if active_path:
+                db_path_label.setText(active_path)
+                db_type_label.setText(f"Shared ({current_platform})")
+
+            QMessageBox.information(dialog, "Success",
+                f"Platform-specific database paths saved.\n\n"
+                f"Linux: {linux_path or '(not set)'}\n"
+                f"Windows: {windows_path or '(not set)'}\n\n"
                 "Restart the application to use the new database.")
-        apply_btn.clicked.connect(apply_shared_path)
+        apply_btn.clicked.connect(apply_platform_paths)
         btn_row.addWidget(apply_btn)
 
         reset_btn = QPushButton("Use Local Database")
         reset_btn.setStyleSheet(self.get_button_style("warning"))
         def reset_to_local():
             config = load_shared_config()
-            if config.has_option('Database', 'path'):
-                config.remove_option('Database', 'path')
-                save_shared_config(config)
-            shared_path_input.clear()
+            # Remove all database path options
+            for opt in ['path', 'linux_path', 'windows_path']:
+                if config.has_option('Database', opt):
+                    config.remove_option('Database', opt)
+            save_shared_config(config)
+            linux_path_input.clear()
+            windows_path_input.clear()
             local_path = RESOURCES_DIR / DB_NAME
             db_path_label.setText(str(local_path))
             db_type_label.setText("Local")
-            QMessageBox.information(dialog, "Reset", 
+            QMessageBox.information(dialog, "Reset",
                 "Database reset to local.\n\nRestart the application to apply changes.")
         reset_btn.clicked.connect(reset_to_local)
         btn_row.addWidget(reset_btn)
@@ -5563,9 +5658,16 @@ class TariffMill(QMainWindow):
                 master_col = f'{field}_master'
                 if master_col in df.columns:
                     # Database has this field - prefer database value, fall back to invoice if DB is empty
-                    df[field] = df[master_col].replace('', pd.NA).combine_first(
-                        df[field].replace('', pd.NA) if field in df.columns else pd.Series([pd.NA] * len(df))
-                    )
+                    # For numeric fields, convert to numeric first to handle proper comparison
+                    if field in ['steel_ratio', 'aluminum_ratio', 'copper_ratio', 'wood_ratio', 'auto_ratio', 'non_steel_ratio']:
+                        master_vals = pd.to_numeric(df[master_col], errors='coerce')
+                        invoice_vals = pd.to_numeric(df[field], errors='coerce') if field in df.columns else pd.Series([pd.NA] * len(df))
+                        # Use master value if available and not NaN, otherwise invoice value
+                        df[field] = master_vals.combine_first(invoice_vals)
+                    else:
+                        df[field] = df[master_col].replace('', pd.NA).combine_first(
+                            df[field].replace('', pd.NA) if field in df.columns else pd.Series([pd.NA] * len(df))
+                        )
                 elif field not in df.columns:
                     # Neither invoice nor database has it - set default
                     if field in ['steel_ratio', 'aluminum_ratio', 'copper_ratio', 'wood_ratio', 'auto_ratio', 'non_steel_ratio']:
@@ -5574,7 +5676,9 @@ class TariffMill(QMainWindow):
                         df[field] = ''
 
             # Convert ratio fields to numeric (values are percentages 0-100)
-            df['steel_ratio'] = pd.to_numeric(df['steel_ratio'], errors='coerce').fillna(100.0)
+            # Note: fillna(0.0) for all ratios - the later processing will determine
+            # material type from HTS code if no ratios are set
+            df['steel_ratio'] = pd.to_numeric(df['steel_ratio'], errors='coerce').fillna(0.0)
             df['aluminum_ratio'] = pd.to_numeric(df['aluminum_ratio'], errors='coerce').fillna(0.0)
             df['copper_ratio'] = pd.to_numeric(df['copper_ratio'], errors='coerce').fillna(0.0)
             df['wood_ratio'] = pd.to_numeric(df['wood_ratio'], errors='coerce').fillna(0.0)
@@ -7585,6 +7689,8 @@ class TariffMill(QMainWindow):
             self.load_output_mapping_profiles()
             if is_widget_valid(self.output_profile_combo):
                 self.output_profile_combo.setCurrentText(name)
+            # Also refresh the linked export combo in Invoice Mapping tab
+            self.refresh_linked_export_combo()
             self.bottom_status.setText(f"Saved output mapping profile: {name}")
             logger.info(f"Saved output mapping profile: {name}")
 
@@ -7668,6 +7774,8 @@ class TariffMill(QMainWindow):
             conn.close()
 
             self.load_output_mapping_profiles()
+            # Also refresh the linked export combo in Invoice Mapping tab
+            self.refresh_linked_export_combo()
             self.bottom_status.setText(f"Deleted output mapping profile: {profile_name}")
             logger.info(f"Deleted output mapping profile: {profile_name}")
 
@@ -8109,6 +8217,35 @@ class TariffMill(QMainWindow):
             pass  # Widget has been deleted
         except Exception as e:
             logger.warning(f"Failed to apply linked export profile: {e}")
+
+    def refresh_linked_export_combo(self):
+        """Refresh the linked export profile dropdown with current output profiles"""
+        if not hasattr(self, 'linked_export_combo') or not is_widget_valid(self.linked_export_combo):
+            return
+
+        try:
+            # Remember current selection
+            current_text = self.linked_export_combo.currentText()
+
+            # Clear and repopulate
+            self.linked_export_combo.clear()
+            self.linked_export_combo.addItem("(None)")
+
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+            c.execute("SELECT DISTINCT profile_name FROM output_column_mappings ORDER BY profile_name")
+            for row in c.fetchall():
+                self.linked_export_combo.addItem(row[0])
+            conn.close()
+
+            # Restore selection if it still exists
+            idx = self.linked_export_combo.findText(current_text)
+            if idx >= 0:
+                self.linked_export_combo.setCurrentIndex(idx)
+        except (RuntimeError, AttributeError):
+            pass  # Widget has been deleted
+        except Exception as e:
+            logger.warning(f"Failed to refresh linked export combo: {e}")
 
     def apply_current_mapping(self):
         # Check if shipment_targets is valid (not deleted after dialog close)
