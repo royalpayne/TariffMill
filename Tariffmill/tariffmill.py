@@ -2131,7 +2131,7 @@ class TariffMill(QMainWindow):
         bottom_bar_layout.setSpacing(10)
 
         self.bottom_status = QLabel("Ready")
-        self.bottom_status.setStyleSheet("font-size: 8px;")
+        self.bottom_status.setStyleSheet("font-size: 9px;")
         bottom_bar_layout.addWidget(self.bottom_status, 1)
         
         # Export progress indicator (hidden by default)
@@ -4466,7 +4466,7 @@ class TariffMill(QMainWindow):
         if is_dark:
             # Dark theme status bars
             self.status.setStyleSheet("font-size:14pt; padding:8px; background:#2d2d2d; color:#e0e0e0;")
-            self.bottom_status.setStyleSheet("font-size:9pt; color:#b0b0b0;")
+            self.bottom_status.setStyleSheet("font-size:9px; color:#b0b0b0;")
             if hasattr(self, 'bottom_bar'):
                 self.bottom_bar.setStyleSheet("""
                     QWidget {
@@ -4477,7 +4477,7 @@ class TariffMill(QMainWindow):
         else:
             # Light theme status bars
             self.status.setStyleSheet("font-size:14pt; padding:8px; background:#f0f0f0; color:#000000;")
-            self.bottom_status.setStyleSheet("font-size:9pt; color:#555555;")
+            self.bottom_status.setStyleSheet("font-size:9px; color:#555555;")
             if hasattr(self, 'bottom_bar'):
                 self.bottom_bar.setStyleSheet("""
                     QWidget {
@@ -4485,18 +4485,18 @@ class TariffMill(QMainWindow):
                         border-top: 1px solid #d0d0d0;
                     }
                 """)
-    
+
     def update_status_bar_styles(self):
         """Update status bar backgrounds based on current theme"""
         if not hasattr(self, 'current_theme'):
             self.current_theme = "System Default"
-        
+
         is_dark = self.current_theme in ["Fusion (Dark)", "Ocean"]
-        
+
         if is_dark:
             # Dark theme status bars
             self.status.setStyleSheet("font-size:14pt; padding:8px; background:#2d2d2d; color:#e0e0e0;")
-            self.bottom_status.setStyleSheet("font-size:9pt; color:#b0b0b0;")
+            self.bottom_status.setStyleSheet("font-size:9px; color:#b0b0b0;")
             if hasattr(self, 'bottom_bar'):
                 self.bottom_bar.setStyleSheet("""
                     QWidget {
@@ -4507,7 +4507,7 @@ class TariffMill(QMainWindow):
         else:
             # Light theme status bars
             self.status.setStyleSheet("font-size:14pt; padding:8px; background:#f0f0f0; color:#000000;")
-            self.bottom_status.setStyleSheet("font-size:9pt; color:#555555;")
+            self.bottom_status.setStyleSheet("font-size:9px; color:#555555;")
             if hasattr(self, 'bottom_bar'):
                 self.bottom_bar.setStyleSheet("""
                     QWidget {
@@ -11054,14 +11054,14 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             self.process_btn.setText("Export Worksheet")
             self.process_btn.setFocus()  # Keep focus on button so user can press Enter to export
             self.bottom_status.setText(f"VALUES MATCH - Preview: ${total:,.2f} = Target: ${target_value:,.2f}")
-            self.bottom_status.setStyleSheet("background:#107C10; color:white; font-weight:bold; padding:3px;")
+            self.bottom_status.setStyleSheet("background:#107C10; color:white; font-weight:bold; font-size:9px; padding:2px 3px;")
         else:
             self.process_btn.setEnabled(False)
             self.process_btn.setText("Export Worksheet (Values Don't Match)")
             diff_display = total - target_value
             sign = "+" if diff_display > 0 else ""
             self.bottom_status.setText(f"Preview: ${total:,.2f} • Target: ${target_value:,.2f} • Diff: {sign}${diff_display:,.2f}")
-            self.bottom_status.setStyleSheet("background:#ff9800; color:white; font-weight:bold; padding:3px;")
+            self.bottom_status.setStyleSheet("background:#ff9800; color:white; font-weight:bold; font-size:9px; padding:2px 3px;")
 
     def _process_or_export(self):
         # If no preview yet, run processing; otherwise proceed to export
