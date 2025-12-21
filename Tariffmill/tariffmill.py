@@ -5488,11 +5488,16 @@ class TariffMill(QMainWindow):
 
             # Create derivative rows in order: Non-232 first, then Steel, Aluminum, Copper, Wood, Auto
             # This ensures 232 materials appear BELOW their non-232 counterparts in the preview
+            # Track allocated value to ensure total equals original (avoid rounding errors)
+            allocated_value = 0.0
+            row_start_idx = len(expanded_rows)
 
             # Create non-232 portion row first (if non_steel_pct > 0)
             if non_steel_pct > 0:
                 non_232_row = row.copy()
-                non_232_row['value_usd'] = original_value * non_steel_pct / 100.0
+                portion_value = round(original_value * non_steel_pct / 100.0, 2)
+                non_232_row['value_usd'] = portion_value
+                allocated_value += portion_value
                 non_232_row['SteelRatio'] = 0.0
                 non_232_row['AluminumRatio'] = 0.0
                 non_232_row['CopperRatio'] = 0.0
@@ -5505,7 +5510,9 @@ class TariffMill(QMainWindow):
             # Create steel portion row (if steel_pct > 0)
             if steel_pct > 0:
                 steel_row = row.copy()
-                steel_row['value_usd'] = original_value * steel_pct / 100.0
+                portion_value = round(original_value * steel_pct / 100.0, 2)
+                steel_row['value_usd'] = portion_value
+                allocated_value += portion_value
                 steel_row['SteelRatio'] = steel_pct
                 steel_row['AluminumRatio'] = 0.0
                 steel_row['CopperRatio'] = 0.0
@@ -5518,7 +5525,9 @@ class TariffMill(QMainWindow):
             # Create aluminum portion row (if aluminum_pct > 0)
             if aluminum_pct > 0:
                 aluminum_row = row.copy()
-                aluminum_row['value_usd'] = original_value * aluminum_pct / 100.0
+                portion_value = round(original_value * aluminum_pct / 100.0, 2)
+                aluminum_row['value_usd'] = portion_value
+                allocated_value += portion_value
                 aluminum_row['SteelRatio'] = 0.0
                 aluminum_row['AluminumRatio'] = aluminum_pct
                 aluminum_row['CopperRatio'] = 0.0
@@ -5531,7 +5540,9 @@ class TariffMill(QMainWindow):
             # Create copper portion row (if copper_pct > 0)
             if copper_pct > 0:
                 copper_row = row.copy()
-                copper_row['value_usd'] = original_value * copper_pct / 100.0
+                portion_value = round(original_value * copper_pct / 100.0, 2)
+                copper_row['value_usd'] = portion_value
+                allocated_value += portion_value
                 copper_row['SteelRatio'] = 0.0
                 copper_row['AluminumRatio'] = 0.0
                 copper_row['CopperRatio'] = copper_pct
@@ -5544,7 +5555,9 @@ class TariffMill(QMainWindow):
             # Create wood portion row (if wood_pct > 0)
             if wood_pct > 0:
                 wood_row = row.copy()
-                wood_row['value_usd'] = original_value * wood_pct / 100.0
+                portion_value = round(original_value * wood_pct / 100.0, 2)
+                wood_row['value_usd'] = portion_value
+                allocated_value += portion_value
                 wood_row['SteelRatio'] = 0.0
                 wood_row['AluminumRatio'] = 0.0
                 wood_row['CopperRatio'] = 0.0
@@ -5557,7 +5570,9 @@ class TariffMill(QMainWindow):
             # Create auto portion row (if auto_pct > 0)
             if auto_pct > 0:
                 auto_row = row.copy()
-                auto_row['value_usd'] = original_value * auto_pct / 100.0
+                portion_value = round(original_value * auto_pct / 100.0, 2)
+                auto_row['value_usd'] = portion_value
+                allocated_value += portion_value
                 auto_row['SteelRatio'] = 0.0
                 auto_row['AluminumRatio'] = 0.0
                 auto_row['CopperRatio'] = 0.0
@@ -5566,6 +5581,13 @@ class TariffMill(QMainWindow):
                 auto_row['NonSteelRatio'] = 0.0
                 auto_row['_content_type'] = 'auto'
                 expanded_rows.append(auto_row)
+
+            # Fix rounding errors: adjust the last created row to ensure total matches original
+            if len(expanded_rows) > row_start_idx:
+                remainder = round(original_value - allocated_value, 2)
+                if abs(remainder) > 0.001:
+                    # Add remainder to the last row created for this item
+                    expanded_rows[-1]['value_usd'] = round(expanded_rows[-1]['value_usd'] + remainder, 2)
 
         # Rebuild dataframe from expanded rows
         df = pd.DataFrame(expanded_rows).reset_index(drop=True)
