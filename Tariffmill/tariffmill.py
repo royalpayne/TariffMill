@@ -9026,7 +9026,17 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         self.ocrmill_stats_text.setPlainText(stats_text)
 
     def ocrmill_refresh_templates(self):
-        """Refresh the templates list."""
+        """Refresh the templates list by re-scanning the templates directory."""
+        # Re-discover templates from disk
+        try:
+            from templates import refresh_templates
+            refresh_templates()
+        except Exception as e:
+            self.ocrmill_log(f"Warning: Could not refresh templates module: {e}")
+
+        # Reload processor's template list
+        self.ocrmill_processor.reload_templates()
+
         self.ocrmill_templates_list.clear()
         templates = self.ocrmill_processor.get_available_templates()
 

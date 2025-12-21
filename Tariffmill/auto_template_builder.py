@@ -215,6 +215,7 @@ class AutoTemplateBuilderDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Auto Template Builder")
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
         self.setMinimumSize(800, 600)
 
         self.current_text = ""

@@ -60,6 +60,11 @@ class ProcessorEngine:
         """Load all available templates."""
         self.templates = get_all_templates()
 
+    def reload_templates(self):
+        """Reload templates from disk. Call after adding/removing template files."""
+        self._load_templates()
+        self.log(f"Reloaded {len(self.templates)} templates")
+
     def log(self, message: str):
         """Log a message."""
         self.log_callback(message)

@@ -457,6 +457,7 @@ class TemplateBuilderDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("AI Template Builder")
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
         self.setMinimumSize(1200, 800)
 
         self.provider_manager = AIProviderManager()
