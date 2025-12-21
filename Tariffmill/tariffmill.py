@@ -27,7 +27,7 @@ except ImportError:
         VERSION = get_version()
     except ImportError:
         # Fallback if version.py is not available
-        VERSION = "v0.91.0"
+        VERSION = "v0.93.4"
 
 
 import sys
@@ -1650,6 +1650,7 @@ class DropTarget(QLabel):
         self.setStyleSheet("padding: 4px 8px; background: #f8f8f8; border: 1px solid #bbb; border-radius: 4px; color: #222;")
         self.setAlignment(Qt.AlignCenter)
         self.setAcceptDrops(True)
+        self.setWordWrap(False)
         self.column_name = None
         self.setFixedHeight(28)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -2949,7 +2950,7 @@ class TariffMill(QMainWindow):
             self.mid_table_widget.setRowHidden(row, False)
 
     def show_configuration_dialog(self, initial_tab=0):
-        """Show the Configuration dialog with Invoice Mapping, Output Mapping, Parts Import, MID Management, and Tariff Details tabs"""
+        """Show the Configuration dialog with Invoice Mapping, Output Mapping, Parts Import, and MID Management tabs"""
         dialog = QDialog(self)
         dialog.setWindowTitle("Configuration")
         dialog.resize(1000, 700)
@@ -2963,7 +2964,6 @@ class TariffMill(QMainWindow):
         tab_output_map = QWidget()
         tab_import = QWidget()
         tab_mid_management = QWidget()
-        tab_tariff_details = QWidget()
 
         # Temporarily swap the instance variables so setup methods populate the new widgets
         original_tab_shipment_map = self.tab_shipment_map
@@ -2979,7 +2979,6 @@ class TariffMill(QMainWindow):
         self.setup_output_mapping_tab()
         self.setup_import_tab()
         self.setup_mid_management_tab(tab_mid_management)
-        self.setup_tariff_details_tab(tab_tariff_details)
 
         # Restore original references (though they may be deleted)
         self.tab_shipment_map = original_tab_shipment_map
@@ -2991,7 +2990,6 @@ class TariffMill(QMainWindow):
         tabs.addTab(tab_output_map, "Output Mapping")
         tabs.addTab(tab_import, "Parts Import")
         tabs.addTab(tab_mid_management, "MID Management")
-        tabs.addTab(tab_tariff_details, "Tariff Details")
 
         # Set initial tab if specified
         if initial_tab > 0 and initial_tab < tabs.count():
@@ -3119,355 +3117,6 @@ class TariffMill(QMainWindow):
 
         # Load current MID data
         self.load_mid_table_data()
-
-    def setup_tariff_details_tab(self, tab_widget):
-        """Setup the Tariff Details tab for managing HTS quantity units"""
-        layout = QVBoxLayout(tab_widget)
-
-        # Title
-        title = QLabel("<h2>Tariff Details</h2><p>Manage HTS quantity units for CBP reporting</p>")
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
-
-        # HTS Lookup group
-        lookup_group = QGroupBox("HTS Unit Lookup")
-        lookup_layout = QVBoxLayout(lookup_group)
-
-        lookup_row1 = QHBoxLayout()
-        lookup_row1.addWidget(QLabel("HTS Code:"))
-        self.hts_lookup_input = QLineEdit()
-        self.hts_lookup_input.setPlaceholderText("Enter HTS code (e.g., 8535.90.8020)")
-        self.hts_lookup_input.setMaximumWidth(200)
-        lookup_row1.addWidget(self.hts_lookup_input)
-
-        btn_lookup = QPushButton("Lookup Unit")
-        btn_lookup.setStyleSheet(self.get_button_style("primary"))
-        btn_lookup.clicked.connect(self.lookup_hts_unit)
-        lookup_row1.addWidget(btn_lookup)
-
-        self.hts_lookup_result = QLabel("")
-        lookup_row1.addWidget(self.hts_lookup_result)
-
-        lookup_row1.addStretch()
-        lookup_layout.addLayout(lookup_row1)
-
-        lookup_row2 = QHBoxLayout()
-        btn_update_parts = QPushButton("Update Parts Master Qty Units")
-        btn_update_parts.setStyleSheet(self.get_button_style("primary"))
-        btn_update_parts.clicked.connect(self.update_parts_master_qty_units)
-        btn_update_parts.setToolTip("Update qty_unit in parts_master table based on HTS codes from hts.db")
-        lookup_row2.addWidget(btn_update_parts)
-
-        btn_identify_missing = QPushButton("Identify Missing HTS Units")
-        btn_identify_missing.setStyleSheet(self.get_button_style("secondary"))
-        btn_identify_missing.clicked.connect(self.identify_missing_hts_units)
-        btn_identify_missing.setToolTip("Show HTS codes in parts_master that don't have unit data in hts.db")
-        lookup_row2.addWidget(btn_identify_missing)
-
-        self.hts_update_status = QLabel("")
-        lookup_row2.addWidget(self.hts_update_status)
-
-        lookup_row2.addStretch()
-        lookup_layout.addLayout(lookup_row2)
-
-        layout.addWidget(lookup_group)
-
-        # HTS Units table
-        table_group = QGroupBox("HTS Units Table")
-        table_layout = QVBoxLayout(table_group)
-
-        # Filter row
-        filter_layout = QHBoxLayout()
-        filter_layout.addWidget(QLabel("Filter:"))
-        self.hts_units_filter = QLineEdit()
-        self.hts_units_filter.setPlaceholderText("Search HTS codes or units...")
-        self.hts_units_filter.textChanged.connect(self.filter_hts_units_table)
-        filter_layout.addWidget(self.hts_units_filter)
-        table_layout.addLayout(filter_layout)
-
-        self.hts_units_table = QTableWidget()
-        self.hts_units_table.setColumnCount(2)
-        self.hts_units_table.setHorizontalHeaderLabels(["HTS Code", "Qty Unit"])
-        self.hts_units_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.hts_units_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.hts_units_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.hts_units_table.setAlternatingRowColors(True)
-        table_layout.addWidget(self.hts_units_table)
-
-        layout.addWidget(table_group)
-
-        # Load HTS units data
-        self.load_hts_units_table_data()
-
-    def lookup_hts_unit(self):
-        """Lookup unit of quantity for an HTS code"""
-        hts_code = self.hts_lookup_input.text().strip()
-        if not hts_code:
-            self.hts_lookup_result.setText("Enter an HTS code")
-            self.hts_lookup_result.setStyleSheet("color: orange;")
-            return
-
-        # Load HTS cache if not loaded
-        if not hasattr(self, '_usitc_hts_cache') or not self._usitc_hts_cache:
-            self._load_usitc_hts_cache()
-
-        # Normalize HTS code
-        hts_clean = hts_code.replace('.', '').strip()
-
-        # Try exact match first, then progressively shorter matches
-        unit = None
-        for length in [len(hts_clean), 10, 8, 6, 4]:
-            if length <= len(hts_clean) and hasattr(self, '_usitc_hts_cache'):
-                unit = self._usitc_hts_cache.get(hts_clean[:length])
-                if unit:
-                    break
-
-        if unit:
-            self.hts_lookup_result.setText(f"Unit: {unit}")
-            self.hts_lookup_result.setStyleSheet("color: green; font-weight: bold;")
-        else:
-            self.hts_lookup_result.setText("Not found in hts.db")
-            self.hts_lookup_result.setStyleSheet("color: red;")
-
-    def _load_usitc_hts_cache(self):
-        """Load and cache HTS data from hts.db database"""
-        # Primary source: load from hts_codes table in hts.db
-        hts_db_path = BASE_DIR / "Resources" / "References" / "hts.db"
-
-        if hts_db_path.exists():
-            try:
-                if hasattr(self, 'hts_lookup_result'):
-                    self.hts_lookup_result.setText("Loading HTS database...")
-                    QApplication.processEvents()
-
-                conn = sqlite3.connect(str(hts_db_path))
-                c = conn.cursor()
-                c.execute("SELECT full_code, unit_of_quantity FROM hts_codes WHERE length(unit_of_quantity) > 0")
-                rows = c.fetchall()
-                conn.close()
-
-                self._usitc_hts_cache = {}
-                for full_code, unit in rows:
-                    # Normalize HTS code (remove dots)
-                    hts_clean = str(full_code).replace('.', '').strip()
-                    unit_clean = str(unit).strip().upper().replace('.', '')
-                    if hts_clean and unit_clean:
-                        self._usitc_hts_cache[hts_clean] = unit_clean
-
-                logger.info(f"Loaded {len(self._usitc_hts_cache)} HTS codes from hts.db")
-                return
-            except Exception as e:
-                logger.warning(f"Failed to load from hts.db: {e}")
-
-        self._usitc_hts_cache = {}
-        logger.warning("hts.db not found or empty")
-
-    def update_parts_master_qty_units(self):
-        """Update qty_unit in parts_master table based on HTS codes from hts.db"""
-        reply = QMessageBox.question(
-            self, "Update Parts Master",
-            "This will update the qty_unit field in the parts_master table\n"
-            "based on HTS codes found in the hts.db reference database.\n\n"
-            "Only parts with missing or empty qty_unit will be updated.\n\n"
-            "Continue?",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        if reply != QMessageBox.Yes:
-            return
-
-        if hasattr(self, 'hts_update_status'):
-            self.hts_update_status.setText("Loading HTS data...")
-            self.hts_update_status.setStyleSheet("color: blue;")
-        QApplication.processEvents()
-
-        try:
-            # Load HTS data from hts.db
-            hts_db_path = BASE_DIR / "Resources" / "References" / "hts.db"
-            if not hts_db_path.exists():
-                QMessageBox.critical(self, "Error", "hts.db not found in Resources/References/")
-                return
-
-            # Build lookup dictionary from hts.db
-            conn_hts = sqlite3.connect(str(hts_db_path))
-            c_hts = conn_hts.cursor()
-            c_hts.execute("SELECT full_code, unit_of_quantity FROM hts_codes WHERE length(unit_of_quantity) > 0")
-            hts_rows = c_hts.fetchall()
-            conn_hts.close()
-
-            hts_lookup = {}
-            for full_code, unit in hts_rows:
-                hts_clean = str(full_code).replace('.', '').strip()
-                unit_clean = str(unit).strip().upper().replace('.', '')
-                if hts_clean and unit_clean:
-                    hts_lookup[hts_clean] = unit_clean
-
-            if hasattr(self, 'hts_update_status'):
-                self.hts_update_status.setText(f"Loaded {len(hts_lookup)} HTS codes, updating parts...")
-            QApplication.processEvents()
-
-            # Update parts_master
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-
-            # Get parts that need updating (missing or empty qty_unit)
-            c.execute("SELECT part_number, hts_code FROM parts_master WHERE (qty_unit IS NULL OR qty_unit = '') AND hts_code IS NOT NULL AND hts_code != ''")
-            parts_to_update = c.fetchall()
-
-            updated = 0
-            not_found = 0
-            for part_number, hts_code in parts_to_update:
-                # Normalize HTS code
-                hts_clean = str(hts_code).replace('.', '').strip()
-
-                # Try exact match first, then progressively shorter matches
-                unit = None
-                for length in [len(hts_clean), 10, 8, 6, 4]:
-                    if length <= len(hts_clean):
-                        unit = hts_lookup.get(hts_clean[:length])
-                        if unit:
-                            break
-
-                if unit:
-                    c.execute("UPDATE parts_master SET qty_unit = ? WHERE part_number = ?", (unit, part_number))
-                    updated += 1
-                else:
-                    not_found += 1
-
-                # Update progress
-                if (updated + not_found) % 100 == 0:
-                    if hasattr(self, 'hts_update_status'):
-                        self.hts_update_status.setText(f"Updated {updated} parts...")
-                    QApplication.processEvents()
-
-            conn.commit()
-            conn.close()
-
-            if hasattr(self, 'hts_update_status'):
-                self.hts_update_status.setText(f"Updated {updated} parts")
-                self.hts_update_status.setStyleSheet("color: green;")
-
-            QMessageBox.information(
-                self, "Update Complete",
-                f"Successfully updated {updated} parts with qty_unit.\n\n"
-                f"Parts with HTS codes not found in hts.db: {not_found}"
-            )
-
-            logger.info(f"Updated {updated} parts with qty_unit, {not_found} HTS codes not found")
-
-        except Exception as e:
-            logger.error(f"Update parts qty_unit error: {e}")
-            if hasattr(self, 'hts_update_status'):
-                self.hts_update_status.setText("Update failed")
-                self.hts_update_status.setStyleSheet("color: red;")
-            QMessageBox.critical(self, "Update Error", f"Failed to update parts:\n{str(e)}")
-
-    def identify_missing_hts_units(self):
-        """Show a dialog with HTS codes that are missing unit data in hts.db"""
-        try:
-            # Load HTS cache if not loaded
-            if not hasattr(self, '_usitc_hts_cache') or not self._usitc_hts_cache:
-                self._load_usitc_hts_cache()
-
-            # Get unique HTS codes from parts_master that don't have units
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-            c.execute("""
-                SELECT DISTINCT hts_code
-                FROM parts_master
-                WHERE hts_code IS NOT NULL AND hts_code != ''
-                  AND (qty_unit IS NULL OR qty_unit = '')
-                ORDER BY hts_code
-            """)
-            parts_hts_codes = c.fetchall()
-            conn.close()
-
-            missing_codes = []
-            for (hts_code,) in parts_hts_codes:
-                hts_clean = str(hts_code).replace('.', '').strip()
-                # Check if any length match exists
-                found = False
-                for length in [len(hts_clean), 10, 8, 6, 4]:
-                    if length <= len(hts_clean) and hasattr(self, '_usitc_hts_cache'):
-                        if self._usitc_hts_cache.get(hts_clean[:length]):
-                            found = True
-                            break
-                if not found:
-                    missing_codes.append(hts_code)
-
-            # Show dialog with results
-            dialog = QDialog(self)
-            dialog.setWindowTitle("Missing HTS Units")
-            dialog.resize(500, 400)
-            layout = QVBoxLayout(dialog)
-
-            if missing_codes:
-                label = QLabel(f"<b>{len(missing_codes)} HTS codes</b> in parts_master have no unit data in hts.db:")
-                layout.addWidget(label)
-
-                text_edit = QPlainTextEdit()
-                text_edit.setReadOnly(True)
-                text_edit.setPlainText("\n".join(missing_codes))
-                layout.addWidget(text_edit)
-
-                # Copy button
-                btn_copy = QPushButton("Copy to Clipboard")
-                btn_copy.clicked.connect(lambda: QApplication.clipboard().setText("\n".join(missing_codes)))
-                layout.addWidget(btn_copy)
-            else:
-                label = QLabel("All HTS codes in parts_master have matching unit data in hts.db!")
-                label.setStyleSheet("color: green; font-weight: bold;")
-                layout.addWidget(label)
-
-            btn_close = QPushButton("Close")
-            btn_close.clicked.connect(dialog.accept)
-            layout.addWidget(btn_close)
-
-            dialog.exec_()
-
-        except Exception as e:
-            logger.error(f"Identify missing HTS units error: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to identify missing HTS units:\n{str(e)}")
-
-    def load_hts_units_table_data(self):
-        """Load HTS units from hts.db into the table"""
-        if not hasattr(self, 'hts_units_table'):
-            return
-
-        try:
-            hts_db_path = BASE_DIR / "Resources" / "References" / "hts.db"
-            if not hts_db_path.exists():
-                return
-
-            conn = sqlite3.connect(str(hts_db_path))
-            c = conn.cursor()
-            c.execute("SELECT full_code, unit_of_quantity FROM hts_codes WHERE length(unit_of_quantity) > 0 ORDER BY full_code LIMIT 1000")
-            rows = c.fetchall()
-            conn.close()
-
-            self.hts_units_table.setRowCount(len(rows))
-            for i, (hts_code, qty_unit) in enumerate(rows):
-                self.hts_units_table.setItem(i, 0, QTableWidgetItem(str(hts_code)))
-                self.hts_units_table.setItem(i, 1, QTableWidgetItem(str(qty_unit)))
-
-        except Exception as e:
-            logger.error(f"Load HTS units table error: {e}")
-
-    def filter_hts_units_table(self):
-        """Filter HTS units table based on search text"""
-        if not hasattr(self, 'hts_units_table') or not hasattr(self, 'hts_units_filter'):
-            return
-
-        filter_text = self.hts_units_filter.text().strip().lower()
-
-        for row in range(self.hts_units_table.rowCount()):
-            show_row = True
-            if filter_text:
-                hts_code = self.hts_units_table.item(row, 0)
-                qty_unit = self.hts_units_table.item(row, 1)
-                hts_text = hts_code.text().lower() if hts_code else ""
-                unit_text = qty_unit.text().lower() if qty_unit else ""
-                show_row = filter_text in hts_text or filter_text in unit_text
-            self.hts_units_table.setRowHidden(row, not show_row)
 
     def show_preview_context_menu(self, pos):
         """Show context menu for the preview table"""
@@ -5646,28 +5295,33 @@ class TariffMill(QMainWindow):
             conn = sqlite3.connect(str(DB_PATH))
             parts = pd.read_sql("SELECT part_number, hts_code, steel_ratio, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio, non_steel_ratio, qty_unit, country_of_melt, country_of_cast, country_of_smelt, Sec301_Exclusion_Tariff FROM parts_master", conn)
             conn.close()
+            # Normalize part numbers for matching (strip whitespace, uppercase)
+            df['part_number'] = df['part_number'].astype(str).str.strip().str.upper()
+            parts['part_number'] = parts['part_number'].astype(str).str.strip().str.upper()
             df = df.merge(parts, on='part_number', how='left', suffixes=('', '_master'), indicator=True)
             # Track parts not found in the database
             df['_not_in_db'] = df['_merge'] == 'left_only'
             df = df.drop(columns=['_merge'])
 
             # Merge strategy: Prefer database (master) values over invoice values
-            # Database values take precedence; invoice values are only used as fallback when not in DB
+            # Database values ALWAYS take precedence; invoice values are only used as fallback when DB is empty
             merge_fields = ['hts_code', 'steel_ratio', 'aluminum_ratio', 'copper_ratio', 'wood_ratio', 'auto_ratio', 'non_steel_ratio', 'qty_unit']
             for field in merge_fields:
                 master_col = f'{field}_master'
                 if master_col in df.columns:
-                    # Database has this field - prefer database value, fall back to invoice if DB is empty
-                    # For numeric fields, convert to numeric first to handle proper comparison
+                    # Database has this field - database value ALWAYS takes precedence
+                    # Only fall back to invoice value if database value is empty/NA
                     if field in ['steel_ratio', 'aluminum_ratio', 'copper_ratio', 'wood_ratio', 'auto_ratio', 'non_steel_ratio']:
                         master_vals = pd.to_numeric(df[master_col], errors='coerce')
                         invoice_vals = pd.to_numeric(df[field], errors='coerce') if field in df.columns else pd.Series([pd.NA] * len(df))
                         # Use master value if available and not NaN, otherwise invoice value
                         df[field] = master_vals.combine_first(invoice_vals)
                     else:
-                        df[field] = df[master_col].replace('', pd.NA).combine_first(
-                            df[field].replace('', pd.NA) if field in df.columns else pd.Series([pd.NA] * len(df))
-                        )
+                        # For text fields like hts_code: database value takes precedence
+                        master_series = df[master_col].replace('', pd.NA)
+                        invoice_series = df[field].replace('', pd.NA) if field in df.columns else pd.Series([pd.NA] * len(df))
+                        # combine_first: use master, fill gaps with invoice
+                        df[field] = master_series.combine_first(invoice_series)
                 elif field not in df.columns:
                     # Neither invoice nor database has it - set default
                     if field in ['steel_ratio', 'aluminum_ratio', 'copper_ratio', 'wood_ratio', 'auto_ratio', 'non_steel_ratio']:
@@ -5895,8 +5549,8 @@ class TariffMill(QMainWindow):
         # Keep cbp_qty for backward compatibility (uses Qty1 logic)
         df['cbp_qty'] = df['Qty1']
 
-        # Set HTSCode and MID
-        df['HTSCode'] = df.get('hts_code', '')
+        # Set HTSCode and MID (convert NaN to empty string)
+        df['HTSCode'] = df['hts_code'].fillna('').astype(str).replace('nan', '')
         mid = self.selected_mid if hasattr(self, 'selected_mid') else ''
         df['MID'] = mid
         melt = str(mid)[:2] if mid else ''
@@ -5916,36 +5570,26 @@ class TariffMill(QMainWindow):
             hts_10 = hts_clean[:10]
             material, dec_type, smelt_flag = get_232_info(hts)
 
-            # Set flag and declaration code based on content type
-            # Each derivative row gets its appropriate declaration code
+            # Set flag based on content type, but use consistent declaration code from HTS lookup
+            # All derivative rows with the same HTS code get the same declaration code
             if content_type == 'steel':
                 flag = '232_Steel'
-                # Steel derivatives always get declaration code 08
-                dec_type_list.append(dec_type if dec_type else '08')
             elif content_type == 'aluminum':
                 flag = '232_Aluminum'
-                # Aluminum derivatives always get declaration code 07
-                dec_type_list.append(dec_type if dec_type else '07')
             elif content_type == 'copper':
                 flag = '232_Copper'
-                # Copper derivatives get their declaration code
-                dec_type_list.append(dec_type if dec_type else '11')
             elif content_type == 'wood':
                 flag = '232_Wood'
-                # Wood derivatives get their declaration code
-                dec_type_list.append(dec_type if dec_type else '10')
             elif content_type == 'auto':
                 flag = '232_Auto'
-                # Auto derivatives get their declaration code
-                dec_type_list.append(dec_type if dec_type else '')
             elif content_type == 'non_232':
                 flag = 'Non_232'
-                # Non-232 rows still need the declaration code from HTS lookup
-                dec_type_list.append(dec_type)
             else:
                 # Fallback for backward compatibility
                 flag = f"232_{material}" if material else ''
-                dec_type_list.append(dec_type)
+
+            # All rows with the same HTS code use the same declaration code from tariff_232 lookup
+            dec_type_list.append(dec_type)
             
             # Use imported country codes if available, otherwise fall back to MID-based default
             country_of_melt = r.get('country_of_melt', '')
@@ -6493,7 +6137,7 @@ class TariffMill(QMainWindow):
                         if column_name in cols and field_key in self.import_targets:
                             target = self.import_targets[field_key]
                             target.column_name = column_name
-                            target.setText(f"{field_key}\n<- {column_name}")
+                            target.setText(f"{field_key} <- {column_name}")
                             target.setProperty("occupied", True)
                             target.style().unpolish(target)
                             target.style().polish(target)
@@ -6573,7 +6217,7 @@ class TariffMill(QMainWindow):
         # Update the target that received the drop
         target = self.import_targets[field_key]
         target.column_name = column_name
-        target.setText(f"{field_key}\n<- {column_name}")
+        target.setText(f"{field_key} <- {column_name}")
         target.setProperty("occupied", True)
         target.style().unpolish(target); target.style().polish(target)
 
@@ -8279,7 +7923,7 @@ class TariffMill(QMainWindow):
                 col = self.shipment_mapping.get(key)
                 if col:
                     target.column_name = col
-                    target.setText(f"{key}\n<- {col}")
+                    target.setText(f"{key} <- {col}")
                     target.setProperty("occupied", True)
                 else:
                     target.column_name = None
@@ -9157,48 +8801,40 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
     def import_hts_units_silent(self, part_numbers=None):
         """
-        Silently import CBP Qty1 units from HTS reference file for specific parts.
-        Called automatically after saving new parts to database.
+        Silently import CBP Qty1 units from hts.db for specific parts.
+        Called automatically after saving new parts or reprocessing parts.
 
         Args:
             part_numbers: List of part numbers to update (if None, updates all parts)
 
         Returns:
-            Number of parts updated, or -1 if reference file not found
+            Number of parts updated, or -1 if hts.db not found
         """
-        ref_file = BASE_DIR / "Resources" / "References" / "HTS_qty1.xlsx"
+        hts_db_path = BASE_DIR / "Resources" / "References" / "hts.db"
 
-        if not ref_file.exists():
-            logger.debug("HTS_qty1.xlsx reference file not found, skipping HTS units import")
+        if not hts_db_path.exists():
+            logger.debug("hts.db not found, skipping HTS units import")
             return -1
 
         try:
-            # Read the reference file
-            if ref_file.suffix.lower() in ['.xlsx', '.xls']:
-                df_ref = pd.read_excel(ref_file)
-            else:
-                df_ref = pd.read_csv(ref_file)
-
-            # Expect columns: 'Tariff No' and 'Uom 1'
-            if 'Tariff No' not in df_ref.columns or 'Uom 1' not in df_ref.columns:
-                logger.warning("HTS reference file missing required columns")
-                return -1
-
             # Clean up HTS codes (remove dots for matching)
             def normalize_hts(hts):
-                if pd.isna(hts):
+                if pd.isna(hts) or hts is None:
                     return ""
                 return str(hts).replace(".", "").strip()
 
-            # Create lookup dictionary
-            hts_units = {}
-            for _, row in df_ref.iterrows():
-                hts_code = normalize_hts(row['Tariff No'])
-                unit = str(row['Uom 1']).strip() if pd.notna(row['Uom 1']) else ""
-                if hts_code and unit:
-                    hts_units[hts_code] = unit
+            # Load unit_of_quantity lookup from hts.db
+            hts_conn = sqlite3.connect(str(hts_db_path))
+            hts_cursor = hts_conn.cursor()
+            hts_cursor.execute("SELECT full_code, unit_of_quantity FROM hts_codes WHERE unit_of_quantity IS NOT NULL AND unit_of_quantity != ''")
+            hts_units = {row[0]: row[1] for row in hts_cursor.fetchall()}
+            hts_conn.close()
 
-            # Update database
+            if not hts_units:
+                logger.debug("No unit_of_quantity data found in hts.db")
+                return 0
+
+            # Update parts_master database
             conn = sqlite3.connect(str(DB_PATH))
             c = conn.cursor()
 
@@ -9222,7 +8858,7 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             conn.close()
 
             if updated > 0:
-                logger.info(f"Silently updated {updated} parts with Qty Unit values")
+                logger.info(f"Silently updated {updated} parts with Qty Unit values from hts.db")
 
             return updated
 
@@ -9231,56 +8867,41 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             return -1
 
     def import_hts_units(self):
-        """Import CBP Qty1 units from HTS reference file and update parts_master"""
-        # Look for the reference file in Resources/References
-        ref_file = BASE_DIR / "Resources" / "References" / "HTS_qty1.xlsx"
+        """Import CBP Qty1 units from hts.db and update parts_master"""
+        hts_db_path = BASE_DIR / "Resources" / "References" / "hts.db"
 
-        if not ref_file.exists():
-            # Allow user to select a file
-            file_path, _ = QFileDialog.getOpenFileName(
-                self, "Select HTS Units Reference File",
-                str(BASE_DIR / "Resources" / "References"),
-                "Excel Files (*.xlsx *.xls);;CSV Files (*.csv);;All Files (*.*)"
-            )
-            if not file_path:
-                return
-            ref_file = Path(file_path)
-        
+        if not hts_db_path.exists():
+            QMessageBox.warning(self, "Database Not Found",
+                "hts.db not found in Resources/References folder.")
+            return
+
         try:
-            # Read the reference file
-            if ref_file.suffix.lower() in ['.xlsx', '.xls']:
-                df_ref = pd.read_excel(ref_file)
-            else:
-                df_ref = pd.read_csv(ref_file)
-            
-            # Expect columns: 'Tariff No' and 'Uom 1'
-            if 'Tariff No' not in df_ref.columns or 'Uom 1' not in df_ref.columns:
-                QMessageBox.warning(self, "Invalid File", 
-                    "Reference file must have 'Tariff No' and 'Uom 1' columns.")
-                return
-            
             # Clean up HTS codes (remove dots for matching)
             def normalize_hts(hts):
-                if pd.isna(hts):
+                if pd.isna(hts) or hts is None:
                     return ""
                 return str(hts).replace(".", "").strip()
-            
-            # Create lookup dictionary
-            hts_units = {}
-            for _, row in df_ref.iterrows():
-                hts_code = normalize_hts(row['Tariff No'])
-                unit = str(row['Uom 1']).strip() if pd.notna(row['Uom 1']) else ""
-                if hts_code and unit:
-                    hts_units[hts_code] = unit
-            
-            # Update database
+
+            # Load unit_of_quantity lookup from hts.db
+            hts_conn = sqlite3.connect(str(hts_db_path))
+            hts_cursor = hts_conn.cursor()
+            hts_cursor.execute("SELECT full_code, unit_of_quantity FROM hts_codes WHERE unit_of_quantity IS NOT NULL AND unit_of_quantity != ''")
+            hts_units = {row[0]: row[1] for row in hts_cursor.fetchall()}
+            hts_conn.close()
+
+            if not hts_units:
+                QMessageBox.warning(self, "No Data",
+                    "No unit_of_quantity data found in hts.db.")
+                return
+
+            # Update parts_master database
             conn = sqlite3.connect(str(DB_PATH))
             c = conn.cursor()
-            
+
             # Get all parts with HTS codes
             c.execute("SELECT part_number, hts_code FROM parts_master WHERE hts_code IS NOT NULL AND hts_code != ''")
             parts = c.fetchall()
-            
+
             updated = 0
             for part_number, hts_code in parts:
                 normalized = normalize_hts(hts_code)
@@ -9296,9 +8917,9 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             self.refresh_parts_table()
 
             QMessageBox.information(self, "Import Complete",
-                f"Updated {updated} parts with Qty Unit values.\n"
-                f"Reference file had {len(hts_units)} HTS codes.")
-            
+                f"Updated {updated} parts with Qty Unit values from hts.db.\n"
+                f"hts.db contains {len(hts_units)} HTS codes with unit data.")
+
         except Exception as e:
             QMessageBox.critical(self, "Import Error", f"Failed to import HTS units:\n{e}")
 
@@ -10316,8 +9937,10 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             if search_term:
                 # Check if search term starts with a digit (HTS code search)
                 if search_term[0].isdigit():
+                    # Remove periods from search term (DB stores codes without periods)
+                    clean_code = search_term.replace('.', '')
                     # Search for HTS codes starting with the search term
-                    code_pattern = f"{search_term}%"
+                    code_pattern = f"{clean_code}%"
                     cursor.execute("""
                         SELECT full_code, description, unit_of_quantity, general_rate,
                                special_rate, column2_rate, chapter
@@ -10355,7 +9978,16 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             self.hts_db_table.setRowCount(len(rows))
             for row_idx, row_data in enumerate(rows):
                 for col_idx, value in enumerate(row_data):
-                    item = QTableWidgetItem(str(value) if value else "")
+                    display_value = str(value) if value else ""
+                    # Format HTS code with periods for readability (column 0)
+                    if col_idx == 0 and display_value and len(display_value) >= 4:
+                        # Format as XXXX.XX.XXXX (e.g., 4009420050 -> 4009.42.0050)
+                        code = display_value
+                        if len(code) >= 6:
+                            display_value = f"{code[:4]}.{code[4:6]}.{code[6:]}"
+                        elif len(code) >= 4:
+                            display_value = f"{code[:4]}.{code[4:]}"
+                    item = QTableWidgetItem(display_value)
                     self.hts_db_table.setItem(row_idx, col_idx, item)
 
             # Update count label
@@ -10929,6 +10561,12 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         # Run processing
         self.status.setText("Reprocessing invoice...")
         self.start_processing()
+
+        # Update qty_unit values from hts.db for all parts (in case HTS codes changed)
+        units_updated = self.import_hts_units_silent()
+        if units_updated > 0:
+            logger.info(f"Updated qty_unit for {units_updated} parts from hts.db during reprocess")
+
         logger.info("Reprocessed invoice to pick up database changes")
 
     def save_preview_parts_to_db(self):
@@ -10945,11 +10583,10 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             c = conn.cursor()
             now = datetime.now().isoformat()
             added_count = 0
-            updated_count = 0
 
             # Track which parts we've already processed (avoid duplicates from derivative rows)
             processed_parts = set()
-            # Track parts that were added or updated (for HTS units import)
+            # Track parts that were added (for HTS units import)
             saved_part_numbers = []
 
             for row in range(self.table.rowCount()):
@@ -10957,28 +10594,31 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 part_item = self.table.item(row, 0)
                 if not part_item:
                     continue
-                part_number = part_item.text().strip()
+                part_number = part_item.text().strip().upper()
                 if not part_number or part_number in processed_parts:
                     continue
                 processed_parts.add(part_number)
 
-                # Get values from the preview table
+                # Check if this row is marked as "Not Found" (column 18 = 232 Status)
+                # Only save parts that were NOT in the database - don't overwrite existing DB values
+                status_item = self.table.item(row, 18)
+                status_text = status_item.text().strip() if status_item else ""
+                if status_text != "Not Found":
+                    # Part exists in database - skip to preserve database values
+                    continue
+
+                # Get values from the preview table (only for "Not Found" parts)
                 hts_code = self.table.item(row, 2).text().strip() if self.table.item(row, 2) else ""
                 mid = self.table.item(row, 3).text().strip() if self.table.item(row, 3) else ""
 
-                # Check if part exists in database
-                c.execute("SELECT hts_code, mid FROM parts_master WHERE part_number = ?", (part_number,))
+                # Check if part exists in database (case-insensitive) - double check
+                c.execute("SELECT hts_code, mid FROM parts_master WHERE UPPER(part_number) = UPPER(?)", (part_number,))
                 existing = c.fetchone()
 
                 if existing:
-                    # Part exists - update if HTS or MID changed and current values are not empty
-                    existing_hts, existing_mid = existing
-                    if hts_code and hts_code != existing_hts:
-                        c.execute("UPDATE parts_master SET hts_code = ?, last_updated = ? WHERE part_number = ?",
-                                  (hts_code, now, part_number))
-                        updated_count += 1
-                        saved_part_numbers.append(part_number)
-                        logger.info(f"Updated HTS code for {part_number}: {existing_hts} -> {hts_code}")
+                    # Part already exists in database - don't overwrite with preview table values
+                    # This preserves any updates the user made directly to the database
+                    continue
                 else:
                     # Part doesn't exist - add it if we have at least an HTS code or MID
                     # Percentages are in 0-100 format; default to 100% non-232
@@ -10997,8 +10637,7 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             conn.commit()
             conn.close()
 
-            total = added_count + updated_count
-            if total > 0:
+            if added_count > 0:
                 # Refresh the MID dropdown and parts table
                 self.load_available_mids()
 
@@ -11008,7 +10647,7 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                     if units_updated > 0:
                         logger.info(f"Updated CBP Qty1 units for {units_updated} saved parts")
 
-            return total
+            return added_count
 
         except Exception as e:
             logger.error(f"Failed to save preview parts to database: {e}")
