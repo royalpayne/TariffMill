@@ -2,11 +2,11 @@
 # ==============================================================================
 # TariffMill - Customs Documentation Processing System
 # ==============================================================================
-# Copyright (c) 2024-2025 TariffMill. All Rights Reserved.
+# Copyright (c) 2024-2025 Heath Payne. All Rights Reserved.
 #
 # PROPRIETARY AND CONFIDENTIAL
 #
-# This software and its source code are the exclusive property of TariffMill
+# This software and its source code are the exclusive property of Heath Payne
 # and are protected by copyright law and international treaties. Unauthorized
 # reproduction, distribution, or disclosure of this software, in whole or in
 # part, is strictly prohibited.
@@ -18,7 +18,7 @@
 # express or implied, including but not limited to the warranties of
 # merchantability, fitness for a particular purpose, and noninfringement.
 #
-# For licensing inquiries, contact: [Your Contact Email]
+# For licensing inquiries, contact: paynehl@gmail.com
 # ==============================================================================
 #
 # Professional PyQt5 application for automating invoice processing, parts
@@ -38,7 +38,8 @@ DB_NAME = "tariffmill.db"
 
 # Copyright and Legal Information
 COPYRIGHT_YEAR = "2024-2025"
-COPYRIGHT_HOLDER = "TariffMill"
+COPYRIGHT_HOLDER = "Heath Payne"
+COPYRIGHT_EMAIL = "paynehl@gmail.com"
 COPYRIGHT_NOTICE = f"Copyright (c) {COPYRIGHT_YEAR} {COPYRIGHT_HOLDER}. All Rights Reserved."
 LICENSE_TYPE = "Proprietary"
 
@@ -4980,7 +4981,7 @@ class TariffMill(QMainWindow):
         # Copyright notice
         copyright_label = QLabel(
             "<p style='color: #888; font-size: 10px;'>"
-            "Copyright (c) 2024-2025 TariffMill. All Rights Reserved.<br>"
+            f"Copyright (c) {COPYRIGHT_YEAR} {COPYRIGHT_HOLDER}. All Rights Reserved.<br>"
             "This software is proprietary and confidential.<br>"
             "Unauthorized copying or distribution is prohibited."
             "</p>"
