@@ -2181,19 +2181,20 @@ class TariffMill(QMainWindow):
         # Add Export menu
         export_menu = menubar.addMenu("Export")
 
-        # Export to XML action
-        xml_icon = self.style().standardIcon(QStyle.SP_FileIcon)
-        xml_export_action = QAction(xml_icon, "Export to XML...", self)
-        xml_export_action.triggered.connect(self.export_to_xml)
-        xml_export_action.setToolTip("Export processed invoice data to XML format for e2Open Customs Management")
-        export_menu.addAction(xml_export_action)
+        # TODO: XML Export - To be implemented at a later date
+        # # Export to XML action
+        # xml_icon = self.style().standardIcon(QStyle.SP_FileIcon)
+        # xml_export_action = QAction(xml_icon, "Export to XML...", self)
+        # xml_export_action.triggered.connect(self.export_to_xml)
+        # xml_export_action.setToolTip("Export processed invoice data to XML format for e2Open Customs Management")
+        # export_menu.addAction(xml_export_action)
 
-        # Export Lacey Act PPQ Form 505 action
-        lacey_icon = self.style().standardIcon(QStyle.SP_FileDialogContentsView)
-        lacey_export_action = QAction(lacey_icon, "Export Lacey Act (PPQ 505)...", self)
-        lacey_export_action.triggered.connect(self.export_lacey_act_ppq505)
-        lacey_export_action.setToolTip("Export items requiring Lacey Act declaration to PPQ Form 505 format")
-        export_menu.addAction(lacey_export_action)
+        # TODO: Lacey Act Export - To be implemented at a later date
+        # lacey_icon = self.style().standardIcon(QStyle.SP_FileDialogContentsView)
+        # lacey_export_action = QAction(lacey_icon, "Export Lacey Act (PPQ 505)...", self)
+        # lacey_export_action.triggered.connect(self.export_lacey_act_ppq505)
+        # lacey_export_action.setToolTip("Export items requiring Lacey Act declaration to PPQ Form 505 format")
+        # export_menu.addAction(lacey_export_action)
 
         # Add Help menu
         help_menu = menubar.addMenu("Help")
@@ -2480,12 +2481,14 @@ class TariffMill(QMainWindow):
         self.mid_combo.currentTextChanged.connect(self.on_mid_changed)
         values_layout.addRow(self.mid_label, self.mid_combo)
 
-        # Customer Reference Number (for XML export)
-        self.customer_ref_input = ForceEditableLineEdit("")
-        self.customer_ref_input.setObjectName("customer_ref_input")
-        self.customer_ref_input.setPlaceholderText("Optional - for XML export")
-        self.customer_ref_input.setToolTip("Customer reference number included in XML export header")
-        values_layout.addRow("Customer Ref:", self.customer_ref_input)
+        # TODO: Customer Reference - To be implemented with XML export at a later date
+        # # Customer Reference Number (for XML export)
+        # self.customer_ref_input = ForceEditableLineEdit("")
+        # self.customer_ref_input.setObjectName("customer_ref_input")
+        # self.customer_ref_input.setPlaceholderText("Optional - for XML export")
+        # self.customer_ref_input.setToolTip("Customer reference number included in XML export header")
+        # values_layout.addRow("Customer Ref:", self.customer_ref_input)
+        self.customer_ref_input = None  # Placeholder for XML export feature
 
         # Removed broken setTabOrder calls - they were causing Qt warnings and possibly blocking keyboard input
 
@@ -2641,9 +2644,9 @@ class TariffMill(QMainWindow):
         preview_layout = QVBoxLayout()
 
         self.table = QTableWidget()
-        self.table.setColumnCount(21)
+        self.table.setColumnCount(20)
         self.table.setHorizontalHeaderLabels([
-            "Product No","Value","HTS","MID","Qty1","Qty2","Qty Unit","Dec","Melt","Cast","Smelt","Flag","Steel%","Al%","Cu%","Wood%","Auto%","Non-232%","232 Status","Cust Ref","Lacey"
+            "Product No","Value","HTS","MID","Qty1","Qty2","Qty Unit","Dec","Melt","Cast","Smelt","Flag","Steel%","Al%","Cu%","Wood%","Auto%","Non-232%","232 Status","Cust Ref"
         ])
         # Make columns manually resizable instead of auto-stretch
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
@@ -3616,7 +3619,7 @@ class TariffMill(QMainWindow):
         # Column names and their default visibility
         column_names = [
             "Product No", "Value", "HTS", "MID", "Qty1", "Qty2", "Qty Unit", "Dec",
-            "Melt", "Cast", "Smelt", "Flag", "Steel%", "Al%", "Cu%", "Wood%", "Auto%", "Non-232%", "232 Status", "Cust Ref", "Lacey"
+            "Melt", "Cast", "Smelt", "Flag", "Steel%", "Al%", "Cu%", "Wood%", "Auto%", "Non-232%", "232 Status", "Cust Ref"
         ]
         
         # Create checkboxes in a grid layout
@@ -6270,69 +6273,70 @@ class TariffMill(QMainWindow):
         df['DeclarationFlag'] = prim_smelt_flag_list
         df['_232_flag'] = flag_list
 
+        # TODO: Lacey Act Detection - To be implemented at a later date
         # =====================================================================
         # LACEY ACT DETECTION
         # Check if HTS codes fall under Lacey Act requirements (Chapters 44, 47, 48, 94)
         # =====================================================================
-        lacey_flag_list = []
-        lacey_species_list = []
-        lacey_harvest_country_list = []
-        lacey_recycled_list = []
-
-        for _, r in df.iterrows():
-            hts = str(r.get('hts_code', '')).replace('.', '').strip()
-            part_no = r.get('part_number', '')
-            wood_ratio = float(r.get('WoodRatio', 0) or 0)
-
-            # Check if Lacey Act applies based on HTS chapter
-            lacey_required = False
-            if hts:
-                chapter = hts[:2]
-                # Chapters subject to Lacey Act: 44 (Wood), 47 (Pulp), 48 (Paper)
-                if chapter in ('44', '47', '48'):
-                    lacey_required = True
-                # Chapter 94 furniture - check for wood furniture (9401, 9403)
-                elif hts[:4] in ('9401', '9403'):
-                    lacey_required = True
-
-            # Also flag if wood_ratio > 0 (product contains wood content)
-            if wood_ratio > 0:
-                lacey_required = True
-
-            # Look up Lacey data from parts_master if available
-            species_name = ''
-            harvest_country = ''
-            recycled_pct = 0.0
-
-            if part_no:
-                try:
-                    conn = sqlite3.connect(str(DB_PATH))
-                    c = conn.cursor()
-                    c.execute("""SELECT species_scientific_name, species_common_name, country_of_harvest, percent_recycled
-                                 FROM parts_master WHERE part_number = ?""", (part_no,))
-                    row = c.fetchone()
-                    conn.close()
-                    if row:
-                        species_name = row[0] or row[1] or ''  # Prefer scientific name
-                        harvest_country = row[2] or ''
-                        recycled_pct = float(row[3] or 0)
-                except:
-                    pass
-
-            lacey_flag_list.append('Y' if lacey_required else 'N')
-            lacey_species_list.append(species_name)
-            lacey_harvest_country_list.append(harvest_country)
-            lacey_recycled_list.append(recycled_pct)
-
-        df['_lacey_required'] = lacey_flag_list
-        df['LaceySpecies'] = lacey_species_list
-        df['LaceyHarvestCountry'] = lacey_harvest_country_list
-        df['LaceyRecycledPct'] = lacey_recycled_list
-
-        # Log Lacey Act summary
-        lacey_count = sum(1 for f in lacey_flag_list if f == 'Y')
-        if lacey_count > 0:
-            logger.info(f"Lacey Act: {lacey_count} items require PPQ Form 505 declaration")
+        # lacey_flag_list = []
+        # lacey_species_list = []
+        # lacey_harvest_country_list = []
+        # lacey_recycled_list = []
+        #
+        # for _, r in df.iterrows():
+        #     hts = str(r.get('hts_code', '')).replace('.', '').strip()
+        #     part_no = r.get('part_number', '')
+        #     wood_ratio = float(r.get('WoodRatio', 0) or 0)
+        #
+        #     # Check if Lacey Act applies based on HTS chapter
+        #     lacey_required = False
+        #     if hts:
+        #         chapter = hts[:2]
+        #         # Chapters subject to Lacey Act: 44 (Wood), 47 (Pulp), 48 (Paper)
+        #         if chapter in ('44', '47', '48'):
+        #             lacey_required = True
+        #         # Chapter 94 furniture - check for wood furniture (9401, 9403)
+        #         elif hts[:4] in ('9401', '9403'):
+        #             lacey_required = True
+        #
+        #     # Also flag if wood_ratio > 0 (product contains wood content)
+        #     if wood_ratio > 0:
+        #         lacey_required = True
+        #
+        #     # Look up Lacey data from parts_master if available
+        #     species_name = ''
+        #     harvest_country = ''
+        #     recycled_pct = 0.0
+        #
+        #     if part_no:
+        #         try:
+        #             conn = sqlite3.connect(str(DB_PATH))
+        #             c = conn.cursor()
+        #             c.execute("""SELECT species_scientific_name, species_common_name, country_of_harvest, percent_recycled
+        #                          FROM parts_master WHERE part_number = ?""", (part_no,))
+        #             row = c.fetchone()
+        #             conn.close()
+        #             if row:
+        #                 species_name = row[0] or row[1] or ''  # Prefer scientific name
+        #                 harvest_country = row[2] or ''
+        #                 recycled_pct = float(row[3] or 0)
+        #         except:
+        #             pass
+        #
+        #     lacey_flag_list.append('Y' if lacey_required else 'N')
+        #     lacey_species_list.append(species_name)
+        #     lacey_harvest_country_list.append(harvest_country)
+        #     lacey_recycled_list.append(recycled_pct)
+        #
+        # df['_lacey_required'] = lacey_flag_list
+        # df['LaceySpecies'] = lacey_species_list
+        # df['LaceyHarvestCountry'] = lacey_harvest_country_list
+        # df['LaceyRecycledPct'] = lacey_recycled_list
+        #
+        # # Log Lacey Act summary
+        # lacey_count = sum(1 for f in lacey_flag_list if f == 'Y')
+        # if lacey_count > 0:
+        #     logger.info(f"Lacey Act: {lacey_count} items require PPQ Form 505 declaration")
 
         # Rename columns for preview
         df['Product No'] = df['part_number']
@@ -6346,8 +6350,9 @@ class TariffMill(QMainWindow):
         base_preview_cols = [
             'Product No','ValueUSD','HTSCode','MID','CalcWtNet','quantity','qty_unit','Qty1','Qty2','cbp_qty','DecTypeCd',
             'CountryofMelt','CountryOfCast','PrimCountryOfSmelt','DeclarationFlag',
-            'SteelRatio','AluminumRatio','CopperRatio','WoodRatio','AutoRatio','NonSteelRatio','_232_flag','_not_in_db','Sec301_Exclusion_Tariff',
-            '_lacey_required','LaceySpecies','LaceyHarvestCountry','LaceyRecycledPct'
+            'SteelRatio','AluminumRatio','CopperRatio','WoodRatio','AutoRatio','NonSteelRatio','_232_flag','_not_in_db','Sec301_Exclusion_Tariff'
+            # TODO: Lacey columns - To be implemented at a later date
+            # '_lacey_required','LaceySpecies','LaceyHarvestCountry','LaceyRecycledPct'
         ]
         preview_cols = base_preview_cols.copy()
         if 'invoice_number' in df.columns:
@@ -6607,9 +6612,9 @@ class TariffMill(QMainWindow):
             # Get customer reference from input field
             customer_ref_display = self.customer_ref_input.text().strip() if hasattr(self, 'customer_ref_input') else ""
 
-            # Get Lacey Act status
-            lacey_required = r.get('_lacey_required', 'N')
-            lacey_display = "Y" if lacey_required == 'Y' else ""
+            # TODO: Lacey Act status - To be implemented at a later date
+            # lacey_required = r.get('_lacey_required', 'N')
+            # lacey_display = "Y" if lacey_required == 'Y' else ""
 
             items = [
                 QTableWidgetItem(product_no),                        # 0: Product No
@@ -6631,13 +6636,14 @@ class TariffMill(QMainWindow):
                 QTableWidgetItem(auto_display),                      # 16: Auto%
                 QTableWidgetItem(non_steel_display),                 # 17: Non-232%
                 QTableWidgetItem(status_display),                    # 18: 232 Status
-                QTableWidgetItem(customer_ref_display),              # 19: Cust Ref
-                QTableWidgetItem(lacey_display)                      # 20: Lacey
+                QTableWidgetItem(customer_ref_display)               # 19: Cust Ref
+                # TODO: Lacey column - To be implemented at a later date
+                # QTableWidgetItem(lacey_display)                      # 20: Lacey
             ]
 
-            # Make all items editable except Qty1, Qty2, Steel%, Al%, Cu%, Wood%, Auto%, Non-232%, 232 Status, Lacey
+            # Make all items editable except Qty1, Qty2, Steel%, Al%, Cu%, Wood%, Auto%, Non-232%, 232 Status
             for idx, item in enumerate(items):
-                if idx not in [4, 5, 12, 13, 14, 15, 16, 17, 18, 20]:  # Not Qty1, Qty2, Steel%, Al%, Cu%, Wood%, Auto%, Non-232%, 232 Status, Lacey
+                if idx not in [4, 5, 12, 13, 14, 15, 16, 17, 18]:  # Not Qty1, Qty2, Steel%, Al%, Cu%, Wood%, Auto%, Non-232%, 232 Status
                     item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable)
 
             # Set font colors based on Section 232 material type
@@ -11556,13 +11562,14 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             QTableWidgetItem(""),           # 16: Auto%
             QTableWidgetItem(""),           # 17: Non-232%
             QTableWidgetItem(""),           # 18: 232 Status
-            QTableWidgetItem(""),           # 19: Cust Ref
-            QTableWidgetItem("")            # 20: Lacey
+            QTableWidgetItem("")            # 19: Cust Ref
+            # TODO: Lacey column - To be implemented at a later date
+            # QTableWidgetItem("")            # 20: Lacey
         ]
 
-        # Make all items editable except Qty1, Qty2, Steel%, Al%, Cu%, Wood%, Auto%, Non-232%, 232 Status, Lacey
+        # Make all items editable except Qty1, Qty2, Steel%, Al%, Cu%, Wood%, Auto%, Non-232%, 232 Status
         for i, item in enumerate(items):
-            if i not in [4, 5, 12, 13, 14, 15, 16, 17, 18, 20]:
+            if i not in [4, 5, 12, 13, 14, 15, 16, 17, 18]:
                 item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable)
             self.table.setItem(row, i, item)
         
@@ -12600,354 +12607,357 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             return
         self.clear_all()
 
-    def export_to_xml(self):
-        """Export processed invoice data to XML format for e2Open Customs Management."""
-        if self.last_processed_df is None or self.table.rowCount() == 0:
-            QMessageBox.warning(self, "No Data", "No processed data to export. Please process a shipment file first.")
-            return
+    # TODO: XML Export - To be implemented at a later date
+    # def export_to_xml(self):
+    #     """Export processed invoice data to XML format for e2Open Customs Management."""
+    #     if self.last_processed_df is None or self.table.rowCount() == 0:
+    #         QMessageBox.warning(self, "No Data", "No processed data to export. Please process a shipment file first.")
+    #         return
+    #
+    #     # Build filename from CSV name + date/time
+    #     # Get customer reference from input field, fall back to CSV filename
+    #     customer_ref = self.customer_ref_input.text().strip() if hasattr(self, 'customer_ref_input') else ""
+    #     if self.current_csv:
+    #         csv_name = Path(self.current_csv).stem  # Get filename without extension
+    #     else:
+    #         csv_name = "Invoice"
+    #     # Use customer reference for filename if provided, otherwise use CSV name
+    #     filename_base = customer_ref if customer_ref else csv_name
+    #     default_filename = f"{filename_base}_{datetime.now():%Y%m%d_%H%M}.xml"
+    #
+    #     # Prompt user for save location
+    #     file_path, _ = QFileDialog.getSaveFileName(
+    #         self,
+    #         "Export Commercial Invoice XML",
+    #         str(OUTPUT_DIR / default_filename),
+    #         "XML Files (*.xml);;All Files (*)"
+    #     )
+    #
+    #     if not file_path:
+    #         return  # User cancelled
+    #
+    #     try:
+    #         # Build export data from current table state
+    #         export_rows = []
+    #         for i in range(self.table.rowCount()):
+    #             value_cell = self.table.item(i, 1)
+    #             value = value_cell.data(Qt.UserRole) if value_cell else 0.0
+    #
+    #             # Get Qty1/Qty2 from last_processed_df
+    #             qty1_value = ""
+    #             qty2_value = ""
+    #             qty_unit = ""
+    #             if self.last_processed_df is not None and i < len(self.last_processed_df):
+    #                 qty1_value = str(self.last_processed_df.iloc[i].get('Qty1', '')).strip()
+    #                 if qty1_value in ['nan', 'None']:
+    #                     qty1_value = ""
+    #                 qty2_value = str(self.last_processed_df.iloc[i].get('Qty2', '')).strip()
+    #                 if qty2_value in ['nan', 'None']:
+    #                     qty2_value = ""
+    #                 qty_unit = str(self.last_processed_df.iloc[i].get('qty_unit', '')).strip().upper()
+    #                 if qty_unit in ['nan', 'None']:
+    #                     qty_unit = ""
+    #
+    #             row_data = {
+    #                 'product_no': self.table.item(i, 0).text() if self.table.item(i, 0) else "",
+    #                 'value_usd': value,
+    #                 'hts_code': self.table.item(i, 2).text() if self.table.item(i, 2) else "",
+    #                 'mid': self.table.item(i, 3).text() if self.table.item(i, 3) else "",
+    #                 'qty1': qty1_value,
+    #                 'qty2': qty2_value,
+    #                 'qty_unit': qty_unit,
+    #                 'dec_type_cd': self.table.item(i, 7).text() if self.table.item(i, 7) else "",
+    #                 'country_of_melt': self.table.item(i, 8).text() if self.table.item(i, 8) else "",
+    #                 'country_of_cast': self.table.item(i, 9).text() if self.table.item(i, 9) else "",
+    #                 'country_of_smelt': self.table.item(i, 10).text() if self.table.item(i, 10) else "",
+    #                 'declaration_flag': self.table.item(i, 11).text() if self.table.item(i, 11) else "",
+    #                 'status_232': self.table.item(i, 18).text() if self.table.item(i, 18) else ""
+    #             }
+    #             export_rows.append(row_data)
+    #
+    #         # Get client_code (importer ID) from parts_master for any part in the invoice
+    #         importer_id = ""
+    #         try:
+    #             part_numbers = [row['product_no'] for row in export_rows if row.get('product_no')]
+    #             if part_numbers:
+    #                 conn = sqlite3.connect(str(DB_PATH))
+    #                 c = conn.cursor()
+    #                 placeholders = ','.join(['?' for _ in part_numbers])
+    #                 c.execute(f"""SELECT DISTINCT client_code FROM parts_master
+    #                              WHERE part_number IN ({placeholders})
+    #                              AND client_code IS NOT NULL AND client_code != ''
+    #                              LIMIT 1""", part_numbers)
+    #                 result = c.fetchone()
+    #                 if result:
+    #                     importer_id = result[0]
+    #                 conn.close()
+    #         except Exception as e:
+    #             logger.warning(f"Could not fetch client_code for XML export: {e}")
+    #
+    #         # Generate XML (use customer ref if provided, otherwise CSV name; client_code as importer ID)
+    #         reference_number = customer_ref if customer_ref else csv_name
+    #         xml_content = self._generate_commercial_invoice_xml(export_rows, reference_number, importer_id)
+    #
+    #         # Write to file
+    #         with open(file_path, 'w', encoding='utf-8') as f:
+    #             f.write(xml_content)
+    #
+    #         QMessageBox.information(self, "Success", f"XML export complete!\nSaved: {Path(file_path).name}")
+    #         logger.success(f"XML export complete: {file_path}")
+    #
+    #     except Exception as e:
+    #         logger.error(f"XML export failed: {e}")
+    #         QMessageBox.critical(self, "Export Failed", f"XML export failed: {str(e)}")
 
-        # Build filename from CSV name + date/time
-        # Get customer reference from input field, fall back to CSV filename
-        customer_ref = self.customer_ref_input.text().strip() if hasattr(self, 'customer_ref_input') else ""
-        if self.current_csv:
-            csv_name = Path(self.current_csv).stem  # Get filename without extension
-        else:
-            csv_name = "Invoice"
-        # Use customer reference for filename if provided, otherwise use CSV name
-        filename_base = customer_ref if customer_ref else csv_name
-        default_filename = f"{filename_base}_{datetime.now():%Y%m%d_%H%M}.xml"
+    # TODO: Lacey Act PPQ 505 Export - To be implemented at a later date
+    # def export_lacey_act_ppq505(self):
+    #     """Export items requiring Lacey Act declaration to PPQ Form 505 format (Excel)."""
+    #     if self.last_processed_df is None or self.table.rowCount() == 0:
+    #         QMessageBox.warning(self, "No Data", "No processed data to export. Please process a shipment file first.")
+    #         return
+    #
+    #     # Filter for Lacey Act items only
+    #     df = self.last_processed_df.copy()
+    #     if '_lacey_required' not in df.columns:
+    #         QMessageBox.warning(self, "No Lacey Data",
+    #             "Lacey Act information not available. This may be an older processed file.\n"
+    #             "Please reprocess the invoice to detect Lacey Act items.")
+    #         return
+    #
+    #     lacey_df = df[df['_lacey_required'] == 'Y'].copy()
+    #
+    #     if len(lacey_df) == 0:
+    #         QMessageBox.information(self, "No Lacey Items",
+    #             "No items in this shipment require Lacey Act declaration.\n\n"
+    #             "Lacey Act applies to:\n"
+    #             "- HTS Chapters 44, 47, 48 (Wood, Pulp, Paper)\n"
+    #             "- HTS 9401, 9403 (Wood furniture)\n"
+    #             "- Any item with wood content > 0%")
+    #         return
+    #
+    #     # Build filename
+    #     csv_name = Path(self.current_csv).stem if self.current_csv else "Invoice"
+    #     default_filename = f"{csv_name}_PPQ505_{datetime.now():%Y%m%d_%H%M}.xlsx"
+    #
+    #     # Prompt user for save location
+    #     file_path, _ = QFileDialog.getSaveFileName(
+    #         self,
+    #         "Export Lacey Act PPQ Form 505",
+    #         str(OUTPUT_DIR / default_filename),
+    #         "Excel Files (*.xlsx);;All Files (*)"
+    #     )
+    #
+    #     if not file_path:
+    #         return  # User cancelled
+    #
+    #     try:
+    #         # Prepare PPQ 505 columns
+    #         ppq505_columns = {
+    #             'HTSCode': 'HTSUS Number',
+    #             'ValueUSD': 'Entered Value (USD)',
+    #             'Product No': 'Article/Component',
+    #             'LaceySpecies': 'Genus & Species (Scientific Name)',
+    #             'LaceyHarvestCountry': 'Country of Harvest',
+    #             'CalcWtNet': 'Quantity',
+    #             'qty_unit': 'Unit of Measure',
+    #             'LaceyRecycledPct': '% Recycled',
+    #             'WoodRatio': 'Wood Content %',
+    #         }
+    #
+    #         # Create export dataframe with PPQ 505 format
+    #         export_df = pd.DataFrame()
+    #         for src_col, dest_col in ppq505_columns.items():
+    #             if src_col in lacey_df.columns:
+    #                 export_df[dest_col] = lacey_df[src_col]
+    #             else:
+    #                 export_df[dest_col] = ''
+    #
+    #         # Add warning column for missing data
+    #         warnings = []
+    #         for _, row in export_df.iterrows():
+    #             missing = []
+    #             if not row.get('Genus & Species (Scientific Name)', ''):
+    #                 missing.append('Species')
+    #             if not row.get('Country of Harvest', ''):
+    #                 missing.append('Harvest Country')
+    #             warnings.append(', '.join(missing) if missing else '')
+    #         export_df['Missing Data'] = warnings
+    #
+    #         # Export to Excel with formatting
+    #         with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+    #             export_df.to_excel(writer, index=False, sheet_name='PPQ 505 Data')
+    #
+    #             # Access workbook for formatting
+    #             workbook = writer.book
+    #             worksheet = writer.sheets['PPQ 505 Data']
+    #
+    #             # Format header row
+    #             from openpyxl.styles import Font, PatternFill, Alignment
+    #             header_fill = PatternFill(start_color='27ae60', end_color='27ae60', fill_type='solid')
+    #             header_font = Font(bold=True, color='FFFFFF')
+    #
+    #             for col_num, cell in enumerate(worksheet[1], 1):
+    #                 cell.fill = header_fill
+    #                 cell.font = header_font
+    #                 cell.alignment = Alignment(horizontal='center')
+    #
+    #             # Highlight rows with missing data
+    #             warning_fill = PatternFill(start_color='FFCC99', end_color='FFCC99', fill_type='solid')
+    #             for row_num, row in enumerate(worksheet.iter_rows(min_row=2, max_row=worksheet.max_row), 2):
+    #                 missing_data_cell = worksheet.cell(row=row_num, column=len(ppq505_columns) + 1)
+    #                 if missing_data_cell.value:
+    #                     for cell in row:
+    #                         cell.fill = warning_fill
+    #
+    #             # Adjust column widths
+    #             for column in worksheet.columns:
+    #                 max_length = 0
+    #                 column_letter = column[0].column_letter
+    #                 for cell in column:
+    #                     try:
+    #                         if len(str(cell.value)) > max_length:
+    #                             max_length = len(str(cell.value))
+    #                     except:
+    #                         pass
+    #                 adjusted_width = min(max_length + 2, 50)
+    #                 worksheet.column_dimensions[column_letter].width = adjusted_width
+    #
+    #         QMessageBox.information(self, "Success",
+    #             f"Lacey Act PPQ 505 export complete!\n\n"
+    #             f"Items exported: {len(lacey_df)}\n"
+    #             f"File: {Path(file_path).name}\n\n"
+    #             f"Note: Review items highlighted in orange - they have missing species or country of harvest data.")
+    #         logger.success(f"Lacey Act PPQ 505 export: {len(lacey_df)} items to {file_path}")
+    #
+    #     except Exception as e:
+    #         logger.error(f"Lacey Act export failed: {e}")
+    #         QMessageBox.critical(self, "Export Failed", f"Lacey Act export failed: {str(e)}")
 
-        # Prompt user for save location
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export Commercial Invoice XML",
-            str(OUTPUT_DIR / default_filename),
-            "XML Files (*.xml);;All Files (*)"
-        )
-
-        if not file_path:
-            return  # User cancelled
-
-        try:
-            # Build export data from current table state
-            export_rows = []
-            for i in range(self.table.rowCount()):
-                value_cell = self.table.item(i, 1)
-                value = value_cell.data(Qt.UserRole) if value_cell else 0.0
-
-                # Get Qty1/Qty2 from last_processed_df
-                qty1_value = ""
-                qty2_value = ""
-                qty_unit = ""
-                if self.last_processed_df is not None and i < len(self.last_processed_df):
-                    qty1_value = str(self.last_processed_df.iloc[i].get('Qty1', '')).strip()
-                    if qty1_value in ['nan', 'None']:
-                        qty1_value = ""
-                    qty2_value = str(self.last_processed_df.iloc[i].get('Qty2', '')).strip()
-                    if qty2_value in ['nan', 'None']:
-                        qty2_value = ""
-                    qty_unit = str(self.last_processed_df.iloc[i].get('qty_unit', '')).strip().upper()
-                    if qty_unit in ['nan', 'None']:
-                        qty_unit = ""
-
-                row_data = {
-                    'product_no': self.table.item(i, 0).text() if self.table.item(i, 0) else "",
-                    'value_usd': value,
-                    'hts_code': self.table.item(i, 2).text() if self.table.item(i, 2) else "",
-                    'mid': self.table.item(i, 3).text() if self.table.item(i, 3) else "",
-                    'qty1': qty1_value,
-                    'qty2': qty2_value,
-                    'qty_unit': qty_unit,
-                    'dec_type_cd': self.table.item(i, 7).text() if self.table.item(i, 7) else "",
-                    'country_of_melt': self.table.item(i, 8).text() if self.table.item(i, 8) else "",
-                    'country_of_cast': self.table.item(i, 9).text() if self.table.item(i, 9) else "",
-                    'country_of_smelt': self.table.item(i, 10).text() if self.table.item(i, 10) else "",
-                    'declaration_flag': self.table.item(i, 11).text() if self.table.item(i, 11) else "",
-                    'status_232': self.table.item(i, 18).text() if self.table.item(i, 18) else ""
-                }
-                export_rows.append(row_data)
-
-            # Get client_code (importer ID) from parts_master for any part in the invoice
-            importer_id = ""
-            try:
-                part_numbers = [row['product_no'] for row in export_rows if row.get('product_no')]
-                if part_numbers:
-                    conn = sqlite3.connect(str(DB_PATH))
-                    c = conn.cursor()
-                    placeholders = ','.join(['?' for _ in part_numbers])
-                    c.execute(f"""SELECT DISTINCT client_code FROM parts_master
-                                 WHERE part_number IN ({placeholders})
-                                 AND client_code IS NOT NULL AND client_code != ''
-                                 LIMIT 1""", part_numbers)
-                    result = c.fetchone()
-                    if result:
-                        importer_id = result[0]
-                    conn.close()
-            except Exception as e:
-                logger.warning(f"Could not fetch client_code for XML export: {e}")
-
-            # Generate XML (use customer ref if provided, otherwise CSV name; client_code as importer ID)
-            reference_number = customer_ref if customer_ref else csv_name
-            xml_content = self._generate_commercial_invoice_xml(export_rows, reference_number, importer_id)
-
-            # Write to file
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(xml_content)
-
-            QMessageBox.information(self, "Success", f"XML export complete!\nSaved: {Path(file_path).name}")
-            logger.success(f"XML export complete: {file_path}")
-
-        except Exception as e:
-            logger.error(f"XML export failed: {e}")
-            QMessageBox.critical(self, "Export Failed", f"XML export failed: {str(e)}")
-
-    def export_lacey_act_ppq505(self):
-        """Export items requiring Lacey Act declaration to PPQ Form 505 format (Excel)."""
-        if self.last_processed_df is None or self.table.rowCount() == 0:
-            QMessageBox.warning(self, "No Data", "No processed data to export. Please process a shipment file first.")
-            return
-
-        # Filter for Lacey Act items only
-        df = self.last_processed_df.copy()
-        if '_lacey_required' not in df.columns:
-            QMessageBox.warning(self, "No Lacey Data",
-                "Lacey Act information not available. This may be an older processed file.\n"
-                "Please reprocess the invoice to detect Lacey Act items.")
-            return
-
-        lacey_df = df[df['_lacey_required'] == 'Y'].copy()
-
-        if len(lacey_df) == 0:
-            QMessageBox.information(self, "No Lacey Items",
-                "No items in this shipment require Lacey Act declaration.\n\n"
-                "Lacey Act applies to:\n"
-                "- HTS Chapters 44, 47, 48 (Wood, Pulp, Paper)\n"
-                "- HTS 9401, 9403 (Wood furniture)\n"
-                "- Any item with wood content > 0%")
-            return
-
-        # Build filename
-        csv_name = Path(self.current_csv).stem if self.current_csv else "Invoice"
-        default_filename = f"{csv_name}_PPQ505_{datetime.now():%Y%m%d_%H%M}.xlsx"
-
-        # Prompt user for save location
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export Lacey Act PPQ Form 505",
-            str(OUTPUT_DIR / default_filename),
-            "Excel Files (*.xlsx);;All Files (*)"
-        )
-
-        if not file_path:
-            return  # User cancelled
-
-        try:
-            # Prepare PPQ 505 columns
-            ppq505_columns = {
-                'HTSCode': 'HTSUS Number',
-                'ValueUSD': 'Entered Value (USD)',
-                'Product No': 'Article/Component',
-                'LaceySpecies': 'Genus & Species (Scientific Name)',
-                'LaceyHarvestCountry': 'Country of Harvest',
-                'CalcWtNet': 'Quantity',
-                'qty_unit': 'Unit of Measure',
-                'LaceyRecycledPct': '% Recycled',
-                'WoodRatio': 'Wood Content %',
-            }
-
-            # Create export dataframe with PPQ 505 format
-            export_df = pd.DataFrame()
-            for src_col, dest_col in ppq505_columns.items():
-                if src_col in lacey_df.columns:
-                    export_df[dest_col] = lacey_df[src_col]
-                else:
-                    export_df[dest_col] = ''
-
-            # Add warning column for missing data
-            warnings = []
-            for _, row in export_df.iterrows():
-                missing = []
-                if not row.get('Genus & Species (Scientific Name)', ''):
-                    missing.append('Species')
-                if not row.get('Country of Harvest', ''):
-                    missing.append('Harvest Country')
-                warnings.append(', '.join(missing) if missing else '')
-            export_df['Missing Data'] = warnings
-
-            # Export to Excel with formatting
-            with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
-                export_df.to_excel(writer, index=False, sheet_name='PPQ 505 Data')
-
-                # Access workbook for formatting
-                workbook = writer.book
-                worksheet = writer.sheets['PPQ 505 Data']
-
-                # Format header row
-                from openpyxl.styles import Font, PatternFill, Alignment
-                header_fill = PatternFill(start_color='27ae60', end_color='27ae60', fill_type='solid')
-                header_font = Font(bold=True, color='FFFFFF')
-
-                for col_num, cell in enumerate(worksheet[1], 1):
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal='center')
-
-                # Highlight rows with missing data
-                warning_fill = PatternFill(start_color='FFCC99', end_color='FFCC99', fill_type='solid')
-                for row_num, row in enumerate(worksheet.iter_rows(min_row=2, max_row=worksheet.max_row), 2):
-                    missing_data_cell = worksheet.cell(row=row_num, column=len(ppq505_columns) + 1)
-                    if missing_data_cell.value:
-                        for cell in row:
-                            cell.fill = warning_fill
-
-                # Adjust column widths
-                for column in worksheet.columns:
-                    max_length = 0
-                    column_letter = column[0].column_letter
-                    for cell in column:
-                        try:
-                            if len(str(cell.value)) > max_length:
-                                max_length = len(str(cell.value))
-                        except:
-                            pass
-                    adjusted_width = min(max_length + 2, 50)
-                    worksheet.column_dimensions[column_letter].width = adjusted_width
-
-            QMessageBox.information(self, "Success",
-                f"Lacey Act PPQ 505 export complete!\n\n"
-                f"Items exported: {len(lacey_df)}\n"
-                f"File: {Path(file_path).name}\n\n"
-                f"Note: Review items highlighted in orange - they have missing species or country of harvest data.")
-            logger.success(f"Lacey Act PPQ 505 export: {len(lacey_df)} items to {file_path}")
-
-        except Exception as e:
-            logger.error(f"Lacey Act export failed: {e}")
-            QMessageBox.critical(self, "Export Failed", f"Lacey Act export failed: {str(e)}")
-
-    def _generate_commercial_invoice_xml(self, rows, customer_reference="", importer_id=""):
-        """Generate XML content for commercial invoice in e2Open-compatible format."""
-        # Create root element with namespace
-        root = ET.Element('CommercialInvoice')
-        root.set('xmlns', 'urn:customs:commercial-invoice:v1')
-        root.set('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance')
-
-        # Add header information
-        header = ET.SubElement(root, 'Header')
-
-        # Document information
-        doc_info = ET.SubElement(header, 'DocumentInfo')
-        ET.SubElement(doc_info, 'DocumentType').text = 'CommercialInvoice'
-        ET.SubElement(doc_info, 'CreationDateTime').text = datetime.now().isoformat()
-        ET.SubElement(doc_info, 'DocumentID').text = f"INV-{datetime.now():%Y%m%d%H%M%S}"
-        if customer_reference:
-            ET.SubElement(doc_info, 'CustomerReferenceNumber').text = customer_reference
-
-        # Importer information (from client_code in parts_master)
-        if importer_id:
-            importer = ET.SubElement(header, 'Importer')
-            ET.SubElement(importer, 'ImporterID').text = importer_id
-
-        # Exporter/Shipper information (from MID if available)
-        first_mid = rows[0].get('mid', '') if rows else ''
-        if first_mid:
-            shipper = ET.SubElement(header, 'Shipper')
-            ET.SubElement(shipper, 'ManufacturerID').text = first_mid
-            # Extract country from MID prefix (first 2 characters)
-            if len(first_mid) >= 2:
-                ET.SubElement(shipper, 'CountryCode').text = first_mid[:2]
-
-        # Invoice summary
-        summary = ET.SubElement(header, 'InvoiceSummary')
-        total_value = sum(row.get('value_usd', 0) for row in rows)
-        ET.SubElement(summary, 'TotalValue').text = f"{total_value:.2f}"
-        ET.SubElement(summary, 'CurrencyCode').text = 'USD'
-        ET.SubElement(summary, 'TotalLineItems').text = str(len(rows))
-
-        # Line items
-        line_items = ET.SubElement(root, 'LineItems')
-
-        for idx, row in enumerate(rows, start=1):
-            item = ET.SubElement(line_items, 'LineItem')
-            item.set('lineNumber', str(idx))
-
-            # Product identification
-            ET.SubElement(item, 'ProductNumber').text = row.get('product_no', '')
-
-            # Tariff classification
-            tariff = ET.SubElement(item, 'TariffClassification')
-            hts_code = row.get('hts_code', '')
-            ET.SubElement(tariff, 'HTSCode').text = hts_code
-            # Extract chapter for material type indication
-            if len(hts_code.replace('.', '')) >= 2:
-                ET.SubElement(tariff, 'HTSChapter').text = hts_code.replace('.', '')[:2]
-
-            # Value
-            value_elem = ET.SubElement(item, 'Value')
-            ET.SubElement(value_elem, 'Amount').text = f"{row.get('value_usd', 0):.2f}"
-            ET.SubElement(value_elem, 'CurrencyCode').text = 'USD'
-
-            # Quantities
-            quantities = ET.SubElement(item, 'Quantities')
-            qty_unit = row.get('qty_unit', '')
-            if qty_unit:
-                ET.SubElement(quantities, 'UnitOfMeasure').text = qty_unit
-            qty1 = row.get('qty1', '')
-            if qty1:
-                ET.SubElement(quantities, 'Quantity1').text = str(qty1)
-            qty2 = row.get('qty2', '')
-            if qty2:
-                ET.SubElement(quantities, 'Quantity2').text = str(qty2)
-
-            # Manufacturer ID
-            mid = row.get('mid', '')
-            if mid:
-                ET.SubElement(item, 'ManufacturerID').text = mid
-
-            # Section 232 information
-            dec_type_cd = row.get('dec_type_cd', '')
-            status_232 = row.get('status_232', '')
-
-            if dec_type_cd or status_232:
-                section232 = ET.SubElement(item, 'Section232')
-
-                if dec_type_cd:
-                    ET.SubElement(section232, 'DeclarationTypeCode').text = dec_type_cd
-
-                if status_232:
-                    ET.SubElement(section232, 'MaterialStatus').text = status_232
-
-                # Country of origin information (for Section 232 materials)
-                country_melt = row.get('country_of_melt', '')
-                country_cast = row.get('country_of_cast', '')
-                country_smelt = row.get('country_of_smelt', '')
-                dec_flag = row.get('declaration_flag', '')
-
-                if country_melt or country_cast or country_smelt:
-                    origin = ET.SubElement(section232, 'CountryOfOrigin')
-                    if country_melt:
-                        ET.SubElement(origin, 'CountryOfMelt').text = country_melt
-                    if country_cast:
-                        ET.SubElement(origin, 'CountryOfCast').text = country_cast
-                    if country_smelt:
-                        ET.SubElement(origin, 'PrimaryCountryOfSmelt').text = country_smelt
-
-                if dec_flag:
-                    ET.SubElement(section232, 'DeclarationFlag').text = dec_flag
-
-        # Convert to pretty-printed XML string
-        xml_str = ET.tostring(root, encoding='unicode')
-        # Use minidom for pretty printing
-        dom = minidom.parseString(xml_str)
-        pretty_xml = dom.toprettyxml(indent='  ', encoding=None)
-
-        # Remove the XML declaration line that minidom adds (we'll add our own)
-        lines = pretty_xml.split('\n')
-        if lines[0].startswith('<?xml'):
-            lines = lines[1:]
-
-        # Add proper XML declaration
-        xml_declaration = '<?xml version="1.0" encoding="UTF-8"?>'
-        return xml_declaration + '\n' + '\n'.join(lines)
+    # TODO: XML Generation - To be implemented at a later date
+    # def _generate_commercial_invoice_xml(self, rows, customer_reference="", importer_id=""):
+    #     """Generate XML content for commercial invoice in e2Open-compatible format."""
+    #     # Create root element with namespace
+    #     root = ET.Element('CommercialInvoice')
+    #     root.set('xmlns', 'urn:customs:commercial-invoice:v1')
+    #     root.set('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance')
+    #
+    #     # Add header information
+    #     header = ET.SubElement(root, 'Header')
+    #
+    #     # Document information
+    #     doc_info = ET.SubElement(header, 'DocumentInfo')
+    #     ET.SubElement(doc_info, 'DocumentType').text = 'CommercialInvoice'
+    #     ET.SubElement(doc_info, 'CreationDateTime').text = datetime.now().isoformat()
+    #     ET.SubElement(doc_info, 'DocumentID').text = f"INV-{datetime.now():%Y%m%d%H%M%S}"
+    #     if customer_reference:
+    #         ET.SubElement(doc_info, 'CustomerReferenceNumber').text = customer_reference
+    #
+    #     # Importer information (from client_code in parts_master)
+    #     if importer_id:
+    #         importer = ET.SubElement(header, 'Importer')
+    #         ET.SubElement(importer, 'ImporterID').text = importer_id
+    #
+    #     # Exporter/Shipper information (from MID if available)
+    #     first_mid = rows[0].get('mid', '') if rows else ''
+    #     if first_mid:
+    #         shipper = ET.SubElement(header, 'Shipper')
+    #         ET.SubElement(shipper, 'ManufacturerID').text = first_mid
+    #         # Extract country from MID prefix (first 2 characters)
+    #         if len(first_mid) >= 2:
+    #             ET.SubElement(shipper, 'CountryCode').text = first_mid[:2]
+    #
+    #     # Invoice summary
+    #     summary = ET.SubElement(header, 'InvoiceSummary')
+    #     total_value = sum(row.get('value_usd', 0) for row in rows)
+    #     ET.SubElement(summary, 'TotalValue').text = f"{total_value:.2f}"
+    #     ET.SubElement(summary, 'CurrencyCode').text = 'USD'
+    #     ET.SubElement(summary, 'TotalLineItems').text = str(len(rows))
+    #
+    #     # Line items
+    #     line_items = ET.SubElement(root, 'LineItems')
+    #
+    #     for idx, row in enumerate(rows, start=1):
+    #         item = ET.SubElement(line_items, 'LineItem')
+    #         item.set('lineNumber', str(idx))
+    #
+    #         # Product identification
+    #         ET.SubElement(item, 'ProductNumber').text = row.get('product_no', '')
+    #
+    #         # Tariff classification
+    #         tariff = ET.SubElement(item, 'TariffClassification')
+    #         hts_code = row.get('hts_code', '')
+    #         ET.SubElement(tariff, 'HTSCode').text = hts_code
+    #         # Extract chapter for material type indication
+    #         if len(hts_code.replace('.', '')) >= 2:
+    #             ET.SubElement(tariff, 'HTSChapter').text = hts_code.replace('.', '')[:2]
+    #
+    #         # Value
+    #         value_elem = ET.SubElement(item, 'Value')
+    #         ET.SubElement(value_elem, 'Amount').text = f"{row.get('value_usd', 0):.2f}"
+    #         ET.SubElement(value_elem, 'CurrencyCode').text = 'USD'
+    #
+    #         # Quantities
+    #         quantities = ET.SubElement(item, 'Quantities')
+    #         qty_unit = row.get('qty_unit', '')
+    #         if qty_unit:
+    #             ET.SubElement(quantities, 'UnitOfMeasure').text = qty_unit
+    #         qty1 = row.get('qty1', '')
+    #         if qty1:
+    #             ET.SubElement(quantities, 'Quantity1').text = str(qty1)
+    #         qty2 = row.get('qty2', '')
+    #         if qty2:
+    #             ET.SubElement(quantities, 'Quantity2').text = str(qty2)
+    #
+    #         # Manufacturer ID
+    #         mid = row.get('mid', '')
+    #         if mid:
+    #             ET.SubElement(item, 'ManufacturerID').text = mid
+    #
+    #         # Section 232 information
+    #         dec_type_cd = row.get('dec_type_cd', '')
+    #         status_232 = row.get('status_232', '')
+    #
+    #         if dec_type_cd or status_232:
+    #             section232 = ET.SubElement(item, 'Section232')
+    #
+    #             if dec_type_cd:
+    #                 ET.SubElement(section232, 'DeclarationTypeCode').text = dec_type_cd
+    #
+    #             if status_232:
+    #                 ET.SubElement(section232, 'MaterialStatus').text = status_232
+    #
+    #             # Country of origin information (for Section 232 materials)
+    #             country_melt = row.get('country_of_melt', '')
+    #             country_cast = row.get('country_of_cast', '')
+    #             country_smelt = row.get('country_of_smelt', '')
+    #             dec_flag = row.get('declaration_flag', '')
+    #
+    #             if country_melt or country_cast or country_smelt:
+    #                 origin = ET.SubElement(section232, 'CountryOfOrigin')
+    #                 if country_melt:
+    #                     ET.SubElement(origin, 'CountryOfMelt').text = country_melt
+    #                 if country_cast:
+    #                     ET.SubElement(origin, 'CountryOfCast').text = country_cast
+    #                 if country_smelt:
+    #                     ET.SubElement(origin, 'PrimaryCountryOfSmelt').text = country_smelt
+    #
+    #             if dec_flag:
+    #                 ET.SubElement(section232, 'DeclarationFlag').text = dec_flag
+    #
+    #     # Convert to pretty-printed XML string
+    #     xml_str = ET.tostring(root, encoding='unicode')
+    #     # Use minidom for pretty printing
+    #     dom = minidom.parseString(xml_str)
+    #     pretty_xml = dom.toprettyxml(indent='  ', encoding=None)
+    #
+    #     # Remove the XML declaration line that minidom adds (we'll add our own)
+    #     lines = pretty_xml.split('\n')
+    #     if lines[0].startswith('<?xml'):
+    #         lines = lines[1:]
+    #
+    #     # Add proper XML declaration
+    #     xml_declaration = '<?xml version="1.0" encoding="UTF-8"?>'
+    #     return xml_declaration + '\n' + '\n'.join(lines)
 
     def log_context_menu(self, pos):
         menu = QMenu()
