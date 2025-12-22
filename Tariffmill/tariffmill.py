@@ -2504,9 +2504,10 @@ class TariffMill(QMainWindow):
         self.folder_profile_combo.setMinimumWidth(150)
         self.folder_profile_combo.currentTextChanged.connect(self.load_folder_profile)
         folder_profile_row.addWidget(self.folder_profile_combo)
-        self.manage_folder_profiles_btn = QPushButton("...")
+        self.manage_folder_profiles_btn = QPushButton()
         self.manage_folder_profiles_btn.setFixedWidth(30)
         self.manage_folder_profiles_btn.setToolTip("Manage folder profiles")
+        self.manage_folder_profiles_btn.setIcon(self.style().standardIcon(QStyle.SP_FileDialogDetailedView))
         self.manage_folder_profiles_btn.clicked.connect(self.show_folder_profile_dialog)
         folder_profile_row.addWidget(self.manage_folder_profiles_btn)
         file_layout.addRow("Folder Profile:", folder_profile_row)
@@ -3997,7 +3998,7 @@ class TariffMill(QMainWindow):
             # Ocean theme - professional deep blue with gradients and depth
             app.setStyleSheet("""
                 QGroupBox {
-                    font-weight: bold;
+                    font-weight: normal;
                     border: 1px solid #3a6a9a;
                     border-radius: 6px;
                     margin-top: 12px;
@@ -4112,7 +4113,7 @@ class TariffMill(QMainWindow):
                     border: 1px solid #4a8cb5;
                     border-radius: 5px;
                     padding: 6px 14px;
-                    font-weight: 500;
+                    font-weight: normal;
                 }
                 QPushButton:hover {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -4169,7 +4170,7 @@ class TariffMill(QMainWindow):
                     border: none;
                     border-right: 1px solid #3a6a9a;
                     border-bottom: 2px solid #00a8cc;
-                    font-weight: bold;
+                    font-weight: normal;
                 }
                 QTableWidget {
                     background-color: #152a42;
@@ -4181,38 +4182,6 @@ class TariffMill(QMainWindow):
                 }
                 QTableWidget::item:selected {
                     background-color: #0096b4;
-                }
-                QCheckBox {
-                    color: #e0f0ff;
-                    spacing: 8px;
-                }
-                QCheckBox::indicator {
-                    width: 18px;
-                    height: 18px;
-                    border-radius: 4px;
-                    border: 1px solid #3a6a9a;
-                    background: #1a3550;
-                }
-                QCheckBox::indicator:checked {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #00b8d4, stop:1 #0096b4);
-                    border: 1px solid #00c8e4;
-                }
-                QRadioButton {
-                    color: #e0f0ff;
-                    spacing: 8px;
-                }
-                QRadioButton::indicator {
-                    width: 18px;
-                    height: 18px;
-                    border-radius: 9px;
-                    border: 1px solid #3a6a9a;
-                    background: #1a3550;
-                }
-                QRadioButton::indicator:checked {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #00b8d4, stop:1 #0096b4);
-                    border: 1px solid #00c8e4;
                 }
                 QLabel {
                     color: #c0e0f0;
@@ -4240,7 +4209,7 @@ class TariffMill(QMainWindow):
             # Fusion Dark theme - professional dark gray with gradients and depth
             app.setStyleSheet("""
                 QGroupBox {
-                    font-weight: bold;
+                    font-weight: normal;
                     border: 1px solid #4a4a4a;
                     border-radius: 6px;
                     margin-top: 12px;
@@ -4355,7 +4324,7 @@ class TariffMill(QMainWindow):
                     border: 1px solid #555555;
                     border-radius: 5px;
                     padding: 6px 14px;
-                    font-weight: 500;
+                    font-weight: normal;
                 }
                 QPushButton:hover {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -4412,7 +4381,7 @@ class TariffMill(QMainWindow):
                     border: none;
                     border-right: 1px solid #4a4a4a;
                     border-bottom: 2px solid #5a6a7a;
-                    font-weight: bold;
+                    font-weight: normal;
                 }
                 QTableWidget {
                     background-color: #383838;
@@ -4424,38 +4393,6 @@ class TariffMill(QMainWindow):
                 }
                 QTableWidget::item:selected {
                     background-color: #4a5a6a;
-                }
-                QCheckBox {
-                    color: #e0e0e0;
-                    spacing: 8px;
-                }
-                QCheckBox::indicator {
-                    width: 18px;
-                    height: 18px;
-                    border-radius: 4px;
-                    border: 1px solid #4a4a4a;
-                    background: #353535;
-                }
-                QCheckBox::indicator:checked {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #5a6a7a, stop:1 #4a5a6a);
-                    border: 1px solid #6a7a8a;
-                }
-                QRadioButton {
-                    color: #e0e0e0;
-                    spacing: 8px;
-                }
-                QRadioButton::indicator {
-                    width: 18px;
-                    height: 18px;
-                    border-radius: 9px;
-                    border: 1px solid #4a4a4a;
-                    background: #353535;
-                }
-                QRadioButton::indicator:checked {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #5a6a7a, stop:1 #4a5a6a);
-                    border: 1px solid #6a7a8a;
                 }
                 QLabel {
                     color: #c0c0c0;
@@ -4477,24 +4414,6 @@ class TariffMill(QMainWindow):
                 QMenuBar::item:selected {
                     background: #505050;
                     border-radius: 4px;
-                }
-                QSlider::groove:horizontal {
-                    background: #353535;
-                    height: 6px;
-                    border-radius: 3px;
-                }
-                QSlider::handle:horizontal {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #6a7a8a, stop:1 #5a6a7a);
-                    width: 16px;
-                    height: 16px;
-                    margin: -5px 0;
-                    border-radius: 8px;
-                    border: 1px solid #7a8a9a;
-                }
-                QSlider::handle:horizontal:hover {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #7a8a9a, stop:1 #6a7a8a);
                 }
             """)
         else:
@@ -5445,7 +5364,7 @@ class TariffMill(QMainWindow):
             QPushButton {{
                 background-color: rgb({bg.red()}, {bg.green()}, {bg.blue()});
                 color: rgb({text_color.red()}, {text_color.green()}, {text_color.blue()});
-                font-weight: bold;
+                font-weight: normal;
             }}
             QPushButton:hover {{
                 background-color: rgb({hover_bg.red()}, {hover_bg.green()}, {hover_bg.blue()});
@@ -6650,7 +6569,7 @@ class TariffMill(QMainWindow):
 
             # Get Lacey Act status
             lacey_required = r.get('_lacey_required', 'N')
-            lacey_display = "PPQ 505" if lacey_required == 'Y' else ""
+            lacey_display = "Y" if lacey_required == 'Y' else ""
 
             items = [
                 QTableWidgetItem(product_no),                        # 0: Product No
