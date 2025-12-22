@@ -2614,9 +2614,9 @@ class TariffMill(QMainWindow):
         preview_layout = QVBoxLayout()
 
         self.table = QTableWidget()
-        self.table.setColumnCount(20)
+        self.table.setColumnCount(21)
         self.table.setHorizontalHeaderLabels([
-            "Product No","Value","HTS","MID","Qty1","Qty2","Qty Unit","Dec","Melt","Cast","Smelt","Flag","Steel%","Al%","Cu%","Wood%","Auto%","Non-232%","232 Status","Cust Ref"
+            "Product No","Value","HTS","MID","Qty1","Qty2","Qty Unit","Dec","Melt","Cast","Smelt","Flag","Steel%","Al%","Cu%","Wood%","Auto%","Non-232%","232 Status","Cust Ref","Lacey"
         ])
         # Make columns manually resizable instead of auto-stretch
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
@@ -3589,7 +3589,7 @@ class TariffMill(QMainWindow):
         # Column names and their default visibility
         column_names = [
             "Product No", "Value", "HTS", "MID", "Qty1", "Qty2", "Qty Unit", "Dec",
-            "Melt", "Cast", "Smelt", "Flag", "Steel%", "Al%", "Cu%", "Wood%", "Auto%", "Non-232%", "232 Status"
+            "Melt", "Cast", "Smelt", "Flag", "Steel%", "Al%", "Cu%", "Wood%", "Auto%", "Non-232%", "232 Status", "Cust Ref", "Lacey"
         ]
         
         # Create checkboxes in a grid layout
@@ -3993,42 +3993,508 @@ class TariffMill(QMainWindow):
         
         # Apply global stylesheet for QGroupBox and other widgets that don't fully respect QPalette
         is_dark = theme_name in ["Fusion (Dark)", "Ocean"]
-        if is_dark:
+        if theme_name == "Ocean":
+            # Ocean theme - professional deep blue with gradients and depth
             app.setStyleSheet("""
                 QGroupBox {
                     font-weight: bold;
-                    border: 1px solid #555;
-                    border-radius: 4px;
-                    margin-top: 8px;
-                    padding-top: 8px;
-                    background-color: #4a4a4a;
+                    border: 1px solid #3a6a9a;
+                    border-radius: 6px;
+                    margin-top: 12px;
+                    padding-top: 10px;
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #243d5c, stop:1 #1a3050);
                 }
                 QGroupBox::title {
                     subcontrol-origin: margin;
                     subcontrol-position: top left;
-                    left: 10px;
-                    padding: 0 5px;
-                    color: #ddd;
+                    left: 12px;
+                    padding: 2px 8px;
+                    color: #7ec8e3;
+                    background: #1a3050;
+                    border-radius: 3px;
                 }
                 QTabWidget::pane {
-                    border: 1px solid #555;
-                    border-radius: 4px;
+                    border: 1px solid #3a6a9a;
+                    border-radius: 6px;
+                    background: #1e3a55;
                 }
                 QTabBar::tab {
-                    background: #3a3a3a;
-                    color: #ccc;
-                    padding: 6px 12px;
-                    border: 1px solid #555;
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #2a4a6a, stop:1 #1e3a55);
+                    color: #8ac4e0;
+                    padding: 8px 16px;
+                    border: 1px solid #3a6a9a;
                     border-bottom: none;
-                    border-top-left-radius: 4px;
-                    border-top-right-radius: 4px;
+                    border-top-left-radius: 6px;
+                    border-top-right-radius: 6px;
+                    margin-right: 2px;
                 }
                 QTabBar::tab:selected {
-                    background: #4a4a4a;
-                    color: #fff;
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #3a6a9a, stop:1 #2a5070);
+                    color: #ffffff;
+                    border-bottom: 2px solid #00a8cc;
                 }
                 QTabBar::tab:hover:!selected {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #325878, stop:1 #264560);
+                    color: #c0e0f0;
+                }
+                QLineEdit, QSpinBox, QDoubleSpinBox {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #1a3550, stop:1 #152a42);
+                    color: #e0f0ff;
+                    border: 1px solid #3a6a9a;
+                    border-radius: 4px;
+                    padding: 5px 8px;
+                    selection-background-color: #0096b4;
+                }
+                QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+                    border: 1px solid #00a8cc;
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #1e3a55, stop:1 #183048);
+                }
+                QComboBox {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #1a3550, stop:1 #152a42);
+                    color: #e0f0ff;
+                    border: 1px solid #3a6a9a;
+                    border-radius: 4px;
+                    padding: 5px 8px;
+                }
+                QComboBox::drop-down {
+                    border: none;
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #3a6a9a, stop:1 #2a5070);
+                    border-top-right-radius: 4px;
+                    border-bottom-right-radius: 4px;
+                    width: 20px;
+                }
+                QComboBox::down-arrow {
+                    image: none;
+                    border-left: 5px solid transparent;
+                    border-right: 5px solid transparent;
+                    border-top: 6px solid #a0d0f0;
+                    margin-right: 5px;
+                }
+                QComboBox QAbstractItemView {
+                    background-color: #1a3550;
+                    color: #e0f0ff;
+                    selection-background-color: #00a8cc;
+                    border: 1px solid #3a6a9a;
+                    border-radius: 4px;
+                }
+                QListWidget {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #1a3550, stop:1 #152a42);
+                    color: #e0f0ff;
+                    border: 1px solid #3a6a9a;
+                    border-radius: 4px;
+                    alternate-background-color: #1e3a55;
+                }
+                QListWidget::item {
+                    padding: 4px;
+                    border-radius: 3px;
+                }
+                QListWidget::item:selected {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #00b8d4, stop:1 #0096b4);
+                    color: #ffffff;
+                }
+                QListWidget::item:hover:!selected {
+                    background: #2a4a6a;
+                }
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #3a7ca5, stop:1 #2a5a80);
+                    color: #ffffff;
+                    border: 1px solid #4a8cb5;
+                    border-radius: 5px;
+                    padding: 6px 14px;
+                    font-weight: 500;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #4a8cb5, stop:1 #3a7095);
+                    border: 1px solid #5a9cc5;
+                }
+                QPushButton:pressed {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #2a5a80, stop:1 #1a4a70);
+                }
+                QScrollBar:vertical {
+                    background: #1a3050;
+                    width: 12px;
+                    border-radius: 6px;
+                }
+                QScrollBar::handle:vertical {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #3a6a9a, stop:1 #4a7aaa);
+                    border-radius: 5px;
+                    min-height: 30px;
+                    margin: 2px;
+                }
+                QScrollBar::handle:vertical:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #4a7aaa, stop:1 #5a8aba);
+                }
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                    height: 0px;
+                }
+                QScrollBar:horizontal {
+                    background: #1a3050;
+                    height: 12px;
+                    border-radius: 6px;
+                }
+                QScrollBar::handle:horizontal {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #3a6a9a, stop:1 #4a7aaa);
+                    border-radius: 5px;
+                    min-width: 30px;
+                    margin: 2px;
+                }
+                QScrollBar::handle:horizontal:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #4a7aaa, stop:1 #5a8aba);
+                }
+                QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+                    width: 0px;
+                }
+                QHeaderView::section {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #2a5070, stop:1 #1e3a55);
+                    color: #a0d0f0;
+                    padding: 6px;
+                    border: none;
+                    border-right: 1px solid #3a6a9a;
+                    border-bottom: 2px solid #00a8cc;
+                    font-weight: bold;
+                }
+                QTableWidget {
+                    background-color: #152a42;
+                    alternate-background-color: #1a3050;
+                    gridline-color: #2a4a6a;
+                    color: #e0f0ff;
+                    border: 1px solid #3a6a9a;
+                    border-radius: 4px;
+                }
+                QTableWidget::item:selected {
+                    background-color: #0096b4;
+                }
+                QCheckBox {
+                    color: #e0f0ff;
+                    spacing: 8px;
+                }
+                QCheckBox::indicator {
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 4px;
+                    border: 1px solid #3a6a9a;
+                    background: #1a3550;
+                }
+                QCheckBox::indicator:checked {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #00b8d4, stop:1 #0096b4);
+                    border: 1px solid #00c8e4;
+                }
+                QRadioButton {
+                    color: #e0f0ff;
+                    spacing: 8px;
+                }
+                QRadioButton::indicator {
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 9px;
+                    border: 1px solid #3a6a9a;
+                    background: #1a3550;
+                }
+                QRadioButton::indicator:checked {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #00b8d4, stop:1 #0096b4);
+                    border: 1px solid #00c8e4;
+                }
+                QLabel {
+                    color: #c0e0f0;
+                }
+                QMenu {
+                    background-color: #1e3a55;
+                    color: #e0f0ff;
+                    border: 1px solid #3a6a9a;
+                    border-radius: 4px;
+                }
+                QMenu::item:selected {
+                    background-color: #0096b4;
+                }
+                QMenuBar {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #243d5c, stop:1 #1a3050);
+                    color: #c0e0f0;
+                }
+                QMenuBar::item:selected {
+                    background: #3a6a9a;
+                    border-radius: 4px;
+                }
+            """)
+        elif is_dark:
+            # Fusion Dark theme - professional dark gray with gradients and depth
+            app.setStyleSheet("""
+                QGroupBox {
+                    font-weight: bold;
+                    border: 1px solid #4a4a4a;
+                    border-radius: 6px;
+                    margin-top: 12px;
+                    padding-top: 10px;
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #3d3d3d, stop:1 #2d2d2d);
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    subcontrol-position: top left;
+                    left: 12px;
+                    padding: 2px 8px;
+                    color: #b0b0b0;
+                    background: #2d2d2d;
+                    border-radius: 3px;
+                }
+                QTabWidget::pane {
+                    border: 1px solid #4a4a4a;
+                    border-radius: 6px;
+                    background: #353535;
+                }
+                QTabBar::tab {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #454545, stop:1 #353535);
+                    color: #a0a0a0;
+                    padding: 8px 16px;
+                    border: 1px solid #4a4a4a;
+                    border-bottom: none;
+                    border-top-left-radius: 6px;
+                    border-top-right-radius: 6px;
+                    margin-right: 2px;
+                }
+                QTabBar::tab:selected {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #505050, stop:1 #404040);
+                    color: #ffffff;
+                    border-bottom: 2px solid #5a6a7a;
+                }
+                QTabBar::tab:hover:!selected {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #4a4a4a, stop:1 #3a3a3a);
+                    color: #d0d0d0;
+                }
+                QLineEdit, QSpinBox, QDoubleSpinBox {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #353535, stop:1 #2a2a2a);
+                    color: #e0e0e0;
+                    border: 1px solid #4a4a4a;
+                    border-radius: 4px;
+                    padding: 5px 8px;
+                    selection-background-color: #4a5a6a;
+                }
+                QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+                    border: 1px solid #5a6a7a;
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #3a3a3a, stop:1 #2f2f2f);
+                }
+                QComboBox {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #353535, stop:1 #2a2a2a);
+                    color: #e0e0e0;
+                    border: 1px solid #4a4a4a;
+                    border-radius: 4px;
+                    padding: 5px 8px;
+                }
+                QComboBox::drop-down {
+                    border: none;
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #505050, stop:1 #404040);
+                    border-top-right-radius: 4px;
+                    border-bottom-right-radius: 4px;
+                    width: 20px;
+                }
+                QComboBox::down-arrow {
+                    image: none;
+                    border-left: 5px solid transparent;
+                    border-right: 5px solid transparent;
+                    border-top: 6px solid #a0a0a0;
+                    margin-right: 5px;
+                }
+                QComboBox QAbstractItemView {
+                    background-color: #353535;
+                    color: #e0e0e0;
+                    selection-background-color: #4a5a6a;
+                    border: 1px solid #4a4a4a;
+                    border-radius: 4px;
+                }
+                QListWidget {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #353535, stop:1 #2a2a2a);
+                    color: #e0e0e0;
+                    border: 1px solid #4a4a4a;
+                    border-radius: 4px;
+                    alternate-background-color: #3a3a3a;
+                }
+                QListWidget::item {
+                    padding: 4px;
+                    border-radius: 3px;
+                }
+                QListWidget::item:selected {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #5a6a7a, stop:1 #4a5a6a);
+                    color: #ffffff;
+                }
+                QListWidget::item:hover:!selected {
                     background: #454545;
+                }
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #505050, stop:1 #3a3a3a);
+                    color: #e0e0e0;
+                    border: 1px solid #555555;
+                    border-radius: 5px;
+                    padding: 6px 14px;
+                    font-weight: 500;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #5a5a5a, stop:1 #454545);
+                    border: 1px solid #666666;
+                }
+                QPushButton:pressed {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #3a3a3a, stop:1 #2d2d2d);
+                }
+                QScrollBar:vertical {
+                    background: #2d2d2d;
+                    width: 12px;
+                    border-radius: 6px;
+                }
+                QScrollBar::handle:vertical {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #505050, stop:1 #5a5a5a);
+                    border-radius: 5px;
+                    min-height: 30px;
+                    margin: 2px;
+                }
+                QScrollBar::handle:vertical:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #5a5a5a, stop:1 #666666);
+                }
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                    height: 0px;
+                }
+                QScrollBar:horizontal {
+                    background: #2d2d2d;
+                    height: 12px;
+                    border-radius: 6px;
+                }
+                QScrollBar::handle:horizontal {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #505050, stop:1 #5a5a5a);
+                    border-radius: 5px;
+                    min-width: 30px;
+                    margin: 2px;
+                }
+                QScrollBar::handle:horizontal:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #5a5a5a, stop:1 #666666);
+                }
+                QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+                    width: 0px;
+                }
+                QHeaderView::section {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #454545, stop:1 #353535);
+                    color: #c0c0c0;
+                    padding: 6px;
+                    border: none;
+                    border-right: 1px solid #4a4a4a;
+                    border-bottom: 2px solid #5a6a7a;
+                    font-weight: bold;
+                }
+                QTableWidget {
+                    background-color: #383838;
+                    alternate-background-color: #424242;
+                    gridline-color: #4a4a4a;
+                    color: #e0e0e0;
+                    border: 1px solid #505050;
+                    border-radius: 4px;
+                }
+                QTableWidget::item:selected {
+                    background-color: #4a5a6a;
+                }
+                QCheckBox {
+                    color: #e0e0e0;
+                    spacing: 8px;
+                }
+                QCheckBox::indicator {
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 4px;
+                    border: 1px solid #4a4a4a;
+                    background: #353535;
+                }
+                QCheckBox::indicator:checked {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #5a6a7a, stop:1 #4a5a6a);
+                    border: 1px solid #6a7a8a;
+                }
+                QRadioButton {
+                    color: #e0e0e0;
+                    spacing: 8px;
+                }
+                QRadioButton::indicator {
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 9px;
+                    border: 1px solid #4a4a4a;
+                    background: #353535;
+                }
+                QRadioButton::indicator:checked {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #5a6a7a, stop:1 #4a5a6a);
+                    border: 1px solid #6a7a8a;
+                }
+                QLabel {
+                    color: #c0c0c0;
+                }
+                QMenu {
+                    background-color: #353535;
+                    color: #e0e0e0;
+                    border: 1px solid #4a4a4a;
+                    border-radius: 4px;
+                }
+                QMenu::item:selected {
+                    background-color: #4a5a6a;
+                }
+                QMenuBar {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #3d3d3d, stop:1 #2d2d2d);
+                    color: #c0c0c0;
+                }
+                QMenuBar::item:selected {
+                    background: #505050;
+                    border-radius: 4px;
+                }
+                QSlider::groove:horizontal {
+                    background: #353535;
+                    height: 6px;
+                    border-radius: 3px;
+                }
+                QSlider::handle:horizontal {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #6a7a8a, stop:1 #5a6a7a);
+                    width: 16px;
+                    height: 16px;
+                    margin: -5px 0;
+                    border-radius: 8px;
+                    border: 1px solid #7a8a9a;
+                }
+                QSlider::handle:horizontal:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #7a8a9a, stop:1 #6a7a8a);
                 }
             """)
         else:
@@ -4062,6 +4528,34 @@ class TariffMill(QMainWindow):
         # Refresh preview colors for the new theme (colors are stored per-theme)
         if hasattr(self, 'table') and self.table.rowCount() > 0:
             self.refresh_preview_colors()
+
+        # Update logo for theme
+        self.update_logo_for_theme(is_dark)
+
+    def update_logo_for_theme(self, is_dark):
+        """Update the header logo based on current theme (dark/light)"""
+        if not hasattr(self, 'header_logo_label'):
+            return
+
+        if is_dark:
+            logo_path = TEMP_RESOURCES_DIR / "tariffmill_logo_small_dark.svg"
+        else:
+            logo_path = TEMP_RESOURCES_DIR / "tariffmill_logo_small.svg"
+
+        if logo_path.exists():
+            pixmap = QPixmap(str(logo_path))
+            scaled_pixmap = pixmap.scaledToHeight(60, Qt.SmoothTransformation)
+            self.header_logo_label.setPixmap(scaled_pixmap)
+        else:
+            # Fallback to text with appropriate color
+            text_color = "#e0e0e0" if is_dark else "#555555"
+            self.header_logo_label.setText(f"{APP_NAME}")
+            self.header_logo_label.setStyleSheet(f"""
+                font-size: 22px;
+                font-weight: bold;
+                color: {text_color};
+                font-family: 'Impact', 'Arial Black', sans-serif;
+            """)
 
     def apply_font_size_without_save(self, size):
         """Apply font size to application without saving (used internally)"""
@@ -4569,18 +5063,27 @@ class TariffMill(QMainWindow):
         """Update status bar backgrounds based on current theme"""
         if not hasattr(self, 'current_theme'):
             self.current_theme = "System Default"
-        
-        is_dark = self.current_theme in ["Fusion (Dark)", "Ocean"]
-        
-        if is_dark:
-            # Dark theme status bars
-            self.status.setStyleSheet("font-size:14pt; padding:8px; background:#2d2d2d; color:#e0e0e0;")
-            self.bottom_status.setStyleSheet("font-size:9px; color:#b0b0b0;")
+
+        if self.current_theme == "Ocean":
+            # Ocean theme status bars - professional deep blue with gradient
+            self.status.setStyleSheet("font-size:14pt; padding:8px; background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #243d5c, stop:1 #1a3050); color:#c0e0f0;")
+            self.bottom_status.setStyleSheet("font-size:9px; color:#8ac4e0;")
             if hasattr(self, 'bottom_bar'):
                 self.bottom_bar.setStyleSheet("""
                     QWidget {
-                        background: #2d2d2d;
-                        border-top: 1px solid #404040;
+                        background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1e3a55, stop:1 #152a42);
+                        border-top: 2px solid #00a8cc;
+                    }
+                """)
+        elif self.current_theme == "Fusion (Dark)":
+            # Fusion Dark theme status bars - professional with gradient
+            self.status.setStyleSheet("font-size:14pt; padding:8px; background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3d3d3d, stop:1 #2d2d2d); color:#e0e0e0;")
+            self.bottom_status.setStyleSheet("font-size:9px; color:#a0a0a0;")
+            if hasattr(self, 'bottom_bar'):
+                self.bottom_bar.setStyleSheet("""
+                    QWidget {
+                        background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #353535, stop:1 #2a2a2a);
+                        border-top: 2px solid #5a6a7a;
                     }
                 """)
         else:
@@ -4866,24 +5369,29 @@ class TariffMill(QMainWindow):
         return palette
 
     def get_ocean_palette(self):
-        """Create an ocean-themed color palette with deep blues and teals"""
+        """Create an ocean-themed color palette with deep blues and teals - professional look"""
         from PyQt5.QtGui import QPalette, QColor
 
         palette = QPalette()
-        # Deep ocean blue backgrounds
-        palette.setColor(QPalette.Window, QColor(28, 57, 87))  # Deep ocean blue
-        palette.setColor(QPalette.WindowText, QColor(230, 245, 255))  # Light blue-white text
-        palette.setColor(QPalette.Base, QColor(28, 56, 86))  # Result preview background (#1C3856)
-        palette.setColor(QPalette.AlternateBase, QColor(35, 65, 95))  # Lighter ocean blue
-        palette.setColor(QPalette.ToolTipBase, QColor(200, 230, 255))  # Light blue
-        palette.setColor(QPalette.ToolTipText, QColor(15, 35, 55))  # Dark blue
-        palette.setColor(QPalette.Text, QColor(230, 245, 255))  # Light blue-white text
-        palette.setColor(QPalette.Button, QColor(40, 75, 110))  # Medium ocean blue
-        palette.setColor(QPalette.ButtonText, QColor(230, 245, 255))  # Light text
-        palette.setColor(QPalette.BrightText, QColor(0, 255, 200))  # Bright teal
-        palette.setColor(QPalette.Link, QColor(100, 200, 255))  # Bright cyan
-        palette.setColor(QPalette.Highlight, QColor(0, 150, 180))  # Teal highlight
-        palette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))  # White text
+        # Deep ocean blue backgrounds with more contrast
+        palette.setColor(QPalette.Window, QColor(26, 48, 80))  # Main window background
+        palette.setColor(QPalette.WindowText, QColor(192, 224, 240))  # Soft blue-white text
+        palette.setColor(QPalette.Base, QColor(21, 42, 66))  # Input/table background (darker)
+        palette.setColor(QPalette.AlternateBase, QColor(26, 48, 80))  # Alternating rows
+        palette.setColor(QPalette.ToolTipBase, QColor(30, 58, 85))  # Tooltip background
+        palette.setColor(QPalette.ToolTipText, QColor(224, 240, 255))  # Tooltip text
+        palette.setColor(QPalette.Text, QColor(224, 240, 255))  # Input text color
+        palette.setColor(QPalette.Button, QColor(58, 106, 154))  # Button background
+        palette.setColor(QPalette.ButtonText, QColor(255, 255, 255))  # Button text
+        palette.setColor(QPalette.BrightText, QColor(0, 200, 220))  # Bright accent
+        palette.setColor(QPalette.Link, QColor(0, 168, 204))  # Link color (teal)
+        palette.setColor(QPalette.Highlight, QColor(0, 150, 180))  # Selection highlight
+        palette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))  # Selected text
+        palette.setColor(QPalette.Light, QColor(58, 106, 154))  # Light shade
+        palette.setColor(QPalette.Midlight, QColor(42, 80, 112))  # Mid-light shade
+        palette.setColor(QPalette.Mid, QColor(58, 106, 154))  # Mid shade (for headers)
+        palette.setColor(QPalette.Dark, QColor(18, 36, 56))  # Dark shade
+        palette.setColor(QPalette.Shadow, QColor(12, 24, 40))  # Shadow
         return palette
     
     def get_teal_professional_palette(self):
@@ -4954,14 +5462,17 @@ class TariffMill(QMainWindow):
         Returns:
             CSS stylesheet string that adapts background color to current theme
         """
-        # Check if we're in a dark theme
-        is_dark_theme = hasattr(self, 'current_theme') and self.current_theme in ["Fusion (Dark)", "Ocean"]
+        # Check current theme
+        current_theme = getattr(self, 'current_theme', 'Fusion (Light)')
 
-        if is_dark_theme:
-            # Dark theme: dark background with light text
+        if current_theme == "Ocean":
+            # Ocean theme: deep blue background with light text
+            return "QLineEdit { color: #e6f5ff; background-color: #1c3856; padding: 5px; border: 1px solid #2a5a8a; }"
+        elif current_theme == "Fusion (Dark)":
+            # Fusion Dark theme: dark gray background with light text
             return "QLineEdit { color: #e0e0e0; background-color: #2d2d2d; padding: 5px; border: 1px solid #555; }"
         else:
-            # Light theme: light background with dark text
+            # Light themes: light background with dark text
             return "QLineEdit { color: #000000; background-color: #f5f5f5; padding: 5px; border: 1px solid #ccc; }"
 
     def clear_all(self):
@@ -6137,6 +6648,10 @@ class TariffMill(QMainWindow):
             # Get customer reference from input field
             customer_ref_display = self.customer_ref_input.text().strip() if hasattr(self, 'customer_ref_input') else ""
 
+            # Get Lacey Act status
+            lacey_required = r.get('_lacey_required', 'N')
+            lacey_display = "PPQ 505" if lacey_required == 'Y' else ""
+
             items = [
                 QTableWidgetItem(product_no),                        # 0: Product No
                 value_item,                                          # 1: Value
@@ -6157,12 +6672,13 @@ class TariffMill(QMainWindow):
                 QTableWidgetItem(auto_display),                      # 16: Auto%
                 QTableWidgetItem(non_steel_display),                 # 17: Non-232%
                 QTableWidgetItem(status_display),                    # 18: 232 Status
-                QTableWidgetItem(customer_ref_display)               # 19: Cust Ref
+                QTableWidgetItem(customer_ref_display),              # 19: Cust Ref
+                QTableWidgetItem(lacey_display)                      # 20: Lacey
             ]
 
-            # Make all items editable except Qty1, Qty2, Steel%, Al%, Cu%, Wood%, Auto%, Non-232%, 232 Status
+            # Make all items editable except Qty1, Qty2, Steel%, Al%, Cu%, Wood%, Auto%, Non-232%, 232 Status, Lacey
             for idx, item in enumerate(items):
-                if idx not in [4, 5, 12, 13, 14, 15, 16, 17, 18]:  # Not Qty1, Qty2, Steel%, Al%, Cu%, Wood%, Auto%, Non-232%, 232 Status
+                if idx not in [4, 5, 12, 13, 14, 15, 16, 17, 18, 20]:  # Not Qty1, Qty2, Steel%, Al%, Cu%, Wood%, Auto%, Non-232%, 232 Status, Lacey
                     item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable)
 
             # Set font colors based on Section 232 material type
@@ -11062,28 +11578,32 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         value_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable)
         
         items = [
-            QTableWidgetItem("NEW_PART"),  # Product No
-            value_item,  # Value
-            QTableWidgetItem(""),  # HTS
-            QTableWidgetItem(default_mid),  # MID
-            QTableWidgetItem("0.00"),  # cbp_qty
-            QTableWidgetItem("CO"),  # Dec
-            QTableWidgetItem(default_melt),  # Melt
-            QTableWidgetItem(""),  # Cast
-            QTableWidgetItem(""),  # Smelt
-            QTableWidgetItem(""),  # Flag
-            QTableWidgetItem("100.0%"),  # Steel%
-            QTableWidgetItem(""),  # Al%
-            QTableWidgetItem(""),  # Cu%
-            QTableWidgetItem(""),  # Wood%
-            QTableWidgetItem(""),  # Auto%
-            QTableWidgetItem(""),  # Non-232%
-            QTableWidgetItem("")  # 232 Status
+            QTableWidgetItem("NEW_PART"),  # 0: Product No
+            value_item,                     # 1: Value
+            QTableWidgetItem(""),           # 2: HTS
+            QTableWidgetItem(default_mid),  # 3: MID
+            QTableWidgetItem("0.00"),       # 4: Qty1
+            QTableWidgetItem("0.00"),       # 5: Qty2
+            QTableWidgetItem("NO"),         # 6: Qty Unit
+            QTableWidgetItem("CO"),         # 7: Dec
+            QTableWidgetItem(default_melt), # 8: Melt
+            QTableWidgetItem(""),           # 9: Cast
+            QTableWidgetItem(""),           # 10: Smelt
+            QTableWidgetItem(""),           # 11: Flag
+            QTableWidgetItem("100.0%"),     # 12: Steel%
+            QTableWidgetItem(""),           # 13: Al%
+            QTableWidgetItem(""),           # 14: Cu%
+            QTableWidgetItem(""),           # 15: Wood%
+            QTableWidgetItem(""),           # 16: Auto%
+            QTableWidgetItem(""),           # 17: Non-232%
+            QTableWidgetItem(""),           # 18: 232 Status
+            QTableWidgetItem(""),           # 19: Cust Ref
+            QTableWidgetItem("")            # 20: Lacey
         ]
 
-        # Make all items editable except ratios and 232 status
+        # Make all items editable except Qty1, Qty2, Steel%, Al%, Cu%, Wood%, Auto%, Non-232%, 232 Status, Lacey
         for i, item in enumerate(items):
-            if i not in [10, 11, 12, 13, 14, 15, 16]:  # Not Steel%, Al%, Cu%, Wood%, Auto%, Non-232%, 232 Status
+            if i not in [4, 5, 12, 13, 14, 15, 16, 17, 18, 20]:
                 item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable)
             self.table.setItem(row, i, item)
         
