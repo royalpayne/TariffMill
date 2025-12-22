@@ -2,6 +2,25 @@
 # ==============================================================================
 # TariffMill - Customs Documentation Processing System
 # ==============================================================================
+# Copyright (c) 2024-2025 TariffMill. All Rights Reserved.
+#
+# PROPRIETARY AND CONFIDENTIAL
+#
+# This software and its source code are the exclusive property of TariffMill
+# and are protected by copyright law and international treaties. Unauthorized
+# reproduction, distribution, or disclosure of this software, in whole or in
+# part, is strictly prohibited.
+#
+# This software is licensed, not sold. Use of this software is subject to the
+# End User License Agreement (EULA) provided with this software.
+#
+# NO WARRANTY: This software is provided "as is" without warranty of any kind,
+# express or implied, including but not limited to the warranties of
+# merchantability, fitness for a particular purpose, and noninfringement.
+#
+# For licensing inquiries, contact: [Your Contact Email]
+# ==============================================================================
+#
 # Professional PyQt5 application for automating invoice processing, parts
 # management, and Section 232 tariff compliance tracking.
 #
@@ -16,6 +35,12 @@
 
 APP_NAME = "TariffMill"
 DB_NAME = "tariffmill.db"
+
+# Copyright and Legal Information
+COPYRIGHT_YEAR = "2024-2025"
+COPYRIGHT_HOLDER = "TariffMill"
+COPYRIGHT_NOTICE = f"Copyright (c) {COPYRIGHT_YEAR} {COPYRIGHT_HOLDER}. All Rights Reserved."
+LICENSE_TYPE = "Proprietary"
 
 # Import version from version.py
 try:
@@ -4949,6 +4974,20 @@ class TariffMill(QMainWindow):
         )
         github_label.setOpenExternalLinks(True)
         layout.addWidget(github_label)
+
+        layout.addSpacing(10)
+
+        # Copyright notice
+        copyright_label = QLabel(
+            "<p style='color: #888; font-size: 10px;'>"
+            "Copyright (c) 2024-2025 TariffMill. All Rights Reserved.<br>"
+            "This software is proprietary and confidential.<br>"
+            "Unauthorized copying or distribution is prohibited."
+            "</p>"
+        )
+        copyright_label.setWordWrap(True)
+        copyright_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(copyright_label)
 
         layout.addStretch()
 
