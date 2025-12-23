@@ -179,4 +179,44 @@ class VitechDevelopmentLimitedTemplate(BaseTemplate):
                     except (IndexError, ValueError):
                         continue
 
+        # Simplified format fallback (e.g., HTS#8432900020-HUB CASTINGS 4 PCS $265.81 $1,063.24)
+        if len(line_items) == 0:
+            simple_pattern = re.compile(
+                r'HTS#(\d{10})-([A-Z\s]+?)\s+'      # HTS code and description
+                r'(\d+)\s*PCS?\s+'                  # Quantity
+                r'\$([\d,.]+)\s+'                   # Unit price
+                r'\$([\d,.]+)',                     # Total value
+                re.IGNORECASE
+            )
+            for match in simple_pattern.finditer(text):
+                try:
+                    hs_code_raw = match.group(1)
+                    # Format as proper HS code: 8432.90.0020
+                    hs_code = f"{hs_code_raw[:4]}.{hs_code_raw[4:6]}.{hs_code_raw[6:]}"
+                    description = match.group(2).strip()
+                    qty = int(match.group(3))
+                    unit_price = match.group(4).replace(',', '')
+                    total_value = match.group(5).replace(',', '')
+
+                    item = {
+                        'part_number': description.replace(' ', '_'),
+                        'quantity': qty,
+                        'total_price': float(total_value),
+                        'po_number': '',
+                        'packages': '',
+                        'hs_code': hs_code,
+                        'country_origin': 'CHINA',
+                        'net_weight': '',
+                        'gross_weight': '',
+                        'dimensions': '',
+                        'unit_price': unit_price,
+                    }
+
+                    item_key = f"{item['part_number']}_{item['quantity']}_{item['total_price']}"
+                    if item_key not in seen_items:
+                        seen_items.add(item_key)
+                        line_items.append(item)
+                except (IndexError, ValueError):
+                    continue
+
         return line_items

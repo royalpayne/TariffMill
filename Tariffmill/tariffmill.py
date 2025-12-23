@@ -9309,17 +9309,17 @@ class TariffMill(QMainWindow):
         # Template buttons
         template_buttons_layout = QHBoxLayout()
 
-        btn_create_template = QPushButton("Create Template (AI)")
+        btn_create_template = QPushButton("Visual Template Builder")
         btn_create_template.setStyleSheet(self.get_button_style("success"))
-        btn_create_template.setToolTip("Create a new invoice template using AI (Claude, OpenAI, Ollama, or OpenRouter)")
+        btn_create_template.setToolTip("Open the visual template builder - select regions on PDF to define extraction fields")
         btn_create_template.clicked.connect(self.ocrmill_open_template_builder)
         template_buttons_layout.addWidget(btn_create_template)
 
-        btn_auto_builder = QPushButton("Quick Template (No AI)")
-        btn_auto_builder.setStyleSheet(self.get_button_style("info"))
-        btn_auto_builder.setToolTip("Create template using pattern detection - no AI or API key required")
-        btn_auto_builder.clicked.connect(self.ocrmill_open_auto_template_builder)
-        template_buttons_layout.addWidget(btn_auto_builder)
+        btn_auto_generator = QPushButton("Auto Template Generator")
+        btn_auto_generator.setStyleSheet(self.get_button_style("primary"))
+        btn_auto_generator.setToolTip("Analyze a PDF invoice and automatically generate a template - uses pattern detection")
+        btn_auto_generator.clicked.connect(self.ocrmill_open_auto_generator)
+        template_buttons_layout.addWidget(btn_auto_generator)
 
         btn_edit_template = QPushButton("Edit Selected")
         btn_edit_template.setStyleSheet(self.get_button_style("default"))
@@ -9781,36 +9781,41 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             self.ocrmill_templates_list.addItem(item)
 
     def ocrmill_open_template_builder(self):
-        """Open the AI-assisted template builder dialog."""
+        """Open the visual template builder dialog."""
         try:
-            from template_builder import TemplateBuilderDialog
-            dialog = TemplateBuilderDialog(self)
+            from visual_template_builder import VisualTemplateBuilderDialog
+            dialog = VisualTemplateBuilderDialog(self)
             dialog.template_created.connect(self.ocrmill_on_template_created)
             dialog.exec_()
         except ImportError as e:
             QMessageBox.warning(
                 self, "Import Error",
-                f"Failed to load Template Builder: {e}\n\n"
-                "Make sure template_builder.py and ollama_helper.py exist."
+                f"Failed to load Visual Template Builder: {e}\n\n"
+                "Make sure visual_template_builder.py exists."
             )
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open Template Builder: {e}")
 
     def ocrmill_open_auto_template_builder(self):
-        """Open the automated template builder dialog."""
+        """Open the visual template builder dialog (same as main builder)."""
+        # Both buttons now open the same visual builder
+        self.ocrmill_open_template_builder()
+
+    def ocrmill_open_auto_generator(self):
+        """Open the Auto Template Generator dialog."""
         try:
-            from auto_template_builder import AutoTemplateBuilderDialog
-            dialog = AutoTemplateBuilderDialog(self)
+            from auto_template_generator_dialog import AutoTemplateGeneratorDialog
+            dialog = AutoTemplateGeneratorDialog(self)
             dialog.template_created.connect(self.ocrmill_on_template_created)
             dialog.exec_()
         except ImportError as e:
             QMessageBox.warning(
                 self, "Import Error",
-                f"Failed to load Auto Template Builder: {e}\n\n"
-                "Make sure auto_template_builder.py exists."
+                f"Failed to load Auto Template Generator: {e}\n\n"
+                "Make sure auto_template_generator_dialog.py exists and pdfplumber is installed."
             )
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to open Auto Template Builder: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to open Auto Template Generator: {e}")
 
     def ocrmill_on_template_created(self, template_name: str, file_path: str):
         """Handle new template creation."""
