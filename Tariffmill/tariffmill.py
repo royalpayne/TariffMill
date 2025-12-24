@@ -2899,9 +2899,9 @@ class TariffMill(QMainWindow):
 
     def show_references_dialog(self):
         """Show the References dialog with Customs Config, Section 232 Actions, and HTS Database tabs"""
-        dialog = QDialog(self)
+        dialog = QDialog()  # No parent - allows independent movement from main window
         dialog.setWindowTitle("References")
-        dialog.resize(1000, 700)
+        dialog.resize(2000, 700)
         layout = QVBoxLayout(dialog)
 
         # Create tab widget
@@ -11839,10 +11839,49 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         """HTS Database Reference Tab - displays contents of hts.db"""
         layout = QVBoxLayout(tab_widget)
 
-        # Title
+        # Title row with menu button
+        title_row = QHBoxLayout()
+        title_row.addStretch()
+
         title = QLabel("<h2>HTS Code Database</h2>")
         title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
+        title_row.addWidget(title)
+
+        title_row.addStretch()
+
+        # Menu button (hamburger style) in top right
+        from PyQt5.QtWidgets import QToolButton, QMenu
+        hts_menu_btn = QToolButton()
+        hts_menu_btn.setText("☰")  # Unicode hamburger menu
+        hts_menu_btn.setToolTip("HTS Database Options")
+        hts_menu_btn.setStyleSheet("""
+            QToolButton {
+                font-size: 16px;
+                font-weight: bold;
+                padding: 4px 8px;
+                border: 1px solid #555;
+                border-radius: 4px;
+                background: transparent;
+            }
+            QToolButton:hover {
+                background: #3a3a3a;
+            }
+            QToolButton::menu-indicator {
+                image: none;
+            }
+        """)
+        hts_menu_btn.setPopupMode(QToolButton.InstantPopup)
+
+        # Create menu
+        hts_menu = QMenu(hts_menu_btn)
+        update_action = hts_menu.addAction("Update from USITC")
+        update_action.setToolTip("Download latest HTS data from the US International Trade Commission")
+        update_action.triggered.connect(self.update_hts_from_usitc)
+
+        hts_menu_btn.setMenu(hts_menu)
+        title_row.addWidget(hts_menu_btn)
+
+        layout.addLayout(title_row)
 
         # Info box
         info_box = QGroupBox("Reference Information")
@@ -11860,7 +11899,7 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         filter_bar = QHBoxLayout()
 
         self.hts_db_search = QLineEdit()
-        self.hts_db_search.setPlaceholderText("Search HTS code or description...")
+        self.hts_db_search.setPlaceholderText("Search: multiple words (AND), word1 | word2 (OR), % wildcard...")
         self.hts_db_search.setStyleSheet(self.get_input_style())
         self.hts_db_search.returnPressed.connect(lambda: self.search_hts_database())
         filter_bar.addWidget(self.hts_db_search, 1)
@@ -11908,8 +11947,49 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
         tab_widget.setLayout(layout)
 
+    def _build_hts_search_conditions(self, term: str) -> tuple:
+        """Build SQL WHERE conditions for a single search term.
+
+        Returns (conditions_string, params_list) tuple.
+        Searches both HTS code and description.
+        """
+        term = term.strip()
+        if not term:
+            return "1=1", []
+
+        # Check if term already has wildcards
+        has_wildcard = '%' in term
+
+        # Check if it looks like an HTS code (starts with digit)
+        is_code_search = term[0].isdigit()
+
+        if is_code_search:
+            # Clean the code (remove periods)
+            clean_code = term.replace('.', '')
+            if has_wildcard:
+                code_pattern = clean_code
+            else:
+                code_pattern = f"{clean_code}%"
+            # Search HTS code
+            return "full_code LIKE ?", [code_pattern]
+        else:
+            # Text search in description
+            if has_wildcard:
+                search_pattern = term
+            else:
+                search_pattern = f"%{term}%"
+            return "description LIKE ? COLLATE NOCASE", [search_pattern]
+
     def search_hts_database(self):
-        """Search the HTS database and display results"""
+        """Search the HTS database and display results.
+
+        Search syntax:
+        - Multiple words: AND search (all words must match) - e.g., "aluminum post"
+        - OR search: Use | or OR between terms - e.g., "aluminum | steel" or "aluminum OR steel"
+        - Wildcard: Use % for wildcards - e.g., "alum%" matches aluminum, aluminium, etc.
+        - HTS code: Start with digit to search codes - e.g., "7606" or "7606.11"
+        - Mixed: Searches both HTS code and description
+        """
         search_term = self.hts_db_search.text().strip()
 
         hts_db_path = BASE_DIR / "Resources" / "References" / "hts.db"
@@ -11923,31 +12003,71 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             cursor = conn.cursor()
 
             if search_term:
-                # Check if search term starts with a digit (HTS code search)
-                if search_term[0].isdigit():
-                    # Remove periods from search term (DB stores codes without periods)
-                    clean_code = search_term.replace('.', '')
-                    # Search for HTS codes starting with the search term
-                    code_pattern = f"{clean_code}%"
-                    cursor.execute("""
+                # Check for OR search (using | or OR)
+                or_terms = []
+                if ' OR ' in search_term.upper() or '|' in search_term:
+                    # Split by | or OR (case insensitive)
+                    import re
+                    or_terms = re.split(r'\s*\|\s*|\s+OR\s+', search_term, flags=re.IGNORECASE)
+                    or_terms = [t.strip() for t in or_terms if t.strip()]
+
+                if or_terms:
+                    # OR search - any term can match
+                    conditions = []
+                    params = []
+                    for term in or_terms:
+                        term_conditions, term_params = self._build_hts_search_conditions(term)
+                        conditions.append(f"({term_conditions})")
+                        params.extend(term_params)
+
+                    where_clause = " OR ".join(conditions)
+                    query = f"""
                         SELECT full_code, description, unit_of_quantity, general_rate,
                                special_rate, column2_rate, chapter
                         FROM hts_codes
-                        WHERE full_code LIKE ?
+                        WHERE {where_clause}
                         ORDER BY full_code
                         LIMIT 500
-                    """, (code_pattern,))
+                    """
+                    cursor.execute(query, params)
                 else:
-                    # Search in description for text searches
-                    search_pattern = f"%{search_term}%"
-                    cursor.execute("""
-                        SELECT full_code, description, unit_of_quantity, general_rate,
-                               special_rate, column2_rate, chapter
-                        FROM hts_codes
-                        WHERE description LIKE ?
-                        ORDER BY full_code
-                        LIMIT 500
-                    """, (search_pattern,))
+                    # AND search - all words must match (or single term)
+                    # Split by spaces, &, commas for multiple terms
+                    import re
+                    terms = re.split(r'[\s,&]+', search_term)
+                    terms = [t.strip() for t in terms if t.strip()]
+
+                    if len(terms) == 1:
+                        # Single term search
+                        conditions, params = self._build_hts_search_conditions(terms[0])
+                        query = f"""
+                            SELECT full_code, description, unit_of_quantity, general_rate,
+                                   special_rate, column2_rate, chapter
+                            FROM hts_codes
+                            WHERE {conditions}
+                            ORDER BY full_code
+                            LIMIT 500
+                        """
+                        cursor.execute(query, params)
+                    else:
+                        # Multiple terms - all must match (AND)
+                        all_conditions = []
+                        all_params = []
+                        for term in terms:
+                            term_conditions, term_params = self._build_hts_search_conditions(term)
+                            all_conditions.append(f"({term_conditions})")
+                            all_params.extend(term_params)
+
+                        where_clause = " AND ".join(all_conditions)
+                        query = f"""
+                            SELECT full_code, description, unit_of_quantity, general_rate,
+                                   special_rate, column2_rate, chapter
+                            FROM hts_codes
+                            WHERE {where_clause}
+                            ORDER BY full_code
+                            LIMIT 500
+                        """
+                        cursor.execute(query, all_params)
             else:
                 # Show first 500 entries if no search term
                 cursor.execute("""
@@ -11993,6 +12113,275 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         self.hts_db_search.clear()
         self.hts_db_table.setRowCount(0)
         self.hts_db_count_label.setText("Enter a search term to find HTS codes (showing first 500 results)")
+
+    def update_hts_from_usitc(self):
+        """Download and update HTS database from USITC website."""
+        from PyQt5.QtWidgets import QProgressDialog
+        from PyQt5.QtCore import Qt
+        import urllib.request
+        import urllib.error
+        import json as json_module
+
+        # USITC provides HTS data as a direct JSON download
+        # URL: https://www.usitc.gov/sites/default/files/tata/hts/hts_2025_basic_edition_json.json
+
+        reply = QMessageBox.question(
+            self,
+            "Update HTS Database",
+            "This will download the latest HTS data from the US International Trade Commission (USITC) "
+            "and replace the current database.\n\n"
+            "File size is approximately 13 MB. The download may take a few minutes.\n\n"
+            "Do you want to continue?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        progress = QProgressDialog("Downloading HTS data from USITC...", "Cancel", 0, 100, self)
+        progress.setWindowTitle("HTS Database Update")
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(5)
+        QApplication.processEvents()
+
+        try:
+            hts_db_path = BASE_DIR / "Resources" / "References" / "hts.db"
+
+            # Backup current database
+            backup_path = None
+            if hts_db_path.exists():
+                backup_path = hts_db_path.with_suffix('.db.backup')
+                import shutil
+                shutil.copy2(hts_db_path, backup_path)
+                logger.info(f"Backed up HTS database to {backup_path}")
+
+            progress.setLabelText("Finding latest HTS file...")
+            progress.setValue(10)
+            QApplication.processEvents()
+
+            if progress.wasCanceled():
+                return
+
+            # Try to find the HTS JSON file - start with current year and work backwards
+            from datetime import datetime
+            current_year = datetime.now().year
+            base_url = "https://www.usitc.gov/sites/default/files/tata/hts"
+
+            url = None
+            found_year = None
+
+            # Try current year first, then previous years as fallback
+            # Use Range request to check file existence (more reliable than HEAD)
+            for year in range(current_year, current_year - 3, -1):
+                test_url = f"{base_url}/hts_{year}_basic_edition_json.json"
+                progress.setLabelText(f"Checking for {year} HTS data...")
+                QApplication.processEvents()
+
+                try:
+                    req = urllib.request.Request(
+                        test_url,
+                        headers={
+                            'User-Agent': 'TariffMill/1.0 (HTS Database Update)',
+                            'Range': 'bytes=0-0'  # Request just 1 byte to check existence
+                        }
+                    )
+                    with urllib.request.urlopen(req, timeout=15) as response:
+                        # 200 or 206 (partial content) means file exists
+                        if response.status in (200, 206):
+                            url = test_url
+                            found_year = year
+                            logger.info(f"Found HTS file for year {year}: {test_url}")
+                            break
+                except urllib.error.HTTPError as e:
+                    logger.info(f"HTS file not found for {year}: HTTP {e.code}")
+                    continue
+                except urllib.error.URLError as e:
+                    logger.info(f"HTS file check failed for {year}: {e}")
+                    continue
+
+            if not url:
+                QMessageBox.warning(
+                    self, "File Not Found",
+                    f"Could not find HTS data file for years {current_year} to {current_year - 2}.\n\n"
+                    "The USITC may have changed their file naming convention.\n"
+                    "Please check https://hts.usitc.gov/export for manual download."
+                )
+                return
+
+            progress.setLabelText(f"Downloading {found_year} HTS JSON file (~13 MB)...")
+            progress.setValue(15)
+            QApplication.processEvents()
+
+            req = urllib.request.Request(
+                url,
+                headers={
+                    'User-Agent': 'TariffMill/1.0 (HTS Database Update)',
+                    'Accept': 'application/json'
+                }
+            )
+
+            try:
+                with urllib.request.urlopen(req, timeout=120) as response:
+                    # Read with progress updates
+                    total_size = int(response.headers.get('content-length', 0))
+                    downloaded = 0
+                    chunks = []
+
+                    while True:
+                        if progress.wasCanceled():
+                            QMessageBox.information(self, "Cancelled", "HTS update was cancelled.")
+                            return
+
+                        chunk = response.read(65536)  # 64KB chunks
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                        downloaded += len(chunk)
+
+                        if total_size > 0:
+                            pct = 10 + int((downloaded / total_size) * 50)
+                            progress.setValue(pct)
+                            mb_downloaded = downloaded / (1024 * 1024)
+                            mb_total = total_size / (1024 * 1024)
+                            progress.setLabelText(f"Downloading... {mb_downloaded:.1f} / {mb_total:.1f} MB")
+                        QApplication.processEvents()
+
+                    json_data = b''.join(chunks).decode('utf-8')
+                    data = json_module.loads(json_data)
+
+            except urllib.error.URLError as e:
+                QMessageBox.warning(
+                    self, "Download Failed",
+                    f"Failed to download HTS data from USITC:\n\n{str(e)}\n\n"
+                    "Please check your internet connection and try again."
+                )
+                return
+
+            progress.setLabelText("Processing HTS records...")
+            progress.setValue(65)
+            QApplication.processEvents()
+
+            # Process the JSON data
+            all_records = []
+            for item in data:
+                htsno = item.get('htsno', '')
+                if not htsno:
+                    continue
+
+                # Clean the HTS code (remove periods)
+                full_code = htsno.replace('.', '')
+
+                # Extract chapter from code
+                try:
+                    chapter = int(full_code[:2]) if len(full_code) >= 2 else 0
+                except ValueError:
+                    chapter = 0
+
+                # Units can be a list
+                units = item.get('units', [])
+                unit_str = ', '.join(units) if isinstance(units, list) else str(units or '')
+
+                record = {
+                    'heading': full_code[:4] if len(full_code) >= 4 else full_code,
+                    'subheading': full_code[:6] if len(full_code) >= 6 else full_code,
+                    'stat_suffix': full_code[6:] if len(full_code) > 6 else '',
+                    'full_code': full_code,
+                    'description': item.get('description', ''),
+                    'unit_of_quantity': unit_str,
+                    'general_rate': item.get('general', ''),
+                    'special_rate': item.get('special', ''),
+                    'column2_rate': item.get('other', ''),
+                    'chapter': chapter,
+                    'indent_level': int(item.get('indent', 0)),
+                }
+                all_records.append(record)
+
+            if not all_records:
+                QMessageBox.warning(
+                    self, "Processing Failed",
+                    "Downloaded file contained no valid HTS records.\n\n"
+                    "The file format may have changed."
+                )
+                return
+
+            progress.setLabelText(f"Updating database with {len(all_records):,} records...")
+            progress.setValue(75)
+            QApplication.processEvents()
+
+            # Update the database
+            conn = sqlite3.connect(str(hts_db_path))
+            cursor = conn.cursor()
+
+            # Clear existing data
+            cursor.execute("DELETE FROM hts_codes")
+
+            # Insert new records in batches for better performance
+            batch_size = 1000
+            for i in range(0, len(all_records), batch_size):
+                if progress.wasCanceled():
+                    conn.rollback()
+                    conn.close()
+                    QMessageBox.information(self, "Cancelled", "HTS update was cancelled. Database unchanged.")
+                    return
+
+                batch = all_records[i:i + batch_size]
+                for record in batch:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO hts_codes
+                        (heading, subheading, stat_suffix, full_code, description,
+                         unit_of_quantity, general_rate, special_rate, column2_rate,
+                         chapter, indent_level, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """, (
+                        record['heading'],
+                        record['subheading'],
+                        record['stat_suffix'],
+                        record['full_code'],
+                        record['description'],
+                        record['unit_of_quantity'],
+                        record['general_rate'],
+                        record['special_rate'],
+                        record['column2_rate'],
+                        record['chapter'],
+                        record['indent_level'],
+                    ))
+
+                pct = 75 + int((i / len(all_records)) * 20)
+                progress.setValue(pct)
+                progress.setLabelText(f"Inserting records... {min(i + batch_size, len(all_records)):,} / {len(all_records):,}")
+                QApplication.processEvents()
+
+            conn.commit()
+
+            # Get final count
+            cursor.execute("SELECT COUNT(*) FROM hts_codes")
+            final_count = cursor.fetchone()[0]
+            conn.close()
+
+            progress.setValue(100)
+            progress.close()
+
+            backup_msg = f"\n\nA backup of the previous database was saved to:\n{backup_path}" if backup_path else ""
+            QMessageBox.information(
+                self, "Update Complete",
+                f"HTS database updated successfully!\n\n"
+                f"Year: {found_year}\n"
+                f"Total records: {final_count:,}{backup_msg}"
+            )
+
+            # Refresh the search results if any
+            self.clear_hts_database_search()
+
+        except Exception as e:
+            progress.close()
+            logger.error(f"HTS update failed: {e}")
+            QMessageBox.critical(
+                self, "Update Failed",
+                f"Failed to update HTS database:\n\n{str(e)}\n\n"
+                "If a backup exists, it has not been modified."
+            )
 
     def import_actions_csv(self):
         """Import Section 232 Actions from CSV/TSV"""
