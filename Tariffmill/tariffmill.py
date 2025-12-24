@@ -4551,6 +4551,11 @@ class TariffMill(QMainWindow):
         if hasattr(self, 'table') and self.table.rowCount() > 0:
             self.refresh_preview_colors()
 
+        # Refresh OCRMill templates list styling for new theme
+        if hasattr(self, 'ocrmill_templates_list'):
+            self._apply_templates_list_style()
+            self.ocrmill_refresh_templates()
+
         # Update logo for theme
         self.update_logo_for_theme(is_dark)
 
@@ -5371,9 +5376,9 @@ class TariffMill(QMainWindow):
         """Refresh all text input styles to match current theme"""
         input_style = self.get_input_style()
 
-        # Parts View tab inputs
-        if hasattr(self, 'query_value'):
-            self.query_value.setStyleSheet(input_style)
+        # Parts View tab inputs - Parts Search
+        if hasattr(self, 'search_value_input'):
+            self.search_value_input.setStyleSheet(input_style)
         if hasattr(self, 'custom_sql_input'):
             self.custom_sql_input.setStyleSheet(input_style)
         if hasattr(self, 'search_input'):
@@ -5452,6 +5457,132 @@ class TariffMill(QMainWindow):
         palette.setColor(QPalette.Mid, QColor(206, 243, 245))  # Light cyan for column headers (#CEF3F5)
 
         return palette
+
+    def _detect_current_theme(self) -> str:
+        """Detect which theme is currently active based on palette colors."""
+        from PyQt5.QtGui import QPalette
+        from PyQt5.QtWidgets import QApplication
+
+        palette = QApplication.palette()
+        window_color = palette.color(QPalette.Window)
+
+        # Get RGB values
+        r, g, b = window_color.red(), window_color.green(), window_color.blue()
+
+        # Light Cyan: Window = (224, 246, 247) - very light, cyan tinted
+        if r > 200 and g > 230 and b > 230:
+            return "light_cyan"
+
+        # Ocean: Window = (26, 48, 80) - dark blue, blue > red significantly
+        if b > r + 30 and window_color.lightness() < 80:
+            return "ocean"
+
+        # Dark: Window = (45, 45, 45) - neutral gray
+        return "dark"
+
+    def _apply_templates_list_style(self):
+        """Apply theme-specific styling to the templates list widget."""
+        theme = self._detect_current_theme()
+
+        if theme == "light_cyan":
+            self.ocrmill_templates_list.setStyleSheet("""
+                QListWidget {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #ffffff, stop:1 #e8f4f6);
+                    border: 1px solid #b8d4dc;
+                    border-radius: 8px;
+                    padding: 8px;
+                    font-size: 13px;
+                }
+                QListWidget::item {
+                    padding: 10px 12px;
+                    margin: 3px 4px;
+                    border-radius: 6px;
+                    background-color: #f0f9fa;
+                    border: 1px solid #d0e8ec;
+                }
+                QListWidget::item:alternate {
+                    background-color: #e0f2f4;
+                }
+                QListWidget::item:selected {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #00b4d8, stop:1 #0096c7);
+                    color: #ffffff;
+                    border: 1px solid #0077b6;
+                }
+                QListWidget::item:hover:!selected {
+                    background-color: #c8e8f0;
+                    border: 1px solid #90d0e0;
+                }
+            """)
+        elif theme == "ocean":
+            self.ocrmill_templates_list.setStyleSheet("""
+                QListWidget {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #1a3652, stop:1 #142840);
+                    border: 1px solid #2a5070;
+                    border-radius: 8px;
+                    padding: 8px;
+                    font-size: 13px;
+                }
+                QListWidget::item {
+                    padding: 10px 12px;
+                    margin: 3px 4px;
+                    border-radius: 6px;
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #1e4060, stop:1 #183450);
+                    border: 1px solid #285070;
+                }
+                QListWidget::item:alternate {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #1a3856, stop:1 #152e46);
+                }
+                QListWidget::item:selected {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #00b4d8, stop:1 #0090b0);
+                    color: #ffffff;
+                    border: 1px solid #00d0f0;
+                }
+                QListWidget::item:hover:!selected {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #245070, stop:1 #1e4260);
+                    border: 1px solid #3070a0;
+                }
+            """)
+        else:  # Dark theme (neutral grays)
+            self.ocrmill_templates_list.setStyleSheet("""
+                QListWidget {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #383838, stop:1 #2a2a2a);
+                    border: 1px solid #505050;
+                    border-radius: 8px;
+                    padding: 8px;
+                    font-size: 13px;
+                }
+                QListWidget::item {
+                    padding: 10px 12px;
+                    margin: 3px 4px;
+                    border-radius: 6px;
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #454545, stop:1 #3a3a3a);
+                    border: 1px solid #555555;
+                }
+                QListWidget::item:alternate {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #404040, stop:1 #353535);
+                }
+                QListWidget::item:selected {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #0078d4, stop:1 #0060b0);
+                    color: #ffffff;
+                    border: 1px solid #0090f0;
+                }
+                QListWidget::item:hover:!selected {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #505050, stop:1 #454545);
+                    border: 1px solid #606060;
+                }
+            """)
 
     def get_button_style(self, button_type="default"):
         """
@@ -9083,9 +9214,6 @@ class TariffMill(QMainWindow):
         btn_save.setStyleSheet(self.get_button_style("success"))
         btn_refresh = QPushButton("Refresh")
         btn_refresh.setStyleSheet(self.get_button_style("info"))
-        btn_import_units = QPushButton("Import HTS Units")
-        btn_import_units.setStyleSheet(self.get_button_style("secondary"))
-        btn_import_units.setToolTip("Import CBP Qty1 units from HTS reference file")
         btn_export_missing = QPushButton("Export Missing HTS")
         btn_export_missing.setStyleSheet(self.get_button_style("secondary"))
         btn_export_missing.setToolTip("Export HTS codes missing CBP Qty1 to the reference file for lookup")
@@ -9096,96 +9224,168 @@ class TariffMill(QMainWindow):
         btn_del.clicked.connect(self.delete_selected_parts)
         btn_save.clicked.connect(self.save_parts_table)
         btn_refresh.clicked.connect(self.refresh_parts_table)
-        btn_import_units.clicked.connect(self.import_hts_units)
         btn_export_missing.clicked.connect(self.export_missing_hts_codes)
         btn_export_by_client.clicked.connect(self.export_parts_by_client)
         edit_box.addWidget(QLabel("Edit:"))
         edit_box.addWidget(btn_add); edit_box.addWidget(btn_del); edit_box.addWidget(btn_save); edit_box.addWidget(btn_refresh)
-        edit_box.addWidget(btn_import_units)
         edit_box.addWidget(btn_export_missing)
         edit_box.addWidget(btn_export_by_client)
         edit_box.addStretch()
         layout.addLayout(edit_box)
 
-        # SQL Query Builder
-        query_group = QGroupBox("SQL Query Builder")
-        query_layout = QVBoxLayout()
-        
-        query_controls = QHBoxLayout()
-        query_controls.addWidget(QLabel("SELECT * FROM parts_master WHERE"))
-        
-        self.query_field = QComboBox()
-        # Display user-friendly labels but map to actual database column names
-        self.query_field_map = {
-            "part_number": "part_number", "description": "description", "hts_code": "hts_code",
-            "country_origin": "country_origin", "mid": "mid", "client_code": "client_code",
-            "steel_%": "steel_ratio", "aluminum_%": "aluminum_ratio", "copper_%": "copper_ratio",
-            "wood_%": "wood_ratio", "non_steel_%": "non_steel_ratio", "qty_unit": "qty_unit",
-            "Sec301_Exclusion_Tariff": "Sec301_Exclusion_Tariff"
-        }
-        self.query_field.addItems(list(self.query_field_map.keys()))
-        query_controls.addWidget(self.query_field)
-        
-        self.query_operator = QComboBox()
-        self.query_operator.addItems(["=", "LIKE", ">", "<", ">=", "<=", "!="])
-        query_controls.addWidget(self.query_operator)
-        
-        self.query_value = QLineEdit()
-        self.query_value.setPlaceholderText("Enter value...")
-        self.query_value.setReadOnly(False)
-        self.query_value.setEnabled(True)
-        self.query_value.setStyleSheet(self.get_input_style())
-        query_controls.addWidget(self.query_value, 1)
-        
-        btn_run_query = QPushButton("Run Query")
-        btn_run_query.setStyleSheet(self.get_button_style("info"))
-        btn_run_query.clicked.connect(self.run_custom_query)
-        query_controls.addWidget(btn_run_query)
-        
-        btn_clear_query = QPushButton("Show All")
-        btn_clear_query.setStyleSheet(self.get_button_style("default"))
-        btn_clear_query.clicked.connect(self.refresh_parts_table)
-        query_controls.addWidget(btn_clear_query)
-        
-        query_layout.addLayout(query_controls)
-        
-        # Custom SQL input
-        custom_sql_layout = QHBoxLayout()
-        custom_sql_layout.addWidget(QLabel("Custom SQL:"))
-        self.custom_sql_input = QLineEdit()
-        self.custom_sql_input.setPlaceholderText("SELECT * FROM parts_master WHERE ...")
-        self.custom_sql_input.setReadOnly(False)
-        self.custom_sql_input.setEnabled(True)
-        self.custom_sql_input.setStyleSheet(self.get_input_style())
-        custom_sql_layout.addWidget(self.custom_sql_input, 1)
-        btn_run_custom = QPushButton("Execute")
-        btn_run_custom.setStyleSheet(self.get_button_style("success"))
-        btn_run_custom.clicked.connect(self.run_custom_sql)
-        custom_sql_layout.addWidget(btn_run_custom)
-        query_layout.addLayout(custom_sql_layout)
-        
-        self.query_result_label = QLabel("Ready")
-        self.query_result_label.setStyleSheet("padding:5px; background:#f0f0f0;")
-        query_layout.addWidget(self.query_result_label)
-        
-        query_group.setLayout(query_layout)
-        layout.addWidget(query_group)
+        # Parts Search - User-friendly search interface
+        search_group = QGroupBox("Parts Search")
+        search_main_layout = QVBoxLayout()
 
-        search_box = QHBoxLayout()
-        search_box.addWidget(QLabel("Quick Search:"))
-        self.search_field_combo = QComboBox()
-        self.search_field_combo.addItems(["All Fields","part_number","description","hts_code","country_origin","mid","client_code","steel_%","aluminum_%","copper_%","wood_%","auto_%","non_steel_%","qty_unit","Sec301_Exclusion_Tariff"])
-        # Refocus search input after combo selection
-        self.search_field_combo.currentIndexChanged.connect(lambda: self.search_input.setFocus())
-        search_box.addWidget(self.search_field_combo)
+        # Row 1: Quick search presets
+        presets_layout = QHBoxLayout()
+        presets_layout.addWidget(QLabel("Quick Search:"))
+
+        btn_search_all = QPushButton("Show All Parts")
+        btn_search_all.setStyleSheet(self.get_button_style("default"))
+        btn_search_all.setToolTip("Display all parts in the database")
+        btn_search_all.clicked.connect(self.refresh_parts_table)
+        presets_layout.addWidget(btn_search_all)
+
+        btn_search_missing_hts = QPushButton("Missing HTS Codes")
+        btn_search_missing_hts.setStyleSheet(self.get_button_style("warning"))
+        btn_search_missing_hts.setToolTip("Find parts without HTS codes assigned")
+        btn_search_missing_hts.clicked.connect(self.search_missing_hts)
+        presets_layout.addWidget(btn_search_missing_hts)
+
+        btn_search_steel = QPushButton("Steel Parts")
+        btn_search_steel.setStyleSheet(self.get_button_style("info"))
+        btn_search_steel.setToolTip("Find parts with steel content > 0%")
+        btn_search_steel.clicked.connect(lambda: self.search_by_material("steel"))
+        presets_layout.addWidget(btn_search_steel)
+
+        btn_search_aluminum = QPushButton("Aluminum Parts")
+        btn_search_aluminum.setStyleSheet(self.get_button_style("info"))
+        btn_search_aluminum.setToolTip("Find parts with aluminum content > 0%")
+        btn_search_aluminum.clicked.connect(lambda: self.search_by_material("aluminum"))
+        presets_layout.addWidget(btn_search_aluminum)
+
+        presets_layout.addStretch()
+        search_main_layout.addLayout(presets_layout)
+
+        # Row 2: Search by field
+        field_search_layout = QHBoxLayout()
+
+        field_search_layout.addWidget(QLabel("Search by:"))
+
+        self.search_field_type = QComboBox()
+        self.search_field_type.setMinimumWidth(150)
+        # User-friendly field names with mapping to database columns
+        self.search_field_map = {
+            "Part Number": "part_number",
+            "Description": "description",
+            "HTS Code": "hts_code",
+            "Country of Origin": "country_origin",
+            "Manufacturer ID": "mid",
+            "Client": "client_code",
+            "Steel %": "steel_ratio",
+            "Aluminum %": "aluminum_ratio",
+            "Copper %": "copper_ratio",
+            "Wood %": "wood_ratio",
+            "Non-Steel %": "non_steel_ratio",
+            "Unit of Measure": "qty_unit",
+            "Sec 301 Exclusion": "Sec301_Exclusion_Tariff"
+        }
+        self.search_field_type.addItems(list(self.search_field_map.keys()))
+        field_search_layout.addWidget(self.search_field_type)
+
+        self.search_match_type = QComboBox()
+        self.search_match_type.setMinimumWidth(120)
+        self.search_match_type.addItems(["Contains", "Equals", "Starts with", "Ends with", "Greater than", "Less than"])
+        self.search_match_type.setToolTip("How to match the search value")
+        field_search_layout.addWidget(self.search_match_type)
+
+        self.search_value_input = QLineEdit()
+        self.search_value_input.setPlaceholderText("Enter search value...")
+        self.search_value_input.setStyleSheet(self.get_input_style())
+        self.search_value_input.returnPressed.connect(self.run_parts_search)
+        field_search_layout.addWidget(self.search_value_input, 1)
+
+        btn_search = QPushButton("Search")
+        btn_search.setStyleSheet(self.get_button_style("success"))
+        btn_search.setToolTip("Search parts with the specified criteria")
+        btn_search.clicked.connect(self.run_parts_search)
+        field_search_layout.addWidget(btn_search)
+
+        search_main_layout.addLayout(field_search_layout)
+
+        # Row 3: Filter by Client and Country (common filters)
+        filter_layout = QHBoxLayout()
+
+        filter_layout.addWidget(QLabel("Filter by Client:"))
+        self.filter_client_combo = QComboBox()
+        self.filter_client_combo.setMinimumWidth(150)
+        self.filter_client_combo.addItem("All Clients", "")
+        self.filter_client_combo.currentIndexChanged.connect(self.apply_combined_filters)
+        filter_layout.addWidget(self.filter_client_combo)
+
+        filter_layout.addWidget(QLabel("Country:"))
+        self.filter_country_combo = QComboBox()
+        self.filter_country_combo.setMinimumWidth(120)
+        self.filter_country_combo.addItem("All Countries", "")
+        self.filter_country_combo.currentIndexChanged.connect(self.apply_combined_filters)
+        filter_layout.addWidget(self.filter_country_combo)
+
+        btn_clear_filters = QPushButton("Clear Filters")
+        btn_clear_filters.setStyleSheet(self.get_button_style("default"))
+        btn_clear_filters.clicked.connect(self.clear_search_filters)
+        filter_layout.addWidget(btn_clear_filters)
+
+        filter_layout.addStretch()
+
+        # Advanced SQL toggle
+        self.show_advanced_sql = QCheckBox("Show Advanced SQL")
+        self.show_advanced_sql.setToolTip("Show custom SQL input for advanced queries")
+        self.show_advanced_sql.toggled.connect(self.toggle_advanced_sql)
+        filter_layout.addWidget(self.show_advanced_sql)
+
+        search_main_layout.addLayout(filter_layout)
+
+        # Row 4: Advanced SQL (hidden by default)
+        self.advanced_sql_widget = QWidget()
+        advanced_sql_layout = QHBoxLayout(self.advanced_sql_widget)
+        advanced_sql_layout.setContentsMargins(0, 5, 0, 0)
+
+        advanced_sql_layout.addWidget(QLabel("Custom SQL:"))
+        self.custom_sql_input = QLineEdit()
+        self.custom_sql_input.setPlaceholderText("SELECT * FROM parts_master WHERE part_number LIKE '%ABC%'")
+        self.custom_sql_input.setStyleSheet(self.get_input_style())
+        self.custom_sql_input.returnPressed.connect(self.run_custom_sql)
+        advanced_sql_layout.addWidget(self.custom_sql_input, 1)
+
+        btn_run_sql = QPushButton("Execute SQL")
+        btn_run_sql.setStyleSheet(self.get_button_style("info"))
+        btn_run_sql.clicked.connect(self.run_custom_sql)
+        advanced_sql_layout.addWidget(btn_run_sql)
+
+        self.advanced_sql_widget.setVisible(False)
+        search_main_layout.addWidget(self.advanced_sql_widget)
+
+        # Results status bar
+        self.search_result_label = QLabel("Ready - Click 'Show All Parts' or enter search criteria")
+        self.search_result_label.setStyleSheet("padding: 8px; background: #e8f4f8; border-radius: 4px; color: #2c3e50;")
+        search_main_layout.addWidget(self.search_result_label)
+
+        search_group.setLayout(search_main_layout)
+        layout.addWidget(search_group)
+
+        # Populate filter dropdowns after UI is set up
+        self._populate_search_filters()
+
+        # Table filter - filters displayed rows without querying database
+        filter_box = QHBoxLayout()
+        filter_box.addWidget(QLabel("Table Filter:"))
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Type to filter...")
-        self.search_input.setReadOnly(False)
-        self.search_input.setEnabled(True)
+        self.search_input.setPlaceholderText("Type to filter displayed rows...")
         self.search_input.setStyleSheet(self.get_input_style())
         self.search_input.textChanged.connect(self.filter_parts_table)
-        search_box.addWidget(self.search_input, 1)
-        layout.addLayout(search_box)
+        filter_box.addWidget(self.search_input, 1)
+        layout.addLayout(filter_box)
 
         table_box = QGroupBox("Parts Master Table")
         tl = QVBoxLayout()
@@ -9397,28 +9597,8 @@ class TariffMill(QMainWindow):
         templates_layout.addWidget(templates_label)
 
         self.ocrmill_templates_list = QListWidget()
-        # Apply theme-aware styling for better visibility
-        self.ocrmill_templates_list.setStyleSheet("""
-            QListWidget {
-                background-color: #1e2d3d;
-                border: 2px solid #3a6a9a;
-                border-radius: 6px;
-                padding: 5px;
-                font-size: 13px;
-            }
-            QListWidget::item {
-                padding: 8px 10px;
-                margin: 2px 0;
-                border-radius: 4px;
-            }
-            QListWidget::item:selected {
-                background-color: #00a8cc;
-                color: #ffffff;
-            }
-            QListWidget::item:hover:!selected {
-                background-color: #2a4a6a;
-            }
-        """)
+        # Apply theme-aware styling using palette detection
+        self._apply_templates_list_style()
         self.ocrmill_templates_list.setAlternatingRowColors(True)
         templates_layout.addWidget(self.ocrmill_templates_list, 1)
 
@@ -9430,6 +9610,12 @@ class TariffMill(QMainWindow):
         btn_smart_extractor.setToolTip("Extract line items and create templates using data shape recognition")
         btn_smart_extractor.clicked.connect(self.ocrmill_open_smart_extractor)
         template_buttons_layout.addWidget(btn_smart_extractor)
+
+        btn_ai_generator = QPushButton("AI Generator")
+        btn_ai_generator.setStyleSheet(self.get_button_style("info"))
+        btn_ai_generator.setToolTip("Use AI (OpenAI, Anthropic, or Ollama) to generate templates from sample invoices")
+        btn_ai_generator.clicked.connect(self.ocrmill_open_ai_generator)
+        template_buttons_layout.addWidget(btn_ai_generator)
 
         btn_edit_template = QPushButton("Edit Selected")
         btn_edit_template.setStyleSheet(self.get_button_style("default"))
@@ -9877,20 +10063,36 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         # Reload processor's template list
         self.ocrmill_processor.reload_templates()
 
+        # Re-apply theme-specific styling
+        self._apply_templates_list_style()
+
         self.ocrmill_templates_list.clear()
         templates = self.ocrmill_processor.get_available_templates()
+
+        # Get current theme for text colors
+        theme = self._detect_current_theme()
 
         for name, info in templates.items():
             status = "Enabled" if info['enabled'] else "Disabled"
             item = QListWidgetItem(f"{info['name']} [{status}]")
             item.setData(Qt.UserRole, name)  # Store template key
-            # Use bright, visible colors for both themes
+
+            # Use theme-specific colors
             if info['enabled']:
-                # Bright green for enabled templates - visible on dark backgrounds
-                item.setForeground(QColor("#00e676"))  # Material green A400
+                if theme == "light_cyan":
+                    item.setForeground(QColor("#00796b"))  # Teal 700
+                elif theme == "ocean":
+                    item.setForeground(QColor("#4dd0e1"))  # Cyan 300 - bright on ocean blue
+                else:  # dark
+                    item.setForeground(QColor("#69f0ae"))  # Green A200 - bright on dark gray
             else:
-                # Dimmed color for disabled templates
-                item.setForeground(QColor("#78909c"))  # Blue grey 400
+                if theme == "light_cyan":
+                    item.setForeground(QColor("#90a4ae"))  # Blue grey 300
+                elif theme == "ocean":
+                    item.setForeground(QColor("#607d8b"))  # Blue grey 500
+                else:  # dark
+                    item.setForeground(QColor("#757575"))  # Grey 600
+
             self.ocrmill_templates_list.addItem(item)
 
     def ocrmill_open_smart_extractor(self):
@@ -9908,6 +10110,23 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             )
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open Smart Extractor: {e}")
+
+    def ocrmill_open_ai_generator(self):
+        """Open the AI Template Generator dialog."""
+        try:
+            from ai_template_generator import AITemplateGeneratorDialog
+            dialog = AITemplateGeneratorDialog(self)
+            dialog.template_created.connect(self.ocrmill_on_template_created)
+            dialog.exec_()
+        except ImportError as e:
+            QMessageBox.warning(
+                self, "Import Error",
+                f"Failed to load AI Template Generator: {e}\n\n"
+                "Make sure ai_template_generator.py exists.\n"
+                "For AI features, install: pip install openai anthropic"
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open AI Generator: {e}")
 
     def ocrmill_on_template_created(self, template_name: str, file_path: str):
         """Handle new template creation."""
@@ -10142,8 +10361,7 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             """, conn)
             conn.close()
             self.populate_parts_table(df)
-            self.query_result_label.setText("Showing all parts")
-            self.query_result_label.setStyleSheet("padding:5px; background:#f0f0f0;")
+            self._update_search_result(f"Showing all {len(df)} parts", "info")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Cannot load parts:\n{e}")
 
@@ -10213,89 +10431,6 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         except Exception as e:
             logger.error(f"Silent HTS units import failed: {e}")
             return -1
-
-    def import_hts_units(self):
-        """Import CBP Qty1 units from hts.db, update parts_master, and highlight invalid HTS codes"""
-        hts_db_path = BASE_DIR / "Resources" / "References" / "hts.db"
-
-        if not hts_db_path.exists():
-            QMessageBox.warning(self, "Database Not Found",
-                "hts.db not found in Resources/References folder.")
-            return
-
-        try:
-            # Clean up HTS codes (remove dots for matching)
-            def normalize_hts(hts):
-                if pd.isna(hts) or hts is None:
-                    return ""
-                return str(hts).replace(".", "").strip()
-
-            # Load ALL HTS codes from hts.db for validation
-            hts_conn = sqlite3.connect(str(hts_db_path))
-            hts_cursor = hts_conn.cursor()
-
-            # Get all valid HTS codes
-            hts_cursor.execute("SELECT full_code FROM hts_codes")
-            all_valid_hts = {row[0] for row in hts_cursor.fetchall()}
-
-            # Get HTS codes with unit_of_quantity
-            hts_cursor.execute("SELECT full_code, unit_of_quantity FROM hts_codes WHERE unit_of_quantity IS NOT NULL AND unit_of_quantity != ''")
-            hts_units = {row[0]: row[1] for row in hts_cursor.fetchall()}
-            hts_conn.close()
-
-            # Update parts_master database
-            conn = sqlite3.connect(str(DB_PATH))
-            c = conn.cursor()
-
-            # Get all parts with HTS codes
-            c.execute("SELECT part_number, hts_code FROM parts_master WHERE hts_code IS NOT NULL AND hts_code != ''")
-            parts = c.fetchall()
-
-            updated = 0
-            invalid_hts_parts = []  # Track parts with invalid HTS codes
-
-            for part_number, hts_code in parts:
-                normalized = normalize_hts(hts_code)
-
-                # Check if HTS code exists in hts.db
-                if normalized and normalized not in all_valid_hts:
-                    invalid_hts_parts.append((part_number, hts_code))
-
-                # Update qty_unit if we have unit data
-                if normalized in hts_units:
-                    c.execute("UPDATE parts_master SET qty_unit=? WHERE part_number=?",
-                              (hts_units[normalized], part_number))
-                    updated += c.rowcount
-
-            conn.commit()
-            conn.close()
-
-            # Refresh the table
-            self.refresh_parts_table()
-
-            # Highlight rows with invalid HTS codes (red background on HTS column)
-            invalid_count = 0
-            if invalid_hts_parts:
-                invalid_part_numbers = {p[0] for p in invalid_hts_parts}
-                for row in range(self.parts_table.rowCount()):
-                    part_item = self.parts_table.item(row, 0)
-                    if part_item and part_item.text() in invalid_part_numbers:
-                        # Highlight the HTS code cell (column 2) with light red background
-                        hts_item = self.parts_table.item(row, 2)
-                        if hts_item:
-                            hts_item.setBackground(QColor(255, 200, 200))  # Light red
-                            invalid_count += 1
-
-            # Show results message
-            msg = f"Updated {updated} parts with Qty Unit values from hts.db.\n"
-            msg += f"hts.db contains {len(hts_units)} HTS codes with unit data.\n"
-            if invalid_count > 0:
-                msg += f"\n⚠ {invalid_count} parts have HTS codes not found in hts.db (highlighted in red)."
-
-            QMessageBox.information(self, "Import Complete", msg)
-
-        except Exception as e:
-            QMessageBox.critical(self, "Import Error", f"Failed to import HTS units:\n{e}")
 
     def export_missing_hts_codes(self):
         """Export HTS codes that are missing from hts.db or missing Qty Unit values, including part numbers."""
@@ -10722,76 +10857,230 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                        for col in range(self.parts_table.columnCount()))
             self.parts_table.setRowHidden(row, not match)
 
-    def run_custom_query(self):
-        """Execute SQL query builder query"""
-        try:
-            display_field = self.query_field.currentText()
-            # Map display name to actual database column name
-            field = self.query_field_map.get(display_field, display_field)
-            operator = self.query_operator.currentText()
-            value = self.query_value.text().strip()
-
-            if not value:
-                QMessageBox.warning(self, "Query Error", "Please enter a value to search for.")
-                return
-
-            # Build WHERE clause
-            if operator == "LIKE":
-                where_clause = f"{field} LIKE ?"
-                params = (f"%{value}%",)
-            else:
-                where_clause = f"{field} {operator} ?"
-                params = (value,)
-            
-            sql = f"SELECT * FROM parts_master WHERE {where_clause} ORDER BY part_number"
-            
-            conn = sqlite3.connect(str(DB_PATH))
-            df = pd.read_sql(sql, conn, params=params)
-            conn.close()
-            
-            self.populate_parts_table(df)
-            self.query_result_label.setText(f"Query returned {len(df)} results")
-            self.query_result_label.setStyleSheet("padding:5px; background:#107C10; color:white;")
-            logger.info(f"Query executed: {sql} with params {params}")
-            
-        except Exception as e:
-            logger.error(f"Query execution failed: {e}")
-            self.query_result_label.setText(f"Query Error: {str(e)}")
-            self.query_result_label.setStyleSheet("padding:5px; background:#A4262C; color:white;")
-            QMessageBox.critical(self, "Query Error", f"Failed to execute query:\n{e}")
-
     def run_custom_sql(self):
         """Execute custom SQL query"""
         try:
             sql = self.custom_sql_input.text().strip()
-            
+
             if not sql:
                 QMessageBox.warning(self, "Query Error", "Please enter a SQL query.")
                 return
-            
+
             # Basic validation - must be SELECT and FROM parts_master
             if not sql.upper().startswith("SELECT"):
                 QMessageBox.warning(self, "Query Error", "Only SELECT queries are allowed.")
                 return
-            
+
             if "parts_master" not in sql.lower():
                 QMessageBox.warning(self, "Query Error", "Query must reference 'parts_master' table.")
                 return
-            
+
             conn = sqlite3.connect(str(DB_PATH))
             df = pd.read_sql(sql, conn)
             conn.close()
-            
+
             self.populate_parts_table(df)
-            self.query_result_label.setText(f"Custom query returned {len(df)} results")
-            self.query_result_label.setStyleSheet("padding:5px; background:#d4edda; color:#155724;")
+            self._update_search_result(f"Custom SQL returned {len(df)} parts", "success")
             logger.info(f"Custom SQL executed: {sql}")
-            
+
         except Exception as e:
             logger.error(f"Custom SQL execution failed: {e}")
-            self.query_result_label.setText(f"SQL Error: {str(e)}")
-            self.query_result_label.setStyleSheet("padding:5px; background:#A4262C; color:white;")
+            self._update_search_result(f"SQL Error: {str(e)}", "error")
             QMessageBox.critical(self, "SQL Error", f"Failed to execute SQL:\n{e}")
+
+    # ===== New Parts Search Methods =====
+
+    def _populate_search_filters(self):
+        """Populate the client and country filter dropdowns from database."""
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            cursor = conn.cursor()
+
+            # Get distinct clients
+            cursor.execute("SELECT DISTINCT client_code FROM parts_master WHERE client_code IS NOT NULL AND client_code != '' ORDER BY client_code")
+            clients = cursor.fetchall()
+            for (client,) in clients:
+                self.filter_client_combo.addItem(client, client)
+
+            # Get distinct countries
+            cursor.execute("SELECT DISTINCT country_origin FROM parts_master WHERE country_origin IS NOT NULL AND country_origin != '' ORDER BY country_origin")
+            countries = cursor.fetchall()
+            for (country,) in countries:
+                self.filter_country_combo.addItem(country, country)
+
+            conn.close()
+        except Exception as e:
+            logger.error(f"Failed to populate search filters: {e}")
+
+    def _update_search_result(self, message: str, status: str = "info"):
+        """Update the search result label with appropriate styling."""
+        styles = {
+            "success": "padding: 8px; background: #d4edda; border-radius: 4px; color: #155724;",
+            "error": "padding: 8px; background: #f8d7da; border-radius: 4px; color: #721c24;",
+            "warning": "padding: 8px; background: #fff3cd; border-radius: 4px; color: #856404;",
+            "info": "padding: 8px; background: #e8f4f8; border-radius: 4px; color: #2c3e50;",
+        }
+        self.search_result_label.setText(message)
+        self.search_result_label.setStyleSheet(styles.get(status, styles["info"]))
+
+    def toggle_advanced_sql(self, checked: bool):
+        """Show or hide the advanced SQL input."""
+        self.advanced_sql_widget.setVisible(checked)
+
+    def clear_search_filters(self):
+        """Clear all search filters and show all parts."""
+        self.filter_client_combo.setCurrentIndex(0)
+        self.filter_country_combo.setCurrentIndex(0)
+        self.search_value_input.clear()
+        self.refresh_parts_table()
+
+    def search_missing_hts(self):
+        """Find parts with missing or empty HTS codes."""
+        try:
+            sql = """
+                SELECT * FROM parts_master
+                WHERE hts_code IS NULL OR hts_code = '' OR hts_code = 'UNKNOWN'
+                ORDER BY part_number
+            """
+            conn = sqlite3.connect(str(DB_PATH))
+            df = pd.read_sql(sql, conn)
+            conn.close()
+
+            self.populate_parts_table(df)
+            self._update_search_result(f"Found {len(df)} parts with missing HTS codes", "warning" if len(df) > 0 else "success")
+
+        except Exception as e:
+            logger.error(f"Search failed: {e}")
+            self._update_search_result(f"Search error: {e}", "error")
+
+    def search_by_material(self, material: str):
+        """Search for parts containing specific material (steel, aluminum, etc.)."""
+        try:
+            column_map = {
+                "steel": "steel_ratio",
+                "aluminum": "aluminum_ratio",
+                "copper": "copper_ratio",
+                "wood": "wood_ratio",
+            }
+            column = column_map.get(material.lower())
+            if not column:
+                self._update_search_result(f"Unknown material: {material}", "error")
+                return
+
+            sql = f"""
+                SELECT * FROM parts_master
+                WHERE {column} IS NOT NULL AND {column} > 0
+                ORDER BY {column} DESC, part_number
+            """
+            conn = sqlite3.connect(str(DB_PATH))
+            df = pd.read_sql(sql, conn)
+            conn.close()
+
+            self.populate_parts_table(df)
+            self._update_search_result(f"Found {len(df)} parts with {material} content", "success")
+
+        except Exception as e:
+            logger.error(f"Material search failed: {e}")
+            self._update_search_result(f"Search error: {e}", "error")
+
+    def run_parts_search(self):
+        """Execute the main parts search based on user input."""
+        try:
+            field_display = self.search_field_type.currentText()
+            field = self.search_field_map.get(field_display, "part_number")
+            match_type = self.search_match_type.currentText()
+            value = self.search_value_input.text().strip()
+
+            if not value:
+                QMessageBox.warning(self, "Search", "Please enter a search value.")
+                return
+
+            # Build the WHERE clause based on match type
+            if match_type == "Contains":
+                where_clause = f"{field} LIKE ?"
+                params = (f"%{value}%",)
+            elif match_type == "Equals":
+                where_clause = f"{field} = ?"
+                params = (value,)
+            elif match_type == "Starts with":
+                where_clause = f"{field} LIKE ?"
+                params = (f"{value}%",)
+            elif match_type == "Ends with":
+                where_clause = f"{field} LIKE ?"
+                params = (f"%{value}",)
+            elif match_type == "Greater than":
+                where_clause = f"CAST({field} AS REAL) > ?"
+                params = (value,)
+            elif match_type == "Less than":
+                where_clause = f"CAST({field} AS REAL) < ?"
+                params = (value,)
+            else:
+                where_clause = f"{field} LIKE ?"
+                params = (f"%{value}%",)
+
+            sql = f"SELECT * FROM parts_master WHERE {where_clause} ORDER BY part_number"
+
+            conn = sqlite3.connect(str(DB_PATH))
+            df = pd.read_sql(sql, conn, params=params)
+            conn.close()
+
+            self.populate_parts_table(df)
+            self._update_search_result(
+                f"Found {len(df)} parts where {field_display} {match_type.lower()} '{value}'",
+                "success" if len(df) > 0 else "warning"
+            )
+            logger.info(f"Parts search: {field} {match_type} '{value}' - {len(df)} results")
+
+        except Exception as e:
+            logger.error(f"Parts search failed: {e}")
+            self._update_search_result(f"Search error: {e}", "error")
+            QMessageBox.critical(self, "Search Error", f"Failed to search:\n{e}")
+
+    def apply_combined_filters(self):
+        """Apply client and country filters together."""
+        try:
+            client = self.filter_client_combo.currentData()
+            country = self.filter_country_combo.currentData()
+
+            # If both are empty, show all
+            if not client and not country:
+                return  # Don't auto-refresh on initial load
+
+            conditions = []
+            params = []
+
+            if client:
+                conditions.append("client_code = ?")
+                params.append(client)
+
+            if country:
+                conditions.append("country_origin = ?")
+                params.append(country)
+
+            if conditions:
+                where_clause = " AND ".join(conditions)
+                sql = f"SELECT * FROM parts_master WHERE {where_clause} ORDER BY part_number"
+
+                conn = sqlite3.connect(str(DB_PATH))
+                df = pd.read_sql(sql, conn, params=params)
+                conn.close()
+
+                self.populate_parts_table(df)
+
+                filter_desc = []
+                if client:
+                    filter_desc.append(f"Client: {client}")
+                if country:
+                    filter_desc.append(f"Country: {country}")
+
+                self._update_search_result(
+                    f"Filtered {len(df)} parts ({', '.join(filter_desc)})",
+                    "success"
+                )
+
+        except Exception as e:
+            logger.error(f"Filter failed: {e}")
+            self._update_search_result(f"Filter error: {e}", "error")
 
     def populate_parts_table(self, df):
         """Populate the parts table with a dataframe"""
