@@ -37,7 +37,7 @@ APP_NAME = "TariffMill"
 DB_NAME = "tariffmill.db"
 
 # Copyright and Legal Information
-COPYRIGHT_YEAR = "2024-2025"
+COPYRIGHT_YEAR = "2025-2026"
 COPYRIGHT_HOLDER = "Heath Payne"
 COPYRIGHT_EMAIL = "paynehl@gmail.com"
 COPYRIGHT_NOTICE = f"Copyright (c) {COPYRIGHT_YEAR} {COPYRIGHT_HOLDER}. All Rights Reserved."
@@ -1798,6 +1798,27 @@ def init_database():
                 logger.info("Populated lacey_species with common wood species")
         except Exception as e:
             logger.warning(f"Failed to populate lacey_species: {e}")
+
+        # =====================================================================
+        # MSI-SIGMA PART NUMBER LOOKUP TABLE
+        # =====================================================================
+        # Maps MSI (Masonry Supply Inc.) part numbers to Sigma Corporation part numbers
+        # Used for converting OCR-extracted MSI part numbers to Sigma format for export
+
+        c.execute("""CREATE TABLE IF NOT EXISTS msi_sigma_parts (
+            msi_part_number TEXT PRIMARY KEY,
+            sigma_part_number TEXT NOT NULL,
+            material TEXT,
+            country_origin TEXT,
+            hts_type TEXT,
+            hts_code TEXT,
+            manufacturing_class_id TEXT,
+            steel_ratio REAL DEFAULT 0.0,
+            last_updated TEXT
+        )""")
+
+        # Create index for faster Sigma part lookups
+        c.execute("""CREATE INDEX IF NOT EXISTS idx_sigma_part ON msi_sigma_parts(sigma_part_number)""")
 
         conn.commit()
         conn.close()
@@ -5175,7 +5196,8 @@ class TariffMill(QMainWindow):
             '232_Copper': '#e67e22',     # Orange
             '232_Wood': '#27ae60',       # Green
             '232_Auto': '#9b59b6',       # Purple
-            'Non_232': '#ff0000'         # Red
+            'Non_232': '#ff0000',        # Red
+            'Not_Found': '#f39c12'       # Yellow/Gold - indicates part not in database
         }
 
         # Handle backward compatibility - if passed a boolean
@@ -5186,6 +5208,9 @@ class TariffMill(QMainWindow):
         if not material_flag or material_flag == 'Non_232':
             color_key = 'preview_non232_color'
             default_color = default_colors['Non_232']
+        elif material_flag == 'Not_Found':
+            color_key = 'preview_notfound_color'
+            default_color = default_colors['Not_Found']
         elif material_flag.startswith('232_'):
             # Map flag to color key
             material = material_flag  # e.g., '232_Steel'
@@ -5811,7 +5836,14 @@ class TariffMill(QMainWindow):
         self.process_btn.setEnabled(False)
         self.start_processing()
 
-    def start_processing(self):
+    def start_processing(self, part_number_overrides=None):
+        """
+        Start processing the invoice file.
+
+        Args:
+            part_number_overrides: Optional dict mapping row index to new part number.
+                                   Used during reprocess to apply user edits to part numbers.
+        """
         if not self.current_csv:
             QMessageBox.critical(self, "Error", "Please select a file")
             return
@@ -5891,10 +5923,47 @@ class TariffMill(QMainWindow):
             # Normalize part numbers for matching (strip whitespace, uppercase)
             df['part_number'] = df['part_number'].astype(str).str.strip().str.upper()
             parts['part_number'] = parts['part_number'].astype(str).str.strip().str.upper()
+
+            # Apply part number overrides from reprocess (user-edited part numbers in preview)
+            if part_number_overrides:
+                for row_idx, new_part_number in part_number_overrides.items():
+                    if row_idx < len(df):
+                        old_part = df.iloc[row_idx]['part_number']
+                        df.iloc[row_idx, df.columns.get_loc('part_number')] = new_part_number.strip().upper()
+                        logger.info(f"Applied part number override: row {row_idx}: '{old_part}' -> '{new_part_number}'")
+
             df = df.merge(parts, on='part_number', how='left', suffixes=('', '_master'), indicator=True)
             # Track parts not found in the database
             df['_not_in_db'] = df['_merge'] == 'left_only'
             df = df.drop(columns=['_merge'])
+
+            # MSI-to-Sigma fallback: For parts not found by Sigma part number,
+            # try looking up by the original MSI part number (if available)
+            # This handles cases where parts_master has MSI parts but we want Sigma output
+            if 'msi_part_number' in df.columns:
+                not_found_mask = df['_not_in_db'] == True
+                if not_found_mask.any():
+                    # Get rows where Sigma lookup failed
+                    for idx in df[not_found_mask].index:
+                        msi_part = str(df.loc[idx, 'msi_part_number']).strip().upper()
+                        sigma_part = str(df.loc[idx, 'part_number']).strip().upper()
+                        if msi_part and msi_part != sigma_part:
+                            # Try to find the MSI part in parts_master
+                            match = parts[parts['part_number'] == msi_part]
+                            if not match.empty:
+                                # Found by MSI - merge the data but keep Sigma as the display part number
+                                master_row = match.iloc[0]
+                                for col in ['hts_code', 'steel_ratio', 'aluminum_ratio', 'copper_ratio',
+                                           'wood_ratio', 'auto_ratio', 'non_steel_ratio', 'qty_unit',
+                                           'country_of_melt', 'country_of_cast', 'country_of_smelt',
+                                           'Sec301_Exclusion_Tariff']:
+                                    master_col = f'{col}_master'
+                                    if master_col in df.columns:
+                                        df.loc[idx, master_col] = master_row.get(col, df.loc[idx, master_col])
+                                    elif col in parts.columns:
+                                        df.loc[idx, col] = master_row.get(col, df.loc[idx, col])
+                                df.loc[idx, '_not_in_db'] = False
+                                logger.info(f"MSI fallback: Found '{msi_part}' in parts_master, using Sigma '{sigma_part}' for output")
 
             # Merge strategy: Prefer database (master) values over invoice values
             # Database values ALWAYS take precedence; invoice values are only used as fallback when DB is empty
@@ -5975,23 +6044,29 @@ class TariffMill(QMainWindow):
             original_value = row['value_usd']
 
             # If no percentages are set, use HTS lookup to determine material type
+            # BUT only for parts that ARE in the database - unfound parts should NOT get defaults
+            not_in_db = row.get('_not_in_db', False)
             if steel_pct == 0 and aluminum_pct == 0 and copper_pct == 0 and wood_pct == 0 and auto_pct == 0 and non_steel_pct == 0:
-                # Look up HTS code to determine material type
-                hts = row.get('hts_code', '')
-                material, _, _ = get_232_info(hts)
-                if material == 'Aluminum':
-                    aluminum_pct = 100.0
-                elif material == 'Copper':
-                    copper_pct = 100.0
-                elif material == 'Wood':
-                    wood_pct = 100.0
-                elif material == 'Auto':
-                    auto_pct = 100.0
-                elif material == 'Steel':
-                    steel_pct = 100.0
+                if not_in_db:
+                    # Part not in database - leave all ratios at 0 to show "Not Found" status
+                    pass
                 else:
-                    # Default to 100% steel for backward compatibility if no material found
-                    steel_pct = 100.0
+                    # Look up HTS code to determine material type
+                    hts = row.get('hts_code', '')
+                    material, _, _ = get_232_info(hts)
+                    if material == 'Aluminum':
+                        aluminum_pct = 100.0
+                    elif material == 'Copper':
+                        copper_pct = 100.0
+                    elif material == 'Wood':
+                        wood_pct = 100.0
+                    elif material == 'Auto':
+                        auto_pct = 100.0
+                    elif material == 'Steel':
+                        steel_pct = 100.0
+                    else:
+                        # Default to 100% steel for backward compatibility if no material found
+                        steel_pct = 100.0
 
             # Validate that percentages sum to 100% - recalculate non_steel_pct if needed
             # This fixes database entries where non_steel_ratio was incorrectly set to 100%
@@ -6108,11 +6183,25 @@ class TariffMill(QMainWindow):
                 auto_row['_content_type'] = 'auto'
                 expanded_rows.append(auto_row)
 
+            # Handle parts not in database (all percentages are 0) - create single row as "not_found"
+            if len(expanded_rows) == row_start_idx and not_in_db:
+                # No rows were created because all percentages are 0 - this is a "not found" part
+                not_found_row = row.copy()
+                not_found_row['value_usd'] = original_value
+                not_found_row['SteelRatio'] = 0.0
+                not_found_row['AluminumRatio'] = 0.0
+                not_found_row['CopperRatio'] = 0.0
+                not_found_row['WoodRatio'] = 0.0
+                not_found_row['AutoRatio'] = 0.0
+                not_found_row['NonSteelRatio'] = 0.0
+                not_found_row['_content_type'] = 'not_found'
+                expanded_rows.append(not_found_row)
+
             # Fix rounding errors: adjust the last created row to ensure total matches original
             if len(expanded_rows) > row_start_idx:
                 remainder = round(original_value - allocated_value, 2)
-                if abs(remainder) > 0.001:
-                    # Add remainder to the last row created for this item
+                if abs(remainder) > 0.001 and expanded_rows[-1].get('_content_type') != 'not_found':
+                    # Add remainder to the last row created for this item (skip for not_found rows)
                     expanded_rows[-1]['value_usd'] = round(expanded_rows[-1]['value_usd'] + remainder, 2)
 
         # Rebuild dataframe from expanded rows
@@ -6284,7 +6373,9 @@ class TariffMill(QMainWindow):
 
             # Set flag based on content type, but use consistent declaration code from HTS lookup
             # All derivative rows with the same HTS code get the same declaration code
-            if content_type == 'steel':
+            if content_type == 'not_found':
+                flag = 'Not_Found'
+            elif content_type == 'steel':
                 flag = '232_Steel'
             elif content_type == 'aluminum':
                 flag = '232_Aluminum'
@@ -10463,10 +10554,23 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             c = conn.cursor()
             now = datetime.now().isoformat()
             saved = 0
+            renamed = 0
             for row in range(self.parts_table.rowCount()):
                 items = [self.parts_table.item(row, col) for col in range(15)]
                 if not items[0] or not items[0].text().strip(): continue
                 part = items[0].text().strip()
+
+                # Check if part number was renamed (original stored in UserRole)
+                original_part = items[0].data(Qt.UserRole)
+                if original_part and original_part != part:
+                    # Part number was renamed - delete old record first
+                    c.execute("DELETE FROM parts_master WHERE part_number = ?", (original_part,))
+                    if c.rowcount:
+                        renamed += 1
+                        logger.info(f"Renamed part: '{original_part}' -> '{part}'")
+                    # Update UserRole to new part number for future saves
+                    items[0].setData(Qt.UserRole, part)
+
                 desc = items[1].text() if items[1] else ""
                 hts = items[2].text() if items[2] else ""
                 origin = (items[3].text() or "").upper()[:2]
@@ -10520,7 +10624,11 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                           (part, desc, hts, origin, mid, client_code, steel, non_steel, now, qty_unit, aluminum, copper, wood, auto, sec301_exclusion))
                 if c.rowcount: saved += 1
             conn.commit(); conn.close()
-            QMessageBox.information(self, "Success", f"Saved {saved} parts!")
+            # Build success message
+            msg = f"Saved {saved} parts!"
+            if renamed > 0:
+                msg += f"\n(Renamed {renamed} part number(s))"
+            QMessageBox.information(self, "Success", msg)
             self.bottom_status.setText("Database saved")
             self.load_available_mids()
         except Exception as e:
@@ -10693,8 +10801,11 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         #          steel_ratio, aluminum_ratio, copper_ratio, wood_ratio, non_steel_ratio,
         #          qty_unit, updated_date
         for i, row in df.iterrows():
-            # Column 0: part_number
-            self.parts_table.setItem(i, 0, QTableWidgetItem(str(row.get('part_number', '')) if pd.notna(row.get('part_number')) else ""))
+            # Column 0: part_number - store original in UserRole for rename detection
+            part_number = str(row.get('part_number', '')) if pd.notna(row.get('part_number')) else ""
+            part_item = QTableWidgetItem(part_number)
+            part_item.setData(Qt.UserRole, part_number)  # Store original for rename tracking
+            self.parts_table.setItem(i, 0, part_item)
             # Column 1: description
             self.parts_table.setItem(i, 1, QTableWidgetItem(str(row.get('description', '')) if pd.notna(row.get('description')) else ""))
             # Column 2: hts_code
@@ -11820,11 +11931,51 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         else:
             self.final_export()
 
+    def _capture_part_number_modifications(self):
+        """
+        Capture any part number modifications from the preview table.
+
+        Returns a dictionary mapping row index to the modified part number.
+        This allows users to edit a part number in the Result Preview and have
+        the reprocess use the edited value to look up in parts_master.
+        """
+        overrides = {}
+        if self.table.rowCount() == 0 or self.last_processed_df is None:
+            return overrides
+
+        try:
+            # Compare table part numbers to original DataFrame part numbers
+            for row in range(self.table.rowCount()):
+                table_item = self.table.item(row, 0)  # Column 0 = Product No
+                if not table_item:
+                    continue
+
+                table_part = table_item.text().strip().upper()
+
+                # Get the original part number from the DataFrame
+                if row < len(self.last_processed_df):
+                    original_part = str(self.last_processed_df.iloc[row].get('Product No', '')).strip().upper()
+
+                    # If the part number was modified, record the override
+                    if table_part and table_part != original_part:
+                        overrides[row] = table_part
+                        logger.info(f"Part number override detected: row {row}: '{original_part}' -> '{table_part}'")
+        except Exception as e:
+            logger.warning(f"Error capturing part number modifications: {e}")
+
+        return overrides
+
     def reprocess_invoice(self):
         """Re-process the current invoice to pick up database changes (e.g., deleted/updated parts)."""
         if not self.current_csv:
             QMessageBox.warning(self, "No File", "No invoice file is currently loaded.")
             return
+
+        # Capture modified part numbers from the preview table BEFORE clearing
+        # This allows users to edit a part number in the table and have it re-looked up
+        part_number_overrides = self._capture_part_number_modifications()
+        if part_number_overrides:
+            logger.info(f"Captured {len(part_number_overrides)} part number modification(s) for reprocessing")
 
         # First, save any "Not Found" parts that have been edited in the preview table
         # This saves HTS codes, MIDs, etc. that the user has entered for new parts
@@ -11842,9 +11993,9 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         self.process_btn.setEnabled(True)
         self.reprocess_btn.setEnabled(False)
 
-        # Run processing
+        # Run processing with part number overrides
         self.status.setText("Reprocessing invoice...")
-        self.start_processing()
+        self.start_processing(part_number_overrides=part_number_overrides)
 
         # Update qty_unit values from hts.db for all parts (in case HTS codes changed)
         units_updated = self.import_hts_units_silent()

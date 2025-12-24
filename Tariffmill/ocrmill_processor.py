@@ -159,16 +159,53 @@ class ProcessorEngine:
                 current_project = None
                 page_buffer = []
 
-                for page in pdf.pages:
+                self.log(f"  PDF has {len(pdf.pages)} page(s)")
+
+                for page_idx, page in enumerate(pdf.pages):
                     page_text = page.extract_text()
                     if not page_text:
+                        self.log(f"  Page {page_idx + 1}: No text extracted")
                         continue
 
                     # Skip packing list and BOL pages
-                    if 'packing list' in page_text.lower() and 'invoice' not in page_text.lower():
+                    # But be careful not to skip invoice pages that just REFERENCE a B/L number
+                    page_lower = page_text.lower()
+                    if 'packing list' in page_lower and 'invoice' not in page_lower:
+                        self.log(f"  Page {page_idx + 1}: Skipped (packing list)")
                         continue
-                    if 'bill of lading' in page_text.lower():
+
+                    # Only skip as BOL if it's primarily a BOL page, not just mentioning B/L
+                    # Check for BOL-specific headers/indicators that wouldn't appear on invoices
+                    is_bol_page = False
+                    if 'bill of lading' in page_lower:
+                        # BOL pages typically have these indicators
+                        bol_indicators = ['non-negotiable', 'waybill', 'container no', 'seal no',
+                                         'freight collect', 'freight prepaid', 'port of discharge',
+                                         'notify party', 'place of delivery', 'ocean vessel']
+                        # Invoice pages typically have these
+                        invoice_indicators = ['commercial invoice', 'invoice no', 'unit price', 'total price',
+                                            'qty', 'quantity', 'rate', 'amount', 'po date', 'po number',
+                                            'unit rate', 'value']
+
+                        bol_count = sum(1 for ind in bol_indicators if ind in page_lower)
+                        invoice_count = sum(1 for ind in invoice_indicators if ind in page_lower)
+
+                        # Only skip if it's clearly a BOL page (more BOL indicators than invoice indicators)
+                        # and has at least 2 BOL indicators
+                        if bol_count > invoice_count and bol_count >= 2:
+                            is_bol_page = True
+                            self.log(f"  Page {page_idx + 1}: Skipped (bill of lading - {bol_count} BOL indicators vs {invoice_count} invoice indicators)")
+                        else:
+                            self.log(f"  Page {page_idx + 1}: Contains 'bill of lading' but keeping (likely invoice referencing B/L)")
+
+                    if is_bol_page:
                         continue
+
+                    self.log(f"  Page {page_idx + 1}: Processing ({len(page_text)} chars)")
+
+                    # Debug: Show first 100 chars of page
+                    preview = page_text[:100].replace('\n', ' ')
+                    self.log(f"    Preview: {preview}...")
 
                     # Check for new invoice on this page
                     inv_match = re.search(r'(?:Proforma\s+)?[Ii]nvoice\s+(?:number|n)\.?\s*:?\s*(\d+(?:/\d+)?)', page_text)
@@ -201,6 +238,7 @@ class ProcessorEngine:
                     page_buffer.append(page_text)
 
                 # Process remaining pages in buffer
+                self.log(f"  Processing buffer with {len(page_buffer)} page(s), total chars: {sum(len(p) for p in page_buffer)}")
                 if page_buffer:
                     buffer_text = "\n".join(page_buffer)
 
@@ -210,6 +248,7 @@ class ProcessorEngine:
                         current_project = template.extract_project_number(buffer_text)
 
                     _, _, items = template.extract_all(buffer_text)
+                    self.log(f"  Template extracted {len(items)} line items from buffer")
                     for item in items:
                         item['invoice_number'] = current_invoice or 'UNKNOWN'
                         item['project_number'] = current_project or 'UNKNOWN'

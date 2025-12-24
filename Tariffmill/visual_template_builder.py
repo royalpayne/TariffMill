@@ -52,6 +52,15 @@ class PatternDetector:
         (r'HTS#(\d{10})-([A-Z\s]+?)\s+(\d+)\s*(?:PCS?|UNITS?)?\s+\$?([\d,]+\.?\d*)',
          'hts_desc_qty_price', 'HTS# Description Qty Price', ['hs_code', 'description', 'quantity', 'total_price']),
 
+        # Full commercial invoice format: "40049557 1 315 21-250464 8431.20.0000 CHINA 68 90 77X76X62 $2.18 $686.70"
+        # PO# PKGS QTY ITEM_CODE ... $UNIT $TOTAL
+        (r'^(\d{8})\s+\d+\s+([\d,]+)\s+(\d{2}-\d{6}).*?\$?([\d,]+\.?\d+)\s+\$?([\d,]+\.?\d+)\s*$',
+         'full_commercial', 'PO# Qty Part# UnitPrice Total', ['po_number', 'quantity', 'part_number', 'unit_price', 'total_price']),
+
+        # Line ending with two dollar amounts (unit price and total): "... $2.18 $686.70"
+        (r'([A-Z0-9][\w\-\.]+)\s+.*?([\d,]+)\s+.*?\$?([\d,]+\.?\d+)\s+\$?([\d,]+\.?\d+)\s*$',
+         'part_qty_unit_total_end', 'Part# Qty UnitPrice Total', ['part_number', 'quantity', 'unit_price', 'total_price']),
+
         # PO + Part + Qty + Price: "40049557 21-250464 315 $686.70"
         (r'^(\d{8})\s+(\d{2}-\d{6})\s+(\d+(?:[.,]\d+)?)\s+\$?([\d,]+\.?\d*)',
          'po_part_qty_price', 'PO# Part# Qty Price', ['po_number', 'part_number', 'quantity', 'total_price']),
@@ -79,6 +88,10 @@ class PatternDetector:
         # Description-first format: "Widget Assembly ABC-123 10 $50.00"
         (r'^([A-Za-z][\w\s]{5,40}?)\s+([A-Z0-9][\w\-\.]+)\s+(\d+(?:[.,]\d+)?)\s+\$?([\d,]+\.?\d*)',
          'desc_part_qty_price', 'Description Part# Qty Price', ['description', 'part_number', 'quantity', 'total_price']),
+
+        # Lines with dollar amounts at end: capture part number and final dollar amount
+        (r'([A-Z0-9][\w\-\.]+).*?\$?([\d,]+\.?\d+)\s*$',
+         'part_price_end', 'Part# Price', ['part_number', 'total_price']),
     ]
 
     # Invoice number patterns
@@ -1315,7 +1328,7 @@ class DetectedPatternsDialog(QDialog):
         # Sample matches
         if pattern.sample_matches:
             samples_label = QLabel("Sample matches:")
-            samples_label.setStyleSheet("color: #666; font-style: italic;")
+            samples_label.setStyleSheet("font-style: italic;")
             widget_layout.addWidget(samples_label)
 
             samples_text = QPlainTextEdit()
@@ -1323,6 +1336,7 @@ class DetectedPatternsDialog(QDialog):
             samples_text.setPlainText('\n'.join(pattern.sample_matches[:3]))
             samples_text.setMaximumHeight(70)
             samples_text.setReadOnly(True)
+            samples_text.setStyleSheet("QPlainTextEdit { background-color: palette(base); color: palette(text); }")
             widget_layout.addWidget(samples_text)
 
         # Pattern regex
@@ -1331,7 +1345,7 @@ class DetectedPatternsDialog(QDialog):
         pattern_label.setWordWrap(True)
         widget_layout.addWidget(pattern_label)
 
-        widget.setStyleSheet("QWidget { background-color: #f8f9fa; border-radius: 5px; margin: 5px; }")
+        widget.setStyleSheet("QWidget { background-color: palette(alternate-base); border-radius: 5px; margin: 5px; }")
         layout.addWidget(widget)
 
     def _select_all(self):
