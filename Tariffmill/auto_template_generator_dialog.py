@@ -1,14 +1,17 @@
 """
 Auto Template Generator Dialog for TariffMill
 Provides a GUI interface for analyzing PDFs and generating invoice templates.
+Includes template management with grid view of all templates.
 """
 
 import os
+import re
 from pathlib import Path
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QTextEdit, QFileDialog, QGroupBox, QFormLayout,
-    QMessageBox, QProgressBar, QSplitter, QWidget, QTabWidget
+    QMessageBox, QProgressBar, QSplitter, QWidget, QTabWidget,
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QThread
 from PyQt5.QtGui import QFont
@@ -49,21 +52,24 @@ class AutoTemplateGeneratorDialog(QDialog):
     """
     Auto Template Generator Dialog.
     Analyzes PDF invoices and generates template code automatically.
+    Includes template management with grid view.
     """
 
     template_created = pyqtSignal(str, str)  # template_name, file_path
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Auto Template Generator")
+        self.setWindowTitle("AI Template Generator")
         self.setWindowFlags(self.windowFlags() | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
-        self.setMinimumSize(900, 700)
+        self.setMinimumSize(1100, 800)
 
         self.generator = None
         self.analysis = None
         self.current_pdf = None
+        self.templates_data = []  # Store template info
 
         self._setup_ui()
+        self._load_templates()
 
     def _setup_ui(self):
         """Set up the dialog UI."""
@@ -71,19 +77,75 @@ class AutoTemplateGeneratorDialog(QDialog):
         layout.setSpacing(10)
 
         # Header
-        header = QLabel("Auto Template Generator")
+        header = QLabel("AI Template Generator")
         header.setFont(QFont("Arial", 14, QFont.Bold))
         layout.addWidget(header)
 
         desc = QLabel(
-            "Analyze a sample PDF invoice to automatically detect patterns and generate template code.\n"
-            "Select a PDF, analyze it, review the detected patterns, then generate the template."
+            "Manage OCR invoice templates. Select an existing template to edit, or analyze a PDF to create new templates."
         )
         desc.setWordWrap(True)
         layout.addWidget(desc)
 
-        # Step 1: PDF Selection
-        pdf_group = QGroupBox("Step 1: Select Sample PDF")
+        # Main splitter - Templates on top, Editor on bottom
+        main_splitter = QSplitter(Qt.Vertical)
+
+        # Top section - Template Management
+        top_widget = QWidget()
+        top_layout = QVBoxLayout(top_widget)
+        top_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Template List Group
+        templates_group = QGroupBox("Existing Templates")
+        templates_layout = QVBoxLayout()
+
+        # Template grid/table
+        self.templates_table = QTableWidget()
+        self.templates_table.setColumnCount(4)
+        self.templates_table.setHorizontalHeaderLabels([
+            "Template Name", "Supplier Name", "Client", "Country of Origin"
+        ])
+        self.templates_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.templates_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.templates_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.templates_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.templates_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.templates_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.templates_table.setAlternatingRowColors(True)
+        self.templates_table.doubleClicked.connect(self._edit_selected_template)
+        self.templates_table.setMinimumHeight(150)
+        templates_layout.addWidget(self.templates_table)
+
+        # Template action buttons
+        template_buttons = QHBoxLayout()
+
+        self.btn_edit_template = QPushButton("Edit Selected")
+        self.btn_edit_template.clicked.connect(self._edit_selected_template)
+        template_buttons.addWidget(self.btn_edit_template)
+
+        self.btn_refresh_templates = QPushButton("Refresh")
+        self.btn_refresh_templates.clicked.connect(self._load_templates)
+        template_buttons.addWidget(self.btn_refresh_templates)
+
+        self.btn_delete_template = QPushButton("Delete")
+        self.btn_delete_template.clicked.connect(self._delete_selected_template)
+        template_buttons.addWidget(self.btn_delete_template)
+
+        template_buttons.addStretch()
+        templates_layout.addLayout(template_buttons)
+
+        templates_group.setLayout(templates_layout)
+        top_layout.addWidget(templates_group)
+
+        main_splitter.addWidget(top_widget)
+
+        # Bottom section - Editor
+        bottom_widget = QWidget()
+        bottom_layout = QVBoxLayout(bottom_widget)
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Step 1: PDF Selection (for new templates)
+        pdf_group = QGroupBox("Step 1: Select Sample PDF (for new templates)")
         pdf_layout = QHBoxLayout()
 
         self.pdf_path_edit = QLineEdit()
@@ -101,13 +163,37 @@ class AutoTemplateGeneratorDialog(QDialog):
         pdf_layout.addWidget(self.btn_analyze)
 
         pdf_group.setLayout(pdf_layout)
-        layout.addWidget(pdf_group)
+        bottom_layout.addWidget(pdf_group)
 
         # Progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         self.progress_bar.setTextVisible(True)
-        layout.addWidget(self.progress_bar)
+        bottom_layout.addWidget(self.progress_bar)
+
+        # Step 2: Template Configuration
+        config_group = QGroupBox("Template Settings")
+        config_layout = QFormLayout()
+
+        self.template_name_edit = QLineEdit()
+        self.template_name_edit.setPlaceholderText("e.g., acme_corp (lowercase with underscores)")
+        self.template_name_edit.textChanged.connect(self._update_generate_button)
+        config_layout.addRow("Template Name:", self.template_name_edit)
+
+        self.supplier_name_edit = QLineEdit()
+        self.supplier_name_edit.setPlaceholderText("e.g., Acme Corporation")
+        config_layout.addRow("Supplier Name:", self.supplier_name_edit)
+
+        self.client_edit = QLineEdit()
+        self.client_edit.setPlaceholderText("e.g., Sigma Corporation")
+        config_layout.addRow("Client:", self.client_edit)
+
+        self.country_edit = QLineEdit()
+        self.country_edit.setPlaceholderText("e.g., CHINA, INDIA, USA")
+        config_layout.addRow("Country of Origin:", self.country_edit)
+
+        config_group.setLayout(config_layout)
+        bottom_layout.addWidget(config_group)
 
         # Main content area with tabs
         self.tabs = QTabWidget()
@@ -133,7 +219,7 @@ class AutoTemplateGeneratorDialog(QDialog):
         self.code_text.setPlaceholderText("Generated template code will appear here...")
         code_layout.addWidget(self.code_text)
 
-        self.tabs.addTab(code_widget, "Generated Code")
+        self.tabs.addTab(code_widget, "Template Code")
 
         # Tab 3: Sample Text
         sample_widget = QWidget()
@@ -147,23 +233,7 @@ class AutoTemplateGeneratorDialog(QDialog):
 
         self.tabs.addTab(sample_widget, "PDF Text")
 
-        layout.addWidget(self.tabs, 1)
-
-        # Step 2: Template Configuration
-        config_group = QGroupBox("Step 2: Configure Template")
-        config_layout = QFormLayout()
-
-        self.template_name_edit = QLineEdit()
-        self.template_name_edit.setPlaceholderText("e.g., acme_corp_invoices")
-        self.template_name_edit.textChanged.connect(self._update_generate_button)
-        config_layout.addRow("Template Name:", self.template_name_edit)
-
-        self.class_name_edit = QLineEdit()
-        self.class_name_edit.setPlaceholderText("Auto-generated from template name")
-        config_layout.addRow("Class Name (optional):", self.class_name_edit)
-
-        config_group.setLayout(config_layout)
-        layout.addWidget(config_group)
+        bottom_layout.addWidget(self.tabs, 1)
 
         # Action buttons
         buttons_layout = QHBoxLayout()
@@ -184,7 +254,14 @@ class AutoTemplateGeneratorDialog(QDialog):
         btn_close.clicked.connect(self.close)
         buttons_layout.addWidget(btn_close)
 
-        layout.addLayout(buttons_layout)
+        bottom_layout.addLayout(buttons_layout)
+
+        main_splitter.addWidget(bottom_widget)
+
+        # Set splitter sizes (30% top, 70% bottom)
+        main_splitter.setSizes([250, 550])
+
+        layout.addWidget(main_splitter, 1)
 
         # Apply styles
         self._apply_styles()
@@ -205,7 +282,7 @@ class AutoTemplateGeneratorDialog(QDialog):
                 padding: 0 5px;
             }
             QPushButton {
-                min-width: 100px;
+                min-width: 80px;
                 padding: 6px 12px;
             }
             QPushButton:disabled {
@@ -216,7 +293,180 @@ class AutoTemplateGeneratorDialog(QDialog):
                 border: 1px solid #ccc;
                 border-radius: 3px;
             }
+            QTableWidget {
+                border: 1px solid #ccc;
+                border-radius: 3px;
+                gridline-color: #ddd;
+            }
+            QTableWidget::item:selected {
+                background-color: #0078d4;
+                color: white;
+            }
+            QHeaderView::section {
+                background-color: #f0f0f0;
+                padding: 5px;
+                border: 1px solid #ccc;
+                font-weight: bold;
+            }
         """)
+
+    def _load_templates(self):
+        """Load all templates from the templates directory and populate the grid."""
+        self.templates_table.setRowCount(0)
+        self.templates_data = []
+
+        templates_dir = BASE_DIR / "templates"
+        if not templates_dir.exists():
+            return
+
+        # Excluded files
+        excluded = {'__init__.py', 'base_template.py', 'sample_template.py', '__pycache__'}
+
+        for file_path in sorted(templates_dir.glob("*.py")):
+            if file_path.name in excluded:
+                continue
+
+            template_info = self._extract_template_info(file_path)
+            if template_info:
+                self.templates_data.append(template_info)
+                row = self.templates_table.rowCount()
+                self.templates_table.insertRow(row)
+
+                self.templates_table.setItem(row, 0, QTableWidgetItem(template_info['name']))
+                self.templates_table.setItem(row, 1, QTableWidgetItem(template_info['supplier']))
+                self.templates_table.setItem(row, 2, QTableWidgetItem(template_info['client']))
+                self.templates_table.setItem(row, 3, QTableWidgetItem(template_info['country']))
+
+    def _extract_template_info(self, file_path: Path) -> dict:
+        """Extract template metadata from a template file."""
+        try:
+            content = file_path.read_text(encoding='utf-8')
+
+            info = {
+                'file_path': str(file_path),
+                'file_name': file_path.stem,
+                'name': file_path.stem.replace('_', ' ').title(),
+                'supplier': '',
+                'client': '',
+                'country': ''
+            }
+
+            # Extract name
+            name_match = re.search(r'^\s*name\s*=\s*["\'](.+?)["\']', content, re.MULTILINE)
+            if name_match:
+                info['name'] = name_match.group(1)
+
+            # Extract description (often contains supplier info)
+            desc_match = re.search(r'^\s*description\s*=\s*["\'](.+?)["\']', content, re.MULTILINE)
+            if desc_match:
+                info['supplier'] = desc_match.group(1)
+
+            # Extract client
+            client_match = re.search(r'^\s*client\s*=\s*["\'](.+?)["\']', content, re.MULTILINE)
+            if client_match:
+                info['client'] = client_match.group(1)
+
+            # Try to extract country from SUPPLIER_KEYWORDS or extra_columns
+            if 'country_origin' in content.lower() or 'country_of_origin' in content.lower():
+                # Look for common country patterns
+                country_patterns = [
+                    r'china', r'india', r'usa', r'mexico', r'brazil', r'czech',
+                    r'el salvador', r'taiwan', r'japan', r'korea', r'vietnam'
+                ]
+                content_lower = content.lower()
+                for pattern in country_patterns:
+                    if pattern in content_lower:
+                        info['country'] = pattern.upper()
+                        break
+
+            # Check docstring for country
+            docstring_match = re.search(r'"""[\s\S]*?"""', content)
+            if docstring_match:
+                docstring = docstring_match.group(0).lower()
+                for pattern in ['china', 'india', 'usa', 'mexico', 'brazil', 'czech republic',
+                               'el salvador', 'taiwan', 'japan', 'korea', 'vietnam']:
+                    if pattern in docstring:
+                        info['country'] = pattern.upper()
+                        break
+
+            return info
+
+        except Exception as e:
+            return None
+
+    def _edit_selected_template(self):
+        """Load the selected template for editing."""
+        selected_rows = self.templates_table.selectedItems()
+        if not selected_rows:
+            QMessageBox.warning(self, "No Selection", "Please select a template to edit.")
+            return
+
+        row = self.templates_table.currentRow()
+        if row < 0 or row >= len(self.templates_data):
+            return
+
+        template_info = self.templates_data[row]
+        file_path = Path(template_info['file_path'])
+
+        if not file_path.exists():
+            QMessageBox.warning(self, "File Not Found", f"Template file not found:\n{file_path}")
+            return
+
+        try:
+            # Load the template code
+            code = file_path.read_text(encoding='utf-8')
+
+            # Populate the form fields
+            self.template_name_edit.setText(template_info['file_name'])
+            self.supplier_name_edit.setText(template_info['supplier'])
+            self.client_edit.setText(template_info['client'])
+            self.country_edit.setText(template_info['country'])
+
+            # Load the code into the editor
+            self.code_text.setPlainText(code)
+            self.btn_save.setEnabled(True)
+
+            # Switch to the code tab
+            self.tabs.setCurrentIndex(1)
+
+            # Clear analysis since we're editing existing
+            self.analysis_text.clear()
+            self.sample_text.clear()
+            self.analysis = None
+            self.generator = None
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load template:\n{e}")
+
+    def _delete_selected_template(self):
+        """Delete the selected template."""
+        selected_rows = self.templates_table.selectedItems()
+        if not selected_rows:
+            QMessageBox.warning(self, "No Selection", "Please select a template to delete.")
+            return
+
+        row = self.templates_table.currentRow()
+        if row < 0 or row >= len(self.templates_data):
+            return
+
+        template_info = self.templates_data[row]
+        file_path = Path(template_info['file_path'])
+
+        reply = QMessageBox.question(
+            self, "Confirm Delete",
+            f"Are you sure you want to delete the template:\n\n{template_info['name']}\n\n"
+            f"File: {file_path.name}\n\nThis cannot be undone.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            try:
+                file_path.unlink()
+                self._load_templates()
+                QMessageBox.information(self, "Deleted", "Template deleted successfully.")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to delete template:\n{e}")
 
     def _browse_pdf(self):
         """Open file dialog to select a PDF."""
@@ -282,6 +532,10 @@ class AutoTemplateGeneratorDialog(QDialog):
         # Show sample text
         if self.analysis and self.analysis.raw_text:
             self.sample_text.setPlainText(self.analysis.raw_text[:10000])
+
+        # Auto-fill supplier name if detected
+        if self.analysis and self.analysis.supplier_name:
+            self.supplier_name_edit.setText(self.analysis.supplier_name)
 
         # Enable generate button
         self._update_generate_button()
@@ -366,13 +620,38 @@ class AutoTemplateGeneratorDialog(QDialog):
             return
 
         template_name = self.template_name_edit.text().strip()
-        class_name = self.class_name_edit.text().strip() or None
+        supplier_name = self.supplier_name_edit.text().strip()
+        client_name = self.client_edit.text().strip()
+        country = self.country_edit.text().strip()
 
         try:
+            # Generate base code
             code = self.generator.generate_template(
                 template_name=template_name,
-                class_name=class_name
+                class_name=None
             )
+
+            # Update the generated code with our metadata
+            if supplier_name:
+                code = re.sub(
+                    r'(description\s*=\s*["\']).*?(["\'])',
+                    f'\\1Invoices from {supplier_name}\\2',
+                    code
+                )
+            if client_name:
+                code = re.sub(
+                    r'(client\s*=\s*["\']).*?(["\'])',
+                    f'\\1{client_name}\\2',
+                    code
+                )
+
+            # Add country_origin to extra_columns if specified
+            if country and 'country_origin' not in code:
+                code = re.sub(
+                    r"(extra_columns\s*=\s*\[)",
+                    "\\1'country_origin', ",
+                    code
+                )
 
             self.code_text.setPlainText(code)
             self.btn_save.setEnabled(True)
@@ -392,7 +671,7 @@ class AutoTemplateGeneratorDialog(QDialog):
 
         code = self.code_text.toPlainText()
         if not code:
-            QMessageBox.warning(self, "No Code", "Please generate template code first.")
+            QMessageBox.warning(self, "No Code", "Please generate or enter template code first.")
             return
 
         # Validate name
@@ -420,7 +699,7 @@ class AutoTemplateGeneratorDialog(QDialog):
 
         # Save the template
         try:
-            with open(file_path, 'w') as f:
+            with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(code)
 
             QMessageBox.information(
@@ -429,6 +708,9 @@ class AutoTemplateGeneratorDialog(QDialog):
                 f"File: {file_path}\n\n"
                 "The template will be available after refreshing the templates list."
             )
+
+            # Refresh the templates list
+            self._load_templates()
 
             # Emit signal to notify parent
             self.template_created.emit(clean_name, str(file_path))
