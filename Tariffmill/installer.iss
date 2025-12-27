@@ -2,7 +2,7 @@
 ; Build with: iscc installer.iss
 
 #define MyAppName "TariffMill"
-#define MyAppVersion "0.96.1"
+#define MyAppVersion "0.96.2"
 #define MyAppPublisher "TariffMill"
 #define MyAppExeName "TariffMill.exe"
 
@@ -41,6 +41,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 ; Resources directory (includes databases, icons, etc.)
 Source: "Resources\*"; DestDir: "{app}\Resources"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Templates directory (invoice templates)
+Source: "templates\*"; DestDir: "{app}\templates"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
