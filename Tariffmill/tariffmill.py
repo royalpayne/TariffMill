@@ -11,7 +11,7 @@
 # reproduction, distribution, or disclosure of this software, in whole or in
 # part, is strictly prohibited.
 #
-# This software is licensed, not sold. Use of this software is subject to the
+# This software is l icensed, not sold. Use of this software is subject to the
 # End User License Agreement (EULA) provided with this software.
 #
 # NO WARRANTY: This software is provided "as is" without warranty of any kind,
@@ -4644,8 +4644,8 @@ class TariffMill(QMainWindow):
         # Apply saved highlight color for this theme
         self.apply_highlight_color()
 
-        # Refresh OCRMill templates list styling for new theme
-        if hasattr(self, 'ocrmill_templates_list'):
+        # Refresh OCRMill templates table styling for new theme
+        if hasattr(self, 'ocrmill_templates_table'):
             self._apply_templates_list_style()
             self.ocrmill_refresh_templates()
 
@@ -5652,106 +5652,111 @@ class TariffMill(QMainWindow):
         return "dark"
 
     def _apply_templates_list_style(self):
-        """Apply theme-specific styling to the templates list widget."""
+        """Apply theme-specific styling to the templates table widget."""
         theme = self._detect_current_theme()
 
         if theme == "light_cyan":
-            self.ocrmill_templates_list.setStyleSheet("""
-                QListWidget {
+            self.ocrmill_templates_table.setStyleSheet("""
+                QTableWidget {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 #ffffff, stop:1 #e8f4f6);
                     border: 1px solid #b8d4dc;
                     border-radius: 8px;
-                    padding: 8px;
+                    gridline-color: #d0e8ec;
                     font-size: 13px;
                 }
-                QListWidget::item {
-                    padding: 10px 12px;
-                    margin: 3px 4px;
-                    border-radius: 6px;
+                QTableWidget::item {
+                    padding: 8px;
                     background-color: #f0f9fa;
-                    border: 1px solid #d0e8ec;
                 }
-                QListWidget::item:alternate {
+                QTableWidget::item:alternate {
                     background-color: #e0f2f4;
                 }
-                QListWidget::item:selected {
+                QTableWidget::item:selected {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 #00b4d8, stop:1 #0096c7);
                     color: #ffffff;
-                    border: 1px solid #0077b6;
                 }
-                QListWidget::item:hover:!selected {
+                QTableWidget::item:hover:!selected {
                     background-color: #c8e8f0;
-                    border: 1px solid #90d0e0;
+                }
+                QHeaderView::section {
+                    background-color: #d0e8ec;
+                    padding: 6px;
+                    border: 1px solid #b8d4dc;
+                    font-weight: bold;
                 }
             """)
         elif theme == "ocean":
-            self.ocrmill_templates_list.setStyleSheet("""
-                QListWidget {
+            self.ocrmill_templates_table.setStyleSheet("""
+                QTableWidget {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 #1a3652, stop:1 #142840);
                     border: 1px solid #2a5070;
                     border-radius: 8px;
-                    padding: 8px;
+                    gridline-color: #285070;
                     font-size: 13px;
                 }
-                QListWidget::item {
-                    padding: 10px 12px;
-                    margin: 3px 4px;
-                    border-radius: 6px;
+                QTableWidget::item {
+                    padding: 8px;
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 #1e4060, stop:1 #183450);
-                    border: 1px solid #285070;
                 }
-                QListWidget::item:alternate {
+                QTableWidget::item:alternate {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 #1a3856, stop:1 #152e46);
                 }
-                QListWidget::item:selected {
+                QTableWidget::item:selected {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 #00b4d8, stop:1 #0090b0);
                     color: #ffffff;
-                    border: 1px solid #00d0f0;
                 }
-                QListWidget::item:hover:!selected {
+                QTableWidget::item:hover:!selected {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 #245070, stop:1 #1e4260);
-                    border: 1px solid #3070a0;
+                }
+                QHeaderView::section {
+                    background-color: #1e4060;
+                    padding: 6px;
+                    border: 1px solid #285070;
+                    font-weight: bold;
+                    color: #e0e0e0;
                 }
             """)
         else:  # Dark theme (neutral grays)
-            self.ocrmill_templates_list.setStyleSheet("""
-                QListWidget {
+            self.ocrmill_templates_table.setStyleSheet("""
+                QTableWidget {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 #383838, stop:1 #2a2a2a);
                     border: 1px solid #505050;
                     border-radius: 8px;
-                    padding: 8px;
+                    gridline-color: #505050;
                     font-size: 13px;
                 }
-                QListWidget::item {
-                    padding: 10px 12px;
-                    margin: 3px 4px;
-                    border-radius: 6px;
+                QTableWidget::item {
+                    padding: 8px;
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 #454545, stop:1 #3a3a3a);
-                    border: 1px solid #555555;
                 }
-                QListWidget::item:alternate {
+                QTableWidget::item:alternate {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 #404040, stop:1 #353535);
                 }
-                QListWidget::item:selected {
+                QTableWidget::item:selected {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 #0078d4, stop:1 #0060b0);
                     color: #ffffff;
-                    border: 1px solid #0090f0;
                 }
-                QListWidget::item:hover:!selected {
+                QTableWidget::item:hover:!selected {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 #505050, stop:1 #454545);
-                    border: 1px solid #606060;
+                }
+                QHeaderView::section {
+                    background-color: #454545;
+                    padding: 6px;
+                    border: 1px solid #505050;
+                    font-weight: bold;
+                    color: #e0e0e0;
                 }
             """)
 
@@ -10707,21 +10712,41 @@ EXPORT DETAILS
 
         self.ocrmill_tabs.addTab(history_widget, "Parts History")
 
-        # ===== TAB 3: TEMPLATES =====
+        # ===== TAB 3: AI TEMPLATE GENERATOR (replaces old Templates tab) =====
         templates_widget = QWidget()
         templates_layout = QVBoxLayout(templates_widget)
 
-        templates_label = QLabel("Available Invoice Templates:")
+        # Header
+        templates_label = QLabel("AI Template Generator")
         templates_label.setStyleSheet("font-weight: bold; font-size: 14px; padding: 5px;")
         templates_layout.addWidget(templates_label)
 
-        self.ocrmill_templates_list = QListWidget()
-        # Apply theme-aware styling using palette detection
-        self._apply_templates_list_style()
-        self.ocrmill_templates_list.setAlternatingRowColors(True)
-        templates_layout.addWidget(self.ocrmill_templates_list, 1)
+        desc_label = QLabel("Manage OCR templates. Select a template to edit, or use AI to generate new templates from sample invoices.")
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("color: #666; padding: 0 5px 10px 5px;")
+        templates_layout.addWidget(desc_label)
 
-        # Template buttons
+        # Template grid/table
+        self.ocrmill_templates_table = QTableWidget()
+        self.ocrmill_templates_table.setColumnCount(5)
+        self.ocrmill_templates_table.setHorizontalHeaderLabels([
+            "Template Name", "Supplier Name", "Client", "Country of Origin", "AI Agent"
+        ])
+        self.ocrmill_templates_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.ocrmill_templates_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.ocrmill_templates_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.ocrmill_templates_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.ocrmill_templates_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.ocrmill_templates_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.ocrmill_templates_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.ocrmill_templates_table.setAlternatingRowColors(True)
+        self.ocrmill_templates_table.doubleClicked.connect(self.ocrmill_edit_template)
+        templates_layout.addWidget(self.ocrmill_templates_table, 1)
+
+        # Store template data for reference
+        self.ocrmill_templates_data = []
+
+        # Template buttons - Row 1
         template_buttons_layout = QHBoxLayout()
 
         btn_smart_extractor = QPushButton("Smart Extractor")
@@ -11194,7 +11219,9 @@ EXPORT DETAILS
                 self.ocrmill_send_to_tariffmill()
 
     def ocrmill_refresh_templates(self):
-        """Refresh the templates list by re-scanning the templates directory."""
+        """Refresh the templates table by re-scanning the templates directory."""
+        import re as regex_module
+
         # Re-discover templates from disk
         try:
             from templates import refresh_templates
@@ -11205,72 +11232,92 @@ EXPORT DETAILS
         # Reload processor's template list
         self.ocrmill_processor.reload_templates()
 
-        # Re-apply theme-specific styling
-        self._apply_templates_list_style()
+        # Clear table and data
+        self.ocrmill_templates_table.setRowCount(0)
+        self.ocrmill_templates_data = []
 
-        self.ocrmill_templates_list.clear()
-        templates = self.ocrmill_processor.get_available_templates()
-
-        # Get current theme for text colors
-        theme = self._detect_current_theme()
-
-        # Templates directory for checking AI metadata
+        # Templates directory
         templates_dir = BASE_DIR / "templates"
+        if not templates_dir.exists():
+            return
 
-        for name, info in templates.items():
-            status = "Enabled" if info['enabled'] else "Disabled"
+        # Excluded files
+        excluded = {'__init__.py', 'base_template.py', 'sample_template.py', '__pycache__'}
 
-            # Check if this is an AI-generated template
-            ai_metadata_path = templates_dir / f"{name}.ai_meta.json"
-            is_ai_template = ai_metadata_path.exists()
-            ai_provider = ""
+        for file_path in sorted(templates_dir.glob("*.py")):
+            if file_path.name in excluded:
+                continue
 
-            if is_ai_template:
+            template_info = self._extract_template_info_from_file(file_path)
+            if template_info:
+                self.ocrmill_templates_data.append(template_info)
+                row = self.ocrmill_templates_table.rowCount()
+                self.ocrmill_templates_table.insertRow(row)
+
+                self.ocrmill_templates_table.setItem(row, 0, QTableWidgetItem(template_info['name']))
+                self.ocrmill_templates_table.setItem(row, 1, QTableWidgetItem(template_info['supplier']))
+                self.ocrmill_templates_table.setItem(row, 2, QTableWidgetItem(template_info['client']))
+                self.ocrmill_templates_table.setItem(row, 3, QTableWidgetItem(template_info['country']))
+                self.ocrmill_templates_table.setItem(row, 4, QTableWidgetItem(template_info['ai_agent']))
+
+    def _extract_template_info_from_file(self, file_path: Path) -> dict:
+        """Extract template metadata from a template file."""
+        import re as regex_module
+        try:
+            content = file_path.read_text(encoding='utf-8')
+
+            info = {
+                'file_path': str(file_path),
+                'file_name': file_path.stem,
+                'name': file_path.stem.replace('_', ' ').title(),
+                'supplier': '',
+                'client': '',
+                'country': '',
+                'ai_agent': ''
+            }
+
+            # Extract name
+            name_match = regex_module.search(r'^\s*name\s*=\s*["\'](.+?)["\']', content, regex_module.MULTILINE)
+            if name_match:
+                info['name'] = name_match.group(1)
+
+            # Extract description (often contains supplier info)
+            desc_match = regex_module.search(r'^\s*description\s*=\s*["\'](.+?)["\']', content, regex_module.MULTILINE)
+            if desc_match:
+                info['supplier'] = desc_match.group(1)
+
+            # Extract client
+            client_match = regex_module.search(r'^\s*client\s*=\s*["\'](.+?)["\']', content, regex_module.MULTILINE)
+            if client_match:
+                info['client'] = client_match.group(1)
+
+            # Try to extract country from docstring or content
+            docstring_match = regex_module.search(r'"""[\s\S]*?"""', content)
+            if docstring_match:
+                docstring = docstring_match.group(0).lower()
+                for pattern in ['china', 'india', 'usa', 'mexico', 'brazil', 'czech republic',
+                               'el salvador', 'taiwan', 'japan', 'korea', 'vietnam']:
+                    if pattern in docstring:
+                        info['country'] = pattern.upper()
+                        break
+
+            # Check for AI metadata file
+            ai_metadata_path = file_path.with_suffix('.ai_meta.json')
+            if ai_metadata_path.exists():
                 try:
                     import json
                     with open(ai_metadata_path, 'r', encoding='utf-8') as f:
                         metadata = json.load(f)
-                        ai_provider = metadata.get('provider', 'AI')
+                        info['ai_agent'] = metadata.get('provider', '')
+                        if metadata.get('model'):
+                            info['ai_agent'] += f" ({metadata.get('model')})"
                 except:
-                    ai_provider = "AI"
+                    info['ai_agent'] = 'AI'
 
-            # Add AI indicator to display name
-            if is_ai_template:
-                # Use emoji based on provider
-                if 'Anthropic' in ai_provider:
-                    ai_icon = "\U0001F916"  # Robot emoji for Anthropic/Claude
-                elif 'OpenAI' in ai_provider:
-                    ai_icon = "\U0001F4AC"  # Speech bubble for OpenAI
-                elif 'Ollama' in ai_provider:
-                    ai_icon = "\U0001F4BB"  # Computer for local Ollama
-                else:
-                    ai_icon = "\U0001F916"  # Default robot
-                display_name = f"{ai_icon} {info['name']} [{status}]"
-            else:
-                display_name = f"{info['name']} [{status}]"
+            return info
 
-            item = QListWidgetItem(display_name)
-            item.setData(Qt.UserRole, name)  # Store template key
-            item.setData(Qt.UserRole + 1, is_ai_template)  # Store AI flag
-            item.setData(Qt.UserRole + 2, ai_provider)  # Store AI provider
-
-            # Use theme-specific colors
-            if info['enabled']:
-                if theme == "light_cyan":
-                    item.setForeground(QColor("#00796b"))  # Teal 700
-                elif theme == "ocean":
-                    item.setForeground(QColor("#4dd0e1"))  # Cyan 300 - bright on ocean blue
-                else:  # dark
-                    item.setForeground(QColor("#69f0ae"))  # Green A200 - bright on dark gray
-            else:
-                if theme == "light_cyan":
-                    item.setForeground(QColor("#90a4ae"))  # Blue grey 300
-                elif theme == "ocean":
-                    item.setForeground(QColor("#607d8b"))  # Blue grey 500
-                else:  # dark
-                    item.setForeground(QColor("#757575"))  # Grey 600
-
-            self.ocrmill_templates_list.addItem(item)
+        except Exception:
+            return None
 
     def ocrmill_open_smart_extractor(self):
         """Open the Smart Extractor dialog for extraction and template building."""
@@ -11388,61 +11435,20 @@ EXPORT DETAILS
 
     def ocrmill_edit_template(self):
         """Edit the selected template file"""
-        current_item = self.ocrmill_templates_list.currentItem()
-        if not current_item:
+        current_row = self.ocrmill_templates_table.currentRow()
+        if current_row < 0:
             QMessageBox.information(self, "No Selection", "Please select a template to edit.")
             return
 
-        template_key = current_item.data(Qt.UserRole)
-        is_ai_template = current_item.data(Qt.UserRole + 1)
-        logger.debug(f"Edit template - UserRole key: {template_key}, text: {current_item.text()}, is_ai: {is_ai_template}")
+        # Get template info from stored data
+        if current_row >= len(self.ocrmill_templates_data):
+            QMessageBox.warning(self, "Error", "Template data not found.")
+            return
 
-        if not template_key:
-            # Try to extract from text (remove emoji if present)
-            text = current_item.text()
-            # Remove emoji prefix if present
-            if text and ord(text[0]) > 127:
-                text = text[1:].strip()
-            template_name = text.split('[')[0].strip().lower().replace(' ', '_')
-            logger.debug(f"No UserRole key, derived name: {template_name}")
-        else:
-            template_name = template_key
+        template_info = self.ocrmill_templates_data[current_row]
+        template_path = Path(template_info['file_path'])
 
-        # Find template file
-        templates_dir = BASE_DIR / "templates"
-
-        # Try common naming patterns
-        possible_files = [
-            templates_dir / f"{template_name}.py",
-            templates_dir / f"{template_name.replace('mmcité', 'mmcite')}.py",
-            templates_dir / f"{template_name.replace(' ', '_')}.py",
-        ]
-
-        template_path = None
-        for path in possible_files:
-            logger.debug(f"Checking path: {path} - exists: {path.exists()}")
-            if path.exists():
-                template_path = path
-                break
-
-        # If not found, list available templates
-        if not template_path:
-            logger.debug(f"Template file not found automatically, showing selection dialog")
-            # List all .py files in templates dir
-            py_files = list(templates_dir.glob("*.py"))
-            file_names = [f.stem for f in py_files if f.stem not in ('__init__', 'base_template', 'sample_template')]
-
-            if file_names:
-                file_name, ok = QInputDialog.getItem(
-                    self, "Select Template File",
-                    f"Could not find template file for '{template_name}'.\nPlease select:",
-                    sorted(file_names), 0, False
-                )
-                if ok and file_name:
-                    template_path = templates_dir / f"{file_name}.py"
-            else:
-                QMessageBox.warning(self, "No Templates", "No template files found.")
-                return
+        logger.debug(f"Edit template - row: {current_row}, path: {template_path}")
 
         if template_path and template_path.exists():
             # Check if this is an AI-generated template
@@ -11520,56 +11526,25 @@ EXPORT DETAILS
 
     def ocrmill_delete_template(self):
         """Delete the selected template file"""
-        current_item = self.ocrmill_templates_list.currentItem()
-        if not current_item:
+        current_row = self.ocrmill_templates_table.currentRow()
+        if current_row < 0:
             QMessageBox.information(self, "No Selection", "Please select a template to delete.")
             return
 
-        template_key = current_item.data(Qt.UserRole)
-        if not template_key:
-            # Try to extract from text
-            template_name = current_item.text().split('[')[0].strip().lower().replace(' ', '_')
-        else:
-            template_name = template_key
+        # Get template info from stored data
+        if current_row >= len(self.ocrmill_templates_data):
+            QMessageBox.warning(self, "Error", "Template data not found.")
+            return
 
-        # Find template file
-        templates_dir = BASE_DIR / "templates"
-
-        # Try common naming patterns
-        possible_files = [
-            templates_dir / f"{template_name}.py",
-            templates_dir / f"{template_name.replace('mmcité', 'mmcite')}.py",
-            templates_dir / f"{template_name.replace(' ', '_')}.py",
-        ]
-
-        template_path = None
-        for path in possible_files:
-            if path.exists():
-                template_path = path
-                break
-
-        # If not found, list available templates
-        if not template_path:
-            py_files = list(templates_dir.glob("*.py"))
-            file_names = [f.stem for f in py_files if f.stem not in ('__init__', 'base_template')]
-
-            if file_names:
-                file_name, ok = QInputDialog.getItem(
-                    self, "Select Template File",
-                    "Could not auto-detect template file. Please select:",
-                    file_names, 0, False
-                )
-                if ok and file_name:
-                    template_path = templates_dir / f"{file_name}.py"
-            else:
-                QMessageBox.warning(self, "No Templates", "No template files found.")
-                return
+        template_info = self.ocrmill_templates_data[current_row]
+        template_path = Path(template_info['file_path'])
+        template_name = template_info['name']
 
         if template_path and template_path.exists():
             # Confirm deletion
             reply = QMessageBox.question(
                 self, "Confirm Delete",
-                f"Are you sure you want to delete the template:\n\n{template_path.name}\n\nThis action cannot be undone.",
+                f"Are you sure you want to delete the template:\n\n{template_name}\n({template_path.name})\n\nThis action cannot be undone.",
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No
             )
@@ -11577,9 +11552,13 @@ EXPORT DETAILS
             if reply == QMessageBox.Yes:
                 try:
                     template_path.unlink()
+                    # Also delete AI metadata file if exists
+                    ai_metadata_path = template_path.with_suffix('.ai_meta.json')
+                    if ai_metadata_path.exists():
+                        ai_metadata_path.unlink()
                     self.ocrmill_log(f"Deleted template: {template_path.name}")
                     self.ocrmill_refresh_templates()
-                    QMessageBox.information(self, "Deleted", f"Template '{template_path.name}' has been deleted.")
+                    QMessageBox.information(self, "Deleted", f"Template '{template_name}' has been deleted.")
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Failed to delete template:\n{str(e)}")
         else:
