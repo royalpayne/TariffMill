@@ -218,13 +218,25 @@ class UpdateChecker:
             self.release_url = data.get('html_url', GITHUB_RELEASES_URL)
             self.release_notes = data.get('body', 'No release notes available.')
             
-            # Find Windows executable download URL from assets
+            # Find Windows installer download URL from assets
+            # Prioritize Setup/Installer exe over standalone exe
             assets = data.get('assets', [])
+            standalone_url = None
             for asset in assets:
                 name = asset.get('name', '').lower()
-                if name.endswith('.exe') or 'windows' in name:
-                    self.download_url = asset.get('browser_download_url')
-                    break
+                if name.endswith('.exe'):
+                    url = asset.get('browser_download_url')
+                    # Prefer Setup installer
+                    if 'setup' in name or 'installer' in name:
+                        self.download_url = url
+                        break
+                    else:
+                        # Keep standalone as fallback
+                        standalone_url = url
+
+            # Use standalone exe if no installer found
+            if not self.download_url and standalone_url:
+                self.download_url = standalone_url
             
             # Compare versions
             current_tuple = self.parse_version(self.current_version)
@@ -5403,7 +5415,7 @@ class TariffMill(QMainWindow):
         if download_url:
             download_btn = QPushButton("Download Update")
             download_btn.setStyleSheet(self.get_button_style("success"))
-            download_btn.clicked.connect(lambda: (webbrowser.open(download_url), dialog.accept()))
+            download_btn.clicked.connect(lambda: self._download_and_install_update(download_url, dialog))
             btn_layout.addWidget(download_btn)
 
         view_btn = QPushButton("View on GitHub")
@@ -5438,6 +5450,105 @@ class TariffMill(QMainWindow):
         # Run in background thread to not block startup
         thread = Thread(target=check_thread, daemon=True)
         thread.start()
+
+    def _download_and_install_update(self, download_url: str, dialog: QDialog):
+        """Download the update installer and run it."""
+        import tempfile
+        import subprocess
+        import urllib.request
+
+        dialog.accept()
+
+        # Create progress dialog
+        progress_dialog = QDialog(self)
+        progress_dialog.setWindowTitle("Downloading Update")
+        progress_dialog.setFixedSize(400, 120)
+        progress_layout = QVBoxLayout(progress_dialog)
+
+        progress_label = QLabel("Downloading update...")
+        progress_layout.addWidget(progress_label)
+
+        progress_bar = QProgressBar()
+        progress_bar.setRange(0, 100)
+        progress_layout.addWidget(progress_bar)
+
+        cancel_btn = QPushButton("Cancel")
+        progress_layout.addWidget(cancel_btn)
+
+        cancelled = [False]
+        cancel_btn.clicked.connect(lambda: cancelled.__setitem__(0, True))
+        cancel_btn.clicked.connect(progress_dialog.reject)
+
+        progress_dialog.show()
+        QApplication.processEvents()
+
+        try:
+            # Extract filename from URL
+            filename = download_url.split('/')[-1]
+            if not filename.endswith('.exe'):
+                filename = 'TariffMill_Setup.exe'
+
+            # Download to temp directory
+            temp_dir = tempfile.gettempdir()
+            temp_path = Path(temp_dir) / filename
+
+            # Download with progress
+            request = urllib.request.Request(
+                download_url,
+                headers={'User-Agent': f'TariffMill/{VERSION}'}
+            )
+
+            with urllib.request.urlopen(request, timeout=60) as response:
+                total_size = int(response.headers.get('content-length', 0))
+                downloaded = 0
+                block_size = 8192
+
+                with open(temp_path, 'wb') as f:
+                    while True:
+                        if cancelled[0]:
+                            progress_dialog.close()
+                            return
+
+                        chunk = response.read(block_size)
+                        if not chunk:
+                            break
+
+                        f.write(chunk)
+                        downloaded += len(chunk)
+
+                        if total_size > 0:
+                            percent = int(downloaded * 100 / total_size)
+                            progress_bar.setValue(percent)
+                            progress_label.setText(f"Downloading... {downloaded // 1024 // 1024} MB / {total_size // 1024 // 1024} MB")
+
+                        QApplication.processEvents()
+
+            progress_dialog.close()
+
+            # Ask user to confirm installation
+            reply = QMessageBox.question(
+                self, "Install Update",
+                f"Download complete!\n\nDo you want to install the update now?\n\n"
+                f"The application will close and the installer will start.",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+
+            if reply == QMessageBox.Yes:
+                # Run the installer and exit
+                logger.info(f"Starting installer: {temp_path}")
+                subprocess.Popen([str(temp_path)], shell=True)
+                # Exit the application
+                QApplication.quit()
+
+        except Exception as e:
+            progress_dialog.close()
+            QMessageBox.critical(
+                self, "Download Failed",
+                f"Failed to download update:\n\n{str(e)}\n\n"
+                f"Please download manually from GitHub."
+            )
+            logger.error(f"Update download failed: {e}")
 
     def show_license_dialog(self):
         """Show the license activation dialog"""
