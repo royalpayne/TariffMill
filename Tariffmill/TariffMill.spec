@@ -1,10 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 
+# Python 3.14 base installation directory (not venv)
+PYTHON_BASE = r'C:\Users\payne\AppData\Local\Python\pythoncore-3.14-64'
 
 a = Analysis(
     ['tariffmill.py'],
     pathex=[],
-    binaries=[],
+    binaries=[
+        # Bundle Visual C++ Runtime DLLs for Python 3.14
+        (os.path.join(PYTHON_BASE, 'vcruntime140.dll'), '.'),
+        (os.path.join(PYTHON_BASE, 'vcruntime140_1.dll'), '.'),
+    ],
     datas=[('Resources', 'Resources')],
     hiddenimports=['pdfplumber', 'pdfplumber.utils', 'pdfminer', 'pdfminer.high_level', 'pdfminer.layout', 'pdfminer.pdfparser', 'pdfminer.pdfdocument', 'pdfminer.pdfpage', 'pdfminer.pdfinterp', 'pdfminer.converter', 'pdfminer.cmapdb', 'pdfminer.psparser', 'PIL', 'PIL.Image'],
     hookspath=[],
