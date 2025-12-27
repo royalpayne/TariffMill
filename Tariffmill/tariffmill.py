@@ -630,15 +630,21 @@ def check_and_perform_self_update():
 
 def perform_update(source_exe, target_exe):
     """
-    Perform the update by copying source to target.
+    Perform the update by copying source folder to target folder.
+    For PyInstaller directory-mode, copies entire folder including _internal.
     Uses a batch script to complete the copy after we exit.
     Returns True if update initiated (caller should exit).
     """
     import tempfile
 
+    source_exe = Path(source_exe)
+    target_exe = Path(target_exe)
+    source_dir = source_exe.parent
+    target_dir = target_exe.parent
+
     # Create a batch script that will:
     # 1. Wait for this process to exit
-    # 2. Copy the new exe over the old one
+    # 2. Copy the entire source folder to target (including _internal)
     # 3. Launch the updated exe
     # 4. Delete itself
 
@@ -646,10 +652,25 @@ def perform_update(source_exe, target_exe):
 :: Wait for the updater process to exit
 timeout /t 2 /nobreak >nul
 
+:: Remove old _internal folder if it exists
+if exist "{target_dir}\\_internal" (
+    rmdir /s /q "{target_dir}\\_internal"
+)
+
+:: Copy the new _internal folder
+if exist "{source_dir}\\_internal" (
+    xcopy /E /I /Y "{source_dir}\\_internal" "{target_dir}\\_internal"
+    if errorlevel 1 (
+        echo Update failed - could not copy _internal folder
+        pause
+        exit /b 1
+    )
+)
+
 :: Copy the new exe
 copy /Y "{source_exe}" "{target_exe}"
 if errorlevel 1 (
-    echo Update failed - could not copy file
+    echo Update failed - could not copy exe file
     pause
     exit /b 1
 )
