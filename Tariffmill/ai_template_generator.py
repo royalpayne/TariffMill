@@ -7,7 +7,9 @@ The AI analyzes sample invoice text and generates a complete template class.
 
 import os
 import re
+import sys
 import json
+import subprocess
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any
@@ -21,6 +23,92 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QThread
 from PyQt5.QtGui import QFont
+
+
+def _install_package(package_name: str, parent=None) -> bool:
+    """
+    Install a Python package using pip.
+    Returns True if installation succeeded, False otherwise.
+    """
+    try:
+        # Use the same Python executable that's running this script
+        python_exe = sys.executable
+
+        # Show progress dialog
+        progress = QMessageBox(parent)
+        progress.setWindowTitle("Installing Package")
+        progress.setText(f"Installing {package_name}...")
+        progress.setStandardButtons(QMessageBox.NoButton)
+        progress.show()
+        QApplication.processEvents()
+
+        # Run pip install
+        result = subprocess.run(
+            [python_exe, "-m", "pip", "install", package_name],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+
+        progress.close()
+
+        if result.returncode == 0:
+            QMessageBox.information(
+                parent, "Installation Successful",
+                f"The {package_name} package has been installed successfully.\n\n"
+                "Please restart the application to use this feature."
+            )
+            return True
+        else:
+            QMessageBox.critical(
+                parent, "Installation Failed",
+                f"Failed to install {package_name}:\n\n{result.stderr}"
+            )
+            return False
+
+    except subprocess.TimeoutExpired:
+        QMessageBox.critical(
+            parent, "Installation Timeout",
+            f"Installation of {package_name} timed out.\n"
+            "Please try installing manually:\n  pip install " + package_name
+        )
+        return False
+    except Exception as e:
+        QMessageBox.critical(
+            parent, "Installation Error",
+            f"Error installing {package_name}:\n\n{str(e)}"
+        )
+        return False
+
+
+def _check_and_install_package(package_name: str, import_name: str = None, parent=None) -> bool:
+    """
+    Check if a package is installed, and offer to install if not.
+    Returns True if package is available (installed or just installed), False otherwise.
+    """
+    if import_name is None:
+        import_name = package_name
+
+    try:
+        __import__(import_name)
+        return True
+    except ImportError:
+        # Show dialog with install option
+        msg_box = QMessageBox(parent)
+        msg_box.setWindowTitle("Package Not Installed")
+        msg_box.setIcon(QMessageBox.Warning)
+        msg_box.setText(f"The {package_name} package is not installed.")
+        msg_box.setInformativeText("Would you like to install it now?")
+
+        install_btn = msg_box.addButton("Install Now", QMessageBox.AcceptRole)
+        msg_box.addButton("Cancel", QMessageBox.RejectRole)
+
+        msg_box.exec_()
+
+        if msg_box.clickedButton() == install_btn:
+            return _install_package(package_name, parent)
+
+        return False
 
 # Base directory for templates
 BASE_DIR = Path(__file__).parent
@@ -262,7 +350,9 @@ Generate the complete, working Python template code:
 
     def _call_openai(self, prompt: str) -> str:
         """Call OpenAI API."""
-        if not HAS_OPENAI:
+        try:
+            import openai
+        except ImportError:
             raise ImportError("openai package not installed. Run: pip install openai")
 
         client = openai.OpenAI(api_key=self.api_key)
@@ -279,7 +369,9 @@ Generate the complete, working Python template code:
 
     def _call_anthropic(self, prompt: str) -> str:
         """Call Anthropic API."""
-        if not HAS_ANTHROPIC:
+        try:
+            import anthropic
+        except ImportError:
             raise ImportError("anthropic package not installed. Run: pip install anthropic")
 
         client = anthropic.Anthropic(api_key=self.api_key)
@@ -794,9 +886,11 @@ class AITemplateGeneratorDialog(QDialog):
 
         elif provider == "OpenAI":
             # Check if openai package is installed
-            if not HAS_OPENAI:
+            try:
+                import openai
+            except ImportError:
                 self.status_indicator.setStyleSheet("color: #e74c3c; font-size: 16px; font-weight: bold;")
-                self.status_label.setText("Package not installed - Run: pip install openai")
+                self.status_label.setText("Package not installed - click Generate to install")
                 self.status_label.setStyleSheet("color: #e74c3c;")
                 return
 
@@ -817,9 +911,11 @@ class AITemplateGeneratorDialog(QDialog):
 
         elif provider == "Anthropic":
             # Check if anthropic package is installed
-            if not HAS_ANTHROPIC:
+            try:
+                import anthropic
+            except ImportError:
                 self.status_indicator.setStyleSheet("color: #e74c3c; font-size: 16px; font-weight: bold;")
-                self.status_label.setText("Package not installed - Run: pip install anthropic")
+                self.status_label.setText("Package not installed - click Generate to install")
                 self.status_label.setStyleSheet("color: #e74c3c;")
                 return
 
@@ -971,21 +1067,13 @@ class AITemplateGeneratorDialog(QDialog):
         api_key = self.api_key_edit.text().strip()
 
         # Check if required package is installed
-        if provider == "OpenAI" and not HAS_OPENAI:
-            QMessageBox.warning(
-                self, "Package Not Installed",
-                "The OpenAI package is not installed.\n\n"
-                "Install it with:\n  pip install openai"
-            )
-            return
+        if provider == "OpenAI":
+            if not _check_and_install_package("openai", parent=self):
+                return
 
-        if provider == "Anthropic" and not HAS_ANTHROPIC:
-            QMessageBox.warning(
-                self, "Package Not Installed",
-                "The Anthropic package is not installed.\n\n"
-                "Install it with:\n  pip install anthropic"
-            )
-            return
+        if provider == "Anthropic":
+            if not _check_and_install_package("anthropic", parent=self):
+                return
 
         if provider in ["OpenAI", "Anthropic"] and not api_key:
             QMessageBox.warning(self, "Missing API Key", f"Please enter your {provider} API key.")
@@ -1155,16 +1243,67 @@ class AITemplateGeneratorDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Failed to save template:\n{e}")
 
     def load_settings(self):
-        """Load saved settings (API keys, preferred provider)."""
-        # Try to load from environment variables first
-        if os.environ.get('OPENAI_API_KEY') and self.provider_combo.currentText() == "OpenAI":
+        """Load saved settings (API keys, preferred provider) from database."""
+        # Load default provider from database
+        default_provider = self._get_ai_setting_from_db('default_provider')
+        if default_provider:
+            idx = self.provider_combo.findText(default_provider)
+            if idx >= 0:
+                self.provider_combo.setCurrentIndex(idx)
+
+        # Load default model for current provider
+        current_provider = self.provider_combo.currentText()
+        if current_provider == "OpenAI":
+            default_model = self._get_ai_setting_from_db('openai_default_model')
+            if default_model:
+                idx = self.model_combo.findText(default_model)
+                if idx >= 0:
+                    self.model_combo.setCurrentIndex(idx)
+                else:
+                    self.model_combo.setCurrentText(default_model)
+        elif current_provider == "Anthropic":
+            default_model = self._get_ai_setting_from_db('anthropic_default_model')
+            if default_model:
+                idx = self.model_combo.findText(default_model)
+                if idx >= 0:
+                    self.model_combo.setCurrentIndex(idx)
+                else:
+                    self.model_combo.setCurrentText(default_model)
+        elif current_provider == "Ollama (Local)":
+            default_model = self._get_ai_setting_from_db('ollama_default_model')
+            if default_model:
+                idx = self.model_combo.findText(default_model)
+                if idx >= 0:
+                    self.model_combo.setCurrentIndex(idx)
+                else:
+                    self.model_combo.setCurrentText(default_model)
+
+        # Load API key - database first, then environment
+        saved_key = self._get_saved_api_key(current_provider.lower().replace(" (local)", "").replace(" ", ""))
+        if saved_key:
+            self.api_key_edit.setText(saved_key)
+        elif current_provider == "OpenAI" and os.environ.get('OPENAI_API_KEY'):
             self.api_key_edit.setText(os.environ['OPENAI_API_KEY'])
-        elif os.environ.get('ANTHROPIC_API_KEY') and self.provider_combo.currentText() == "Anthropic":
+        elif current_provider == "Anthropic" and os.environ.get('ANTHROPIC_API_KEY'):
             self.api_key_edit.setText(os.environ['ANTHROPIC_API_KEY'])
+
+    def _get_ai_setting_from_db(self, key: str) -> str:
+        """Get AI setting from database."""
+        try:
+            import sqlite3
+            db_path = BASE_DIR / "Resources" / "tariffmill.db"
+            conn = sqlite3.connect(str(db_path))
+            c = conn.cursor()
+            c.execute("SELECT value FROM app_config WHERE key = ?", (f'ai_{key}',))
+            row = c.fetchone()
+            conn.close()
+            return row[0] if row else ""
+        except Exception:
+            return ""
 
     def save_settings(self):
         """Save settings for next time."""
-        # Could save to a config file, but for now just keep in memory
+        # Settings are now saved when generation completes or in Configuration dialog
         pass
 
 
@@ -1238,7 +1377,9 @@ If the user asks a question, answer it and then provide the modified code if app
                 self.error.emit(str(e))
 
     def _call_openai(self, system_msg: str) -> str:
-        if not HAS_OPENAI:
+        try:
+            import openai
+        except ImportError:
             raise ImportError("openai package not installed")
 
         client = openai.OpenAI(api_key=self.api_key)
@@ -1257,7 +1398,9 @@ If the user asks a question, answer it and then provide the modified code if app
         return response.choices[0].message.content
 
     def _call_anthropic(self, system_msg: str) -> str:
-        if not HAS_ANTHROPIC:
+        try:
+            import anthropic
+        except ImportError:
             raise ImportError("anthropic package not installed")
 
         client = anthropic.Anthropic(api_key=self.api_key)
@@ -1629,7 +1772,7 @@ class AITemplateChatDialog(QDialog):
             return f'''
             <div style="margin: 12px 0; text-align: left;">
                 <div style="display: inline-block; max-width: 85%; text-align: left;">
-                    <div style="color: #808080; font-size: 9px; margin-bottom: 4px;">🤖 AI Assistant</div>
+                    <div style="color: #808080; font-size: 9px; margin-bottom: 4px;">AI Assistant</div>
                     <div style="background-color: #2d2d2d; color: #e0e0e0; padding: 10px 14px; border-radius: 12px 12px 12px 4px; border: 1px solid #404040;">
                         <p style="margin: 0; line-height: 1.6;">{formatted}</p>
                     </div>
@@ -1824,7 +1967,7 @@ class AITemplateEditorDialog(QDialog):
         # AI indicator
         if self.is_ai_template:
             provider = self.metadata.get('provider', '')
-            ai_badge = QLabel(f"🤖 AI Generated ({provider})")
+            ai_badge = QLabel(f"AI Generated ({provider})")
             ai_badge.setStyleSheet("color: #4ec9b0; font-size: 11px; padding: 2px 8px; background-color: #1e3a1e; border-radius: 4px;")
             header_layout.addWidget(ai_badge)
 
@@ -2207,7 +2350,7 @@ class AITemplateEditorDialog(QDialog):
             return f'''
             <div style="margin: 12px 0; text-align: left;">
                 <div style="display: inline-block; max-width: 85%; text-align: left;">
-                    <div style="color: #808080; font-size: 9px; margin-bottom: 4px;">🤖 AI Assistant</div>
+                    <div style="color: #808080; font-size: 9px; margin-bottom: 4px;">AI Assistant</div>
                     <div style="background-color: #2d2d2d; color: #e0e0e0; padding: 10px 14px; border-radius: 12px 12px 12px 4px; border: 1px solid #404040;">
                         <p style="margin: 0; line-height: 1.6;">{formatted}</p>
                     </div>

@@ -19,10 +19,18 @@ from .base_template import BaseTemplate
 import sys
 from pathlib import Path
 
-# Add parent directory to path for imports
-parent_dir = Path(__file__).parent.parent
-if str(parent_dir) not in sys.path:
-    sys.path.insert(0, str(parent_dir))
+# Add parent directory to path for imports - handle case where __file__ is not defined
+try:
+    parent_dir = Path(__file__).parent.parent
+    if str(parent_dir) not in sys.path:
+        sys.path.insert(0, str(parent_dir))
+except NameError:
+    # __file__ not defined (e.g., when running with exec)
+    # Try to find the parent directory through sys.path
+    current_path = Path.cwd()
+    parent_dir = current_path.parent if 'Tariffmill' in current_path.name else current_path
+    if str(parent_dir) not in sys.path:
+        sys.path.insert(0, str(parent_dir))
 
 try:
     from smart_extractor import SmartExtractor, ExtractionResult

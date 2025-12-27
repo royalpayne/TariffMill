@@ -3756,6 +3756,11 @@ class TariffMill(QMainWindow):
         self.setup_billing_tab(tab_billing)
         tabs.addTab(tab_billing, "Billing")
 
+        # Add AI Agents tab
+        tab_ai_agents = QWidget()
+        self.setup_ai_agents_tab(tab_ai_agents)
+        tabs.addTab(tab_ai_agents, "AI Agents")
+
         # Set initial tab if specified
         if initial_tab > 0 and initial_tab < tabs.count():
             tabs.setCurrentIndex(initial_tab)
@@ -3972,7 +3977,7 @@ class TariffMill(QMainWindow):
         
         # Use local variable instead of instance variable
         theme_combo = QComboBox()
-        theme_combo.addItems(["System Default", "Fusion (Light)", "Windows", "Fusion (Dark)", "Ocean", "Light Cyan"])
+        theme_combo.addItems(["System Default", "Fusion (Light)", "macOS", "Fusion (Dark)", "Ocean", "Light Cyan"])
         
         # Load saved theme preference from per-user settings
         saved_theme = get_user_setting('theme', 'Fusion (Light)')
@@ -4544,9 +4549,10 @@ class TariffMill(QMainWindow):
         elif theme_name == "Fusion (Light)":
             app.setStyle("Fusion")
             app.setPalette(app.style().standardPalette())
-        elif theme_name == "Windows":
-            app.setStyle("Windows")
-            app.setPalette(app.style().standardPalette())
+        elif theme_name == "macOS":
+            app.setStyle("Fusion")
+            macos_palette = self.get_macos_palette()
+            app.setPalette(macos_palette)
         elif theme_name == "Fusion (Dark)":
             app.setStyle("Fusion")
             dark_palette = self.get_dark_palette()
@@ -4985,6 +4991,232 @@ class TariffMill(QMainWindow):
                 QMenuBar::item:selected {
                     background: #505050;
                     border-radius: 4px;
+                }
+            """)
+        elif theme_name == "macOS":
+            # macOS-inspired theme - clean, minimal Apple aesthetic
+            app.setStyleSheet("""
+                QGroupBox {
+                    font-weight: normal;
+                    border: 1px solid #d1d1d6;
+                    border-radius: 10px;
+                    margin-top: 12px;
+                    padding-top: 10px;
+                    background-color: #ffffff;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    subcontrol-position: top left;
+                    left: 12px;
+                    padding: 2px 8px;
+                    color: #1d1d1f;
+                    background: #f6f6f6;
+                    border-radius: 5px;
+                }
+                QTabWidget::pane {
+                    border: 1px solid #d1d1d6;
+                    border-radius: 10px;
+                    background: #ffffff;
+                }
+                QTabBar::tab {
+                    background: #f5f5f7;
+                    color: #1d1d1f;
+                    padding: 8px 16px;
+                    border: 1px solid #d1d1d6;
+                    border-bottom: none;
+                    border-top-left-radius: 8px;
+                    border-top-right-radius: 8px;
+                    margin-right: 2px;
+                }
+                QTabBar::tab:selected {
+                    background: #ffffff;
+                    color: #007aff;
+                    border-bottom: 2px solid #007aff;
+                }
+                QTabBar::tab:hover:!selected {
+                    background: #e8e8ed;
+                }
+                QLineEdit, QSpinBox, QDoubleSpinBox {
+                    background: #ffffff;
+                    color: #1d1d1f;
+                    border: 1px solid #d1d1d6;
+                    border-radius: 6px;
+                    padding: 6px 10px;
+                    selection-background-color: #007aff;
+                    selection-color: #ffffff;
+                }
+                QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+                    border: 2px solid #007aff;
+                }
+                QComboBox {
+                    background: #ffffff;
+                    color: #1d1d1f;
+                    border: 1px solid #d1d1d6;
+                    border-radius: 6px;
+                    padding: 6px 10px;
+                    padding-right: 25px;
+                }
+                QComboBox:focus {
+                    border: 2px solid #007aff;
+                }
+                QComboBox::drop-down {
+                    border: none;
+                    width: 20px;
+                }
+                QComboBox::down-arrow {
+                    image: none;
+                    border-left: 5px solid transparent;
+                    border-right: 5px solid transparent;
+                    border-top: 6px solid #8e8e93;
+                    margin-right: 5px;
+                }
+                QComboBox QAbstractItemView {
+                    background-color: #ffffff;
+                    color: #1d1d1f;
+                    selection-background-color: #007aff;
+                    selection-color: #ffffff;
+                    border: 1px solid #d1d1d6;
+                    border-radius: 8px;
+                }
+                QListWidget {
+                    background: #ffffff;
+                    color: #1d1d1f;
+                    border: 1px solid #d1d1d6;
+                    border-radius: 8px;
+                    alternate-background-color: #f9f9f9;
+                }
+                QListWidget::item {
+                    padding: 6px;
+                    border-radius: 6px;
+                }
+                QListWidget::item:selected {
+                    background: #007aff;
+                    color: #ffffff;
+                }
+                QListWidget::item:hover:!selected {
+                    background: #f5f5f7;
+                }
+                QPushButton {
+                    background: #ffffff;
+                    color: #007aff;
+                    border: 1px solid #007aff;
+                    border-radius: 6px;
+                    padding: 6px 16px;
+                    font-weight: normal;
+                }
+                QPushButton:hover {
+                    background: #007aff;
+                    color: #ffffff;
+                }
+                QPushButton:pressed {
+                    background: #005ec4;
+                    color: #ffffff;
+                }
+                QScrollBar:vertical {
+                    background: #f6f6f6;
+                    width: 10px;
+                    border-radius: 5px;
+                }
+                QScrollBar::handle:vertical {
+                    background: #c7c7cc;
+                    border-radius: 4px;
+                    min-height: 30px;
+                    margin: 2px;
+                }
+                QScrollBar::handle:vertical:hover {
+                    background: #aeaeb2;
+                }
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                    height: 0px;
+                }
+                QScrollBar:horizontal {
+                    background: #f6f6f6;
+                    height: 10px;
+                    border-radius: 5px;
+                }
+                QScrollBar::handle:horizontal {
+                    background: #c7c7cc;
+                    border-radius: 4px;
+                    min-width: 30px;
+                    margin: 2px;
+                }
+                QScrollBar::handle:horizontal:hover {
+                    background: #aeaeb2;
+                }
+                QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+                    width: 0px;
+                }
+                QHeaderView::section {
+                    background: #f5f5f7;
+                    color: #1d1d1f;
+                    padding: 8px;
+                    border: none;
+                    border-right: 1px solid #e5e5ea;
+                    border-bottom: 1px solid #d1d1d6;
+                    font-weight: 500;
+                }
+                QTableWidget {
+                    background-color: #ffffff;
+                    alternate-background-color: #f9f9f9;
+                    gridline-color: #e5e5ea;
+                    color: #1d1d1f;
+                    border: 1px solid #d1d1d6;
+                    border-radius: 8px;
+                }
+                QTableWidget::item:selected {
+                    background-color: #007aff;
+                    color: #ffffff;
+                }
+                QLabel {
+                    color: #1d1d1f;
+                }
+                QMenu {
+                    background-color: #ffffff;
+                    color: #1d1d1f;
+                    border: 1px solid #d1d1d6;
+                    border-radius: 8px;
+                    padding: 4px;
+                }
+                QMenu::item {
+                    padding: 6px 20px;
+                    border-radius: 4px;
+                }
+                QMenu::item:selected {
+                    background-color: #007aff;
+                    color: #ffffff;
+                }
+                QMenuBar {
+                    background: #f6f6f6;
+                    color: #1d1d1f;
+                    border-bottom: 1px solid #d1d1d6;
+                }
+                QMenuBar::item:selected {
+                    background: #007aff;
+                    color: #ffffff;
+                    border-radius: 4px;
+                }
+                QCheckBox::indicator {
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 4px;
+                    border: 1px solid #d1d1d6;
+                    background: #ffffff;
+                }
+                QCheckBox::indicator:checked {
+                    background: #007aff;
+                    border: 1px solid #007aff;
+                }
+                QRadioButton::indicator {
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 9px;
+                    border: 1px solid #d1d1d6;
+                    background: #ffffff;
+                }
+                QRadioButton::indicator:checked {
+                    background: #007aff;
+                    border: 5px solid #ffffff;
+                    outline: 1px solid #007aff;
                 }
             """)
         else:
@@ -6004,6 +6236,35 @@ class TariffMill(QMainWindow):
         palette.setColor(QPalette.Base, QColor(239, 249, 249))  # Result preview background (#EFF9F9)
         palette.setColor(QPalette.Mid, QColor(206, 243, 245))  # Light cyan for column headers (#CEF3F5)
 
+        return palette
+
+    def get_macos_palette(self):
+        """Create a macOS-inspired light palette with Apple's signature aesthetic"""
+        from PyQt5.QtGui import QPalette, QColor
+
+        # Get user's saved highlight color for this theme (Apple blue default)
+        highlight_color = get_theme_color('preview_highlight_color', '#007AFF', 'macOS')
+
+        palette = QPalette()
+        # macOS light mode colors - clean, minimal, professional
+        palette.setColor(QPalette.Window, QColor(246, 246, 246))  # Light gray background
+        palette.setColor(QPalette.WindowText, QColor(29, 29, 31))  # Near-black text
+        palette.setColor(QPalette.Base, QColor(255, 255, 255))  # Pure white for inputs
+        palette.setColor(QPalette.AlternateBase, QColor(244, 244, 244))  # Subtle alternating
+        palette.setColor(QPalette.ToolTipBase, QColor(255, 255, 255))  # White tooltips
+        palette.setColor(QPalette.ToolTipText, QColor(29, 29, 31))  # Dark tooltip text
+        palette.setColor(QPalette.Text, QColor(29, 29, 31))  # Primary text
+        palette.setColor(QPalette.Button, QColor(255, 255, 255))  # White buttons
+        palette.setColor(QPalette.ButtonText, QColor(29, 29, 31))  # Dark button text
+        palette.setColor(QPalette.BrightText, QColor(255, 59, 48))  # Apple red for alerts
+        palette.setColor(QPalette.Link, QColor(0, 122, 255))  # Apple blue links
+        palette.setColor(QPalette.Highlight, QColor(highlight_color))  # Apple blue selection
+        palette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))  # White on selection
+        palette.setColor(QPalette.Light, QColor(255, 255, 255))  # White
+        palette.setColor(QPalette.Midlight, QColor(235, 235, 235))  # Light gray
+        palette.setColor(QPalette.Mid, QColor(209, 209, 214))  # macOS separator gray
+        palette.setColor(QPalette.Dark, QColor(199, 199, 204))  # Darker gray
+        palette.setColor(QPalette.Shadow, QColor(174, 174, 178))  # Shadow gray
         return palette
 
     def _detect_current_theme(self) -> str:
@@ -9903,6 +10164,412 @@ class TariffMill(QMainWindow):
             self.billing_admin_email.text()
         )
 
+    def setup_ai_agents_tab(self, tab_widget):
+        """Setup the AI Agents tab for the Configuration dialog."""
+        layout = QVBoxLayout(tab_widget)
+
+        # Title
+        title = QLabel("<h2>AI Agent Configuration</h2>")
+        layout.addWidget(title)
+
+        description = QLabel(
+            "Configure AI providers and API keys for the AI Template Generator and other AI features. "
+            "API keys are stored securely in the local database."
+        )
+        description.setWordWrap(True)
+        description.setStyleSheet("color: #666; margin-bottom: 10px;")
+        layout.addWidget(description)
+
+        # OpenAI Configuration
+        openai_group = QGroupBox("OpenAI")
+        openai_layout = QFormLayout()
+
+        self.ai_openai_api_key = QLineEdit()
+        self.ai_openai_api_key.setEchoMode(QLineEdit.Password)
+        self.ai_openai_api_key.setPlaceholderText("sk-...")
+        saved_openai_key = self._get_ai_api_key('openai')
+        if saved_openai_key:
+            self.ai_openai_api_key.setText(saved_openai_key)
+        openai_layout.addRow("API Key:", self.ai_openai_api_key)
+
+        self.ai_openai_model = QComboBox()
+        self.ai_openai_model.setEditable(True)
+        self.ai_openai_model.addItems(["gpt-4o", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo", "gpt-4o-mini"])
+        saved_openai_model = self._get_ai_setting('openai_default_model')
+        if saved_openai_model:
+            idx = self.ai_openai_model.findText(saved_openai_model)
+            if idx >= 0:
+                self.ai_openai_model.setCurrentIndex(idx)
+            else:
+                self.ai_openai_model.setCurrentText(saved_openai_model)
+        openai_layout.addRow("Default Model:", self.ai_openai_model)
+
+        # OpenAI status indicator
+        openai_status_layout = QHBoxLayout()
+        self.openai_status_indicator = QLabel("●")
+        self.openai_status_label = QLabel("Not configured")
+        openai_status_layout.addWidget(self.openai_status_indicator)
+        openai_status_layout.addWidget(self.openai_status_label)
+        openai_status_layout.addStretch()
+
+        btn_test_openai = QPushButton("Test Connection")
+        btn_test_openai.clicked.connect(lambda: self._test_ai_connection('openai'))
+        openai_status_layout.addWidget(btn_test_openai)
+        openai_layout.addRow("Status:", openai_status_layout)
+
+        openai_group.setLayout(openai_layout)
+        layout.addWidget(openai_group)
+
+        # Anthropic Configuration
+        anthropic_group = QGroupBox("Anthropic (Claude)")
+        anthropic_layout = QFormLayout()
+
+        self.ai_anthropic_api_key = QLineEdit()
+        self.ai_anthropic_api_key.setEchoMode(QLineEdit.Password)
+        self.ai_anthropic_api_key.setPlaceholderText("sk-ant-...")
+        saved_anthropic_key = self._get_ai_api_key('anthropic')
+        if saved_anthropic_key:
+            self.ai_anthropic_api_key.setText(saved_anthropic_key)
+        anthropic_layout.addRow("API Key:", self.ai_anthropic_api_key)
+
+        self.ai_anthropic_model = QComboBox()
+        self.ai_anthropic_model.setEditable(True)
+        self.ai_anthropic_model.addItems(["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"])
+        saved_anthropic_model = self._get_ai_setting('anthropic_default_model')
+        if saved_anthropic_model:
+            idx = self.ai_anthropic_model.findText(saved_anthropic_model)
+            if idx >= 0:
+                self.ai_anthropic_model.setCurrentIndex(idx)
+            else:
+                self.ai_anthropic_model.setCurrentText(saved_anthropic_model)
+        anthropic_layout.addRow("Default Model:", self.ai_anthropic_model)
+
+        # Anthropic status indicator
+        anthropic_status_layout = QHBoxLayout()
+        self.anthropic_status_indicator = QLabel("●")
+        self.anthropic_status_label = QLabel("Not configured")
+        anthropic_status_layout.addWidget(self.anthropic_status_indicator)
+        anthropic_status_layout.addWidget(self.anthropic_status_label)
+        anthropic_status_layout.addStretch()
+
+        btn_test_anthropic = QPushButton("Test Connection")
+        btn_test_anthropic.clicked.connect(lambda: self._test_ai_connection('anthropic'))
+        anthropic_status_layout.addWidget(btn_test_anthropic)
+        anthropic_layout.addRow("Status:", anthropic_status_layout)
+
+        anthropic_group.setLayout(anthropic_layout)
+        layout.addWidget(anthropic_group)
+
+        # Ollama (Local) Configuration
+        ollama_group = QGroupBox("Ollama (Local)")
+        ollama_layout = QFormLayout()
+
+        self.ai_ollama_url = QLineEdit()
+        self.ai_ollama_url.setPlaceholderText("http://localhost:11434")
+        saved_ollama_url = self._get_ai_setting('ollama_url')
+        self.ai_ollama_url.setText(saved_ollama_url if saved_ollama_url else "http://localhost:11434")
+        ollama_layout.addRow("Ollama URL:", self.ai_ollama_url)
+
+        self.ai_ollama_model = QComboBox()
+        self.ai_ollama_model.setEditable(True)
+        # Try to get available models from Ollama
+        ollama_models = self._get_ollama_models_list()
+        if ollama_models:
+            self.ai_ollama_model.addItems(ollama_models)
+        else:
+            self.ai_ollama_model.addItems(["llama3.1", "llama3", "codellama", "mistral", "mixtral", "deepseek-coder", "phi3"])
+        saved_ollama_model = self._get_ai_setting('ollama_default_model')
+        if saved_ollama_model:
+            idx = self.ai_ollama_model.findText(saved_ollama_model)
+            if idx >= 0:
+                self.ai_ollama_model.setCurrentIndex(idx)
+            else:
+                self.ai_ollama_model.setCurrentText(saved_ollama_model)
+        ollama_layout.addRow("Default Model:", self.ai_ollama_model)
+
+        # Ollama status indicator
+        ollama_status_layout = QHBoxLayout()
+        self.ollama_status_indicator = QLabel("●")
+        self.ollama_status_label = QLabel("Not checked")
+        ollama_status_layout.addWidget(self.ollama_status_indicator)
+        ollama_status_layout.addWidget(self.ollama_status_label)
+        ollama_status_layout.addStretch()
+
+        btn_refresh_ollama = QPushButton("Refresh Models")
+        btn_refresh_ollama.clicked.connect(self._refresh_ollama_models)
+        ollama_status_layout.addWidget(btn_refresh_ollama)
+
+        btn_test_ollama = QPushButton("Test Connection")
+        btn_test_ollama.clicked.connect(lambda: self._test_ai_connection('ollama'))
+        ollama_status_layout.addWidget(btn_test_ollama)
+        ollama_layout.addRow("Status:", ollama_status_layout)
+
+        ollama_group.setLayout(ollama_layout)
+        layout.addWidget(ollama_group)
+
+        # Default Provider Selection
+        default_group = QGroupBox("Default Settings")
+        default_layout = QFormLayout()
+
+        self.ai_default_provider = QComboBox()
+        self.ai_default_provider.addItems(["OpenAI", "Anthropic", "Ollama (Local)"])
+        saved_default_provider = self._get_ai_setting('default_provider')
+        if saved_default_provider:
+            idx = self.ai_default_provider.findText(saved_default_provider)
+            if idx >= 0:
+                self.ai_default_provider.setCurrentIndex(idx)
+        default_layout.addRow("Default Provider:", self.ai_default_provider)
+
+        default_group.setLayout(default_layout)
+        layout.addWidget(default_group)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        btn_save = QPushButton("Save AI Settings")
+        btn_save.setStyleSheet(self.get_button_style("primary"))
+        btn_save.clicked.connect(self._save_ai_settings)
+        btn_layout.addWidget(btn_save)
+
+        layout.addLayout(btn_layout)
+        layout.addStretch()
+
+        # Update status indicators
+        self._update_ai_status_indicators()
+
+    def _get_ai_api_key(self, provider: str) -> str:
+        """Get saved AI API key from database."""
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+            c.execute("SELECT value FROM app_config WHERE key = ?", (f'api_key_{provider}',))
+            row = c.fetchone()
+            conn.close()
+            return row[0] if row else ""
+        except Exception:
+            return ""
+
+    def _save_ai_api_key(self, provider: str, api_key: str):
+        """Save AI API key to database."""
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+            c.execute("""CREATE TABLE IF NOT EXISTS app_config (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )""")
+            c.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)",
+                     (f'api_key_{provider}', api_key))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Failed to save AI API key: {e}")
+
+    def _get_ai_setting(self, key: str) -> str:
+        """Get AI setting from database."""
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+            c.execute("SELECT value FROM app_config WHERE key = ?", (f'ai_{key}',))
+            row = c.fetchone()
+            conn.close()
+            return row[0] if row else ""
+        except Exception:
+            return ""
+
+    def _save_ai_setting(self, key: str, value: str):
+        """Save AI setting to database."""
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+            c.execute("""CREATE TABLE IF NOT EXISTS app_config (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )""")
+            c.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)",
+                     (f'ai_{key}', value))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Failed to save AI setting: {e}")
+
+    def _get_ollama_models_list(self) -> list:
+        """Get list of available Ollama models."""
+        try:
+            import urllib.request
+            import json
+            url = self._get_ai_setting('ollama_url') or "http://localhost:11434"
+            request = urllib.request.Request(f"{url}/api/tags", method='GET')
+            request.add_header('Content-Type', 'application/json')
+            with urllib.request.urlopen(request, timeout=5) as response:
+                data = json.loads(response.read().decode())
+                return [model['name'] for model in data.get('models', [])]
+        except Exception:
+            return []
+
+    def _refresh_ollama_models(self):
+        """Refresh the Ollama models list."""
+        models = self._get_ollama_models_list()
+        if models:
+            current = self.ai_ollama_model.currentText()
+            self.ai_ollama_model.clear()
+            self.ai_ollama_model.addItems(models)
+            # Restore selection if still available
+            idx = self.ai_ollama_model.findText(current)
+            if idx >= 0:
+                self.ai_ollama_model.setCurrentIndex(idx)
+            QMessageBox.information(self, "Ollama Models", f"Found {len(models)} models:\n" + "\n".join(models[:10]))
+        else:
+            QMessageBox.warning(self, "Ollama", "Could not connect to Ollama or no models found.\n\nMake sure Ollama is running.")
+
+    def _test_ai_connection(self, provider: str):
+        """Test connection to AI provider."""
+        try:
+            if provider == 'openai':
+                api_key = self.ai_openai_api_key.text().strip()
+                if not api_key:
+                    QMessageBox.warning(self, "Test Failed", "Please enter an OpenAI API key.")
+                    return
+                # Test with a simple API call
+                import urllib.request
+                import json
+                request = urllib.request.Request(
+                    "https://api.openai.com/v1/models",
+                    headers={
+                        'Authorization': f'Bearer {api_key}',
+                        'Content-Type': 'application/json'
+                    }
+                )
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    data = json.loads(response.read().decode())
+                    model_count = len(data.get('data', []))
+                    QMessageBox.information(self, "Connection Successful",
+                        f"Successfully connected to OpenAI API.\n{model_count} models available.")
+                    self.openai_status_indicator.setStyleSheet("color: #27ae60; font-size: 16px; font-weight: bold;")
+                    self.openai_status_label.setText("Connected")
+                    self.openai_status_label.setStyleSheet("color: #27ae60;")
+
+            elif provider == 'anthropic':
+                api_key = self.ai_anthropic_api_key.text().strip()
+                if not api_key:
+                    QMessageBox.warning(self, "Test Failed", "Please enter an Anthropic API key.")
+                    return
+                # Test by checking key format (Anthropic doesn't have a simple models endpoint)
+                if api_key.startswith('sk-ant-'):
+                    QMessageBox.information(self, "API Key Valid",
+                        "Anthropic API key format is valid.\nThe key will be tested when generating templates.")
+                    self.anthropic_status_indicator.setStyleSheet("color: #27ae60; font-size: 16px; font-weight: bold;")
+                    self.anthropic_status_label.setText("Key configured")
+                    self.anthropic_status_label.setStyleSheet("color: #27ae60;")
+                else:
+                    QMessageBox.warning(self, "Invalid Key Format",
+                        "Anthropic API keys should start with 'sk-ant-'")
+
+            elif provider == 'ollama':
+                url = self.ai_ollama_url.text().strip() or "http://localhost:11434"
+                import urllib.request
+                import json
+                request = urllib.request.Request(f"{url}/api/tags", method='GET')
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    data = json.loads(response.read().decode())
+                    models = data.get('models', [])
+                    QMessageBox.information(self, "Connection Successful",
+                        f"Successfully connected to Ollama at {url}.\n{len(models)} models available.")
+                    self.ollama_status_indicator.setStyleSheet("color: #27ae60; font-size: 16px; font-weight: bold;")
+                    self.ollama_status_label.setText(f"Connected - {len(models)} models")
+                    self.ollama_status_label.setStyleSheet("color: #27ae60;")
+
+        except urllib.error.HTTPError as e:
+            QMessageBox.warning(self, "Connection Failed", f"HTTP Error: {e.code}\n{e.reason}")
+            self._set_provider_status_error(provider)
+        except urllib.error.URLError as e:
+            QMessageBox.warning(self, "Connection Failed", f"Could not connect: {e.reason}")
+            self._set_provider_status_error(provider)
+        except Exception as e:
+            QMessageBox.warning(self, "Connection Failed", f"Error: {str(e)}")
+            self._set_provider_status_error(provider)
+
+    def _set_provider_status_error(self, provider: str):
+        """Set provider status indicator to error state."""
+        if provider == 'openai':
+            self.openai_status_indicator.setStyleSheet("color: #e74c3c; font-size: 16px; font-weight: bold;")
+            self.openai_status_label.setText("Connection failed")
+            self.openai_status_label.setStyleSheet("color: #e74c3c;")
+        elif provider == 'anthropic':
+            self.anthropic_status_indicator.setStyleSheet("color: #e74c3c; font-size: 16px; font-weight: bold;")
+            self.anthropic_status_label.setText("Connection failed")
+            self.anthropic_status_label.setStyleSheet("color: #e74c3c;")
+        elif provider == 'ollama':
+            self.ollama_status_indicator.setStyleSheet("color: #e74c3c; font-size: 16px; font-weight: bold;")
+            self.ollama_status_label.setText("Connection failed")
+            self.ollama_status_label.setStyleSheet("color: #e74c3c;")
+
+    def _update_ai_status_indicators(self):
+        """Update all AI status indicators based on current configuration."""
+        # OpenAI
+        openai_key = self.ai_openai_api_key.text().strip()
+        if openai_key and openai_key.startswith('sk-'):
+            self.openai_status_indicator.setStyleSheet("color: #f39c12; font-size: 16px; font-weight: bold;")
+            self.openai_status_label.setText("Key configured - test to verify")
+            self.openai_status_label.setStyleSheet("color: #f39c12;")
+        elif openai_key:
+            self.openai_status_indicator.setStyleSheet("color: #e74c3c; font-size: 16px; font-weight: bold;")
+            self.openai_status_label.setText("Invalid key format")
+            self.openai_status_label.setStyleSheet("color: #e74c3c;")
+        else:
+            self.openai_status_indicator.setStyleSheet("color: #95a5a6; font-size: 16px; font-weight: bold;")
+            self.openai_status_label.setText("Not configured")
+            self.openai_status_label.setStyleSheet("color: #95a5a6;")
+
+        # Anthropic
+        anthropic_key = self.ai_anthropic_api_key.text().strip()
+        if anthropic_key and anthropic_key.startswith('sk-ant-'):
+            self.anthropic_status_indicator.setStyleSheet("color: #f39c12; font-size: 16px; font-weight: bold;")
+            self.anthropic_status_label.setText("Key configured - test to verify")
+            self.anthropic_status_label.setStyleSheet("color: #f39c12;")
+        elif anthropic_key:
+            self.anthropic_status_indicator.setStyleSheet("color: #e74c3c; font-size: 16px; font-weight: bold;")
+            self.anthropic_status_label.setText("Invalid key format (should start with sk-ant-)")
+            self.anthropic_status_label.setStyleSheet("color: #e74c3c;")
+        else:
+            self.anthropic_status_indicator.setStyleSheet("color: #95a5a6; font-size: 16px; font-weight: bold;")
+            self.anthropic_status_label.setText("Not configured")
+            self.anthropic_status_label.setStyleSheet("color: #95a5a6;")
+
+        # Ollama - check if running
+        models = self._get_ollama_models_list()
+        if models:
+            self.ollama_status_indicator.setStyleSheet("color: #27ae60; font-size: 16px; font-weight: bold;")
+            self.ollama_status_label.setText(f"Running - {len(models)} models available")
+            self.ollama_status_label.setStyleSheet("color: #27ae60;")
+        else:
+            self.ollama_status_indicator.setStyleSheet("color: #95a5a6; font-size: 16px; font-weight: bold;")
+            self.ollama_status_label.setText("Not running or not reachable")
+            self.ollama_status_label.setStyleSheet("color: #95a5a6;")
+
+    def _save_ai_settings(self):
+        """Save all AI settings from the Configuration dialog tab."""
+        # Save API keys
+        self._save_ai_api_key('openai', self.ai_openai_api_key.text().strip())
+        self._save_ai_api_key('anthropic', self.ai_anthropic_api_key.text().strip())
+
+        # Save default models
+        self._save_ai_setting('openai_default_model', self.ai_openai_model.currentText())
+        self._save_ai_setting('anthropic_default_model', self.ai_anthropic_model.currentText())
+        self._save_ai_setting('ollama_default_model', self.ai_ollama_model.currentText())
+
+        # Save Ollama URL
+        self._save_ai_setting('ollama_url', self.ai_ollama_url.text().strip())
+
+        # Save default provider
+        self._save_ai_setting('default_provider', self.ai_default_provider.currentText())
+
+        QMessageBox.information(self, "Settings Saved", "AI Agent settings have been saved successfully.")
+
+        # Update status indicators
+        self._update_ai_status_indicators()
+
     def show_billing_settings_dialog(self):
         """Show dialog to configure billing settings."""
         dialog = QDialog(self)
@@ -11552,7 +12219,49 @@ EXPORT DETAILS
                 'ai_bubble': '#2d2d2d',
                 'ai_bubble_text': '#e0e0e0',
             }
-        else:  # Light themes
+        elif theme == "Light Cyan":
+            return {
+                'bg_primary': '#e0f6f7',
+                'bg_secondary': '#c8e8ec',
+                'bg_input': '#ffffff',
+                'bg_code': '#f0fafa',
+                'border': '#90c8d0',
+                'border_focus': '#00a8b8',
+                'text': '#1a3a3a',
+                'text_muted': '#4a7a7a',
+                'text_header': '#0a2a2a',
+                'accent': '#00a8b8',
+                'success': '#107c50',
+                'danger': '#c43838',
+                'warning': '#b87000',
+                'selection': '#a0d8e0',
+                'user_bubble': '#00a8b8',
+                'user_bubble_text': '#ffffff',
+                'ai_bubble': '#d0ecf0',
+                'ai_bubble_text': '#1a3a3a',
+            }
+        elif theme == "macOS":
+            return {
+                'bg_primary': '#f6f6f6',
+                'bg_secondary': '#ffffff',
+                'bg_input': '#ffffff',
+                'bg_code': '#f5f5f7',
+                'border': '#d1d1d6',
+                'border_focus': '#007aff',
+                'text': '#1d1d1f',
+                'text_muted': '#8e8e93',
+                'text_header': '#1d1d1f',
+                'accent': '#007aff',
+                'success': '#34c759',
+                'danger': '#ff3b30',
+                'warning': '#ff9500',
+                'selection': '#007aff',
+                'user_bubble': '#007aff',
+                'user_bubble_text': '#ffffff',
+                'ai_bubble': '#e5e5ea',
+                'ai_bubble_text': '#1d1d1f',
+            }
+        else:  # Light themes (System Default, Fusion Light)
             return {
                 'bg_primary': '#ffffff',
                 'bg_secondary': '#f5f5f5',
@@ -11973,13 +12682,22 @@ EXPORT DETAILS
             return
 
         provider = self.ai_provider_combo.currentText()
+
+        # Check if required package is installed
+        if provider == "OpenAI":
+            if not self._check_and_install_ai_package("openai"):
+                return
+        elif provider == "Anthropic":
+            if not self._check_and_install_ai_package("anthropic"):
+                return
+
         api_key = self._ai_get_api_key(provider)
 
         if provider in ["OpenAI", "Anthropic"] and not api_key:
             QMessageBox.warning(
                 self, "Missing API Key",
                 f"No API key found for {provider}.\n"
-                "Configure it in Configuration > Billing tab."
+                "Configure it in Configuration > AI Agents tab."
             )
             return
 
@@ -12176,9 +12894,63 @@ EXPORT DETAILS
             exec(test_code, {'__name__': '__main__'})
             QMessageBox.information(self, "Test Passed", "Template syntax is valid and imports work correctly!")
         except SyntaxError as e:
-            QMessageBox.warning(self, "Syntax Error", f"Template syntax error:\n\nLine {e.lineno}: {e.msg}")
+            error_msg = f"Line {e.lineno}: {e.msg}"
+            self._handle_template_error("Syntax Error", error_msg)
         except Exception as e:
-            QMessageBox.warning(self, "Test Failed", f"Template error:\n\n{e}")
+            import traceback
+            error_msg = str(e)
+            full_traceback = traceback.format_exc()
+            self._handle_template_error("Template Error", error_msg, full_traceback)
+
+    def _handle_template_error(self, error_type: str, error_msg: str, traceback_info: str = None):
+        """Handle template test errors and offer to send to AI for correction."""
+        # Create custom dialog with option to send to AI
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Warning)
+        msg_box.setWindowTitle("Test Failed")
+
+        display_msg = f"{error_type}:\n\n{error_msg}"
+        if traceback_info:
+            # Show abbreviated traceback
+            tb_lines = traceback_info.strip().split('\n')
+            if len(tb_lines) > 6:
+                display_msg += f"\n\n...{chr(10).join(tb_lines[-4:])}"
+
+        msg_box.setText(display_msg)
+
+        # Add buttons
+        fix_btn = msg_box.addButton("Send to AI to Fix", QMessageBox.AcceptRole)
+        msg_box.addButton("OK", QMessageBox.RejectRole)
+
+        msg_box.exec_()
+
+        if msg_box.clickedButton() == fix_btn:
+            self._send_error_to_ai(error_type, error_msg, traceback_info)
+
+    def _send_error_to_ai(self, error_type: str, error_msg: str, traceback_info: str = None):
+        """Send the template error to AI Assistant for correction."""
+        # Build the error correction prompt
+        current_code = self.ai_code_edit.toPlainText()
+
+        error_prompt = f"""The template code has an error that needs to be fixed.
+
+ERROR TYPE: {error_type}
+ERROR MESSAGE: {error_msg}
+"""
+        if traceback_info:
+            error_prompt += f"""
+FULL TRACEBACK:
+{traceback_info}
+"""
+
+        error_prompt += """
+Please fix this error in the template code. Return the complete corrected template code."""
+
+        # Set the prompt in the chat input
+        self.ai_message_input.setPlainText(error_prompt)
+
+        # Automatically send to AI
+        self._ai_send_message()
 
     def _ai_format_code(self):
         """Format the template code."""
@@ -12189,25 +12961,114 @@ EXPORT DETAILS
             QMessageBox.warning(self, "Format Error", message)
 
     def _ai_get_api_key(self, provider: str) -> str:
-        """Get API key for the provider."""
-        try:
-            import sqlite3
-            db_path = Path(__file__).parent / "tariffmill.db"
-            conn = sqlite3.connect(str(db_path))
-            c = conn.cursor()
-            key_name = 'openai' if provider == "OpenAI" else 'anthropic'
-            c.execute("SELECT value FROM app_config WHERE key = ?", (f'api_key_{key_name}',))
-            row = c.fetchone()
-            conn.close()
-            if row and row[0]:
-                return row[0]
-        except:
-            pass
+        """Get API key for the provider from the AI Agents configuration."""
+        # Use the same method as AI Agents tab for consistency
+        key_name = 'openai' if provider == "OpenAI" else 'anthropic'
+        api_key = self._get_ai_api_key(key_name)
+        if api_key:
+            return api_key
+        # Fallback to environment variables
         if provider == "OpenAI":
             return os.environ.get('OPENAI_API_KEY', '')
         elif provider == "Anthropic":
             return os.environ.get('ANTHROPIC_API_KEY', '')
         return ""
+
+    def _check_and_install_ai_package(self, package_name: str) -> bool:
+        """
+        Check if a package is installed, and offer to install if not.
+        Returns True if package is available, False otherwise.
+        """
+        # Check if already installed
+        try:
+            __import__(package_name)
+            return True
+        except ImportError:
+            pass
+
+        # Track packages we're currently installing to prevent duplicate dialogs
+        if not hasattr(self, '_installing_packages'):
+            self._installing_packages = set()
+
+        if package_name in self._installing_packages:
+            # Already showing install dialog for this package
+            return False
+
+        self._installing_packages.add(package_name)
+
+        try:
+            # Show dialog with install option
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("Package Not Installed")
+            msg_box.setIcon(QMessageBox.Warning)
+            msg_box.setText(f"The {package_name} package is not installed.")
+            msg_box.setInformativeText("Would you like to install it now?")
+
+            install_btn = msg_box.addButton("Install Now", QMessageBox.AcceptRole)
+            msg_box.addButton("Cancel", QMessageBox.RejectRole)
+
+            msg_box.exec_()
+
+            if msg_box.clickedButton() == install_btn:
+                return self._install_ai_package(package_name)
+
+            return False
+        finally:
+            self._installing_packages.discard(package_name)
+
+    def _install_ai_package(self, package_name: str) -> bool:
+        """Install a Python package using pip."""
+        import subprocess
+
+        try:
+            # Use the same Python executable that's running this script
+            python_exe = sys.executable
+
+            # Show progress dialog
+            progress = QMessageBox(self)
+            progress.setWindowTitle("Installing Package")
+            progress.setText(f"Installing {package_name}...\nThis may take a moment.")
+            progress.setStandardButtons(QMessageBox.NoButton)
+            progress.show()
+            QApplication.processEvents()
+
+            # Run pip install
+            result = subprocess.run(
+                [python_exe, "-m", "pip", "install", package_name],
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
+
+            progress.close()
+
+            if result.returncode == 0:
+                QMessageBox.information(
+                    self, "Installation Successful",
+                    f"The {package_name} package has been installed successfully.\n\n"
+                    "Please restart the application to use this feature."
+                )
+                return True
+            else:
+                QMessageBox.critical(
+                    self, "Installation Failed",
+                    f"Failed to install {package_name}:\n\n{result.stderr}"
+                )
+                return False
+
+        except subprocess.TimeoutExpired:
+            QMessageBox.critical(
+                self, "Installation Timeout",
+                f"Installation of {package_name} timed out.\n"
+                f"Please try installing manually:\n  pip install {package_name}"
+            )
+            return False
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Installation Error",
+                f"Error installing {package_name}:\n\n{str(e)}"
+            )
+            return False
 
     def _ai_format_message_html(self, role: str, content: str) -> str:
         """Format a chat message as HTML with theme-aware colors."""
@@ -12265,7 +13126,7 @@ EXPORT DETAILS
         else:
             return f'''<div style="margin: 8px 0;">
                 <div style="display: inline-block; max-width: 80%;">
-                    <div style="color: {label_color}; font-size: 8px;">🤖 AI</div>
+                    <div style="color: {label_color}; font-size: 8px;">AI</div>
                     <div style="background-color: {ai_bubble_bg}; color: {ai_bubble_text}; padding: 8px 10px; border-radius: 8px 8px 8px 2px; border: 1px solid {ai_bubble_border};">
                         <p style="margin: 0; font-size: 10px;">{formatted}</p>
                     </div>
@@ -12289,7 +13150,7 @@ EXPORT DETAILS
             dots = '.' * thinking_dots
             html += f'''<div style="margin: 8px 0;">
                 <div style="display: inline-block; max-width: 80%;">
-                    <div style="color: {colors['text_muted']}; font-size: 8px;">🤖 AI</div>
+                    <div style="color: {colors['text_muted']}; font-size: 8px;">AI</div>
                     <div style="background-color: {colors['ai_bubble']}; color: {colors['text_muted']}; padding: 8px 10px; border-radius: 8px 8px 8px 2px; border: 1px solid {colors['border']};">
                         <p style="margin: 0; font-size: 10px; font-style: italic;">Thinking{dots}</p>
                     </div>
@@ -12331,10 +13192,18 @@ EXPORT DETAILS
         provider = self.ai_provider_combo.currentText()
         api_key = self._ai_get_api_key(provider)
 
+        # Check if required package is installed
+        if provider == "OpenAI":
+            if not self._check_and_install_ai_package("openai"):
+                return
+        elif provider == "Anthropic":
+            if not self._check_and_install_ai_package("anthropic"):
+                return
+
         if provider in ["OpenAI", "Anthropic"] and not api_key:
             QMessageBox.warning(self, "Missing API Key",
                               f"No API key found for {provider}.\n"
-                              "Configure it in Configuration > Billing tab.")
+                              "Configure it in Configuration > AI Agents tab.")
             return
 
         # Check for PDF file paths in the message and extract text automatically
@@ -12966,10 +13835,8 @@ EXPORT DETAILS
             if template_info:
                 self.ocrmill_templates_data.append(template_info)
 
-                # Create list item with template name and AI indicator
+                # Create list item with template name
                 display_text = template_info['name']
-                if template_info.get('ai_agent'):
-                    display_text = f"🤖 {display_text}"
 
                 item = QListWidgetItem(display_text)
                 item.setToolTip(f"Supplier: {template_info['supplier']}\nClient: {template_info['client']}\nCountry: {template_info['country']}")
