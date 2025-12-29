@@ -61,7 +61,7 @@ The application features:
 
 ### Windows Executable (Recommended)
 
-Download the latest `TariffMill.exe` from the [Releases](https://github.com/royalpayne/TariffMill/releases) page.
+Download the latest `TariffMill.exe` from the [Releases](https://github.com/ProcessLogicLabs/TariffMill/releases) page.
 
 No installation required - just run the executable.
 
@@ -79,7 +79,7 @@ The application is safe to use. This warning will decrease as more users downloa
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/royalpayne/TariffMill.git
+git clone https://github.com/ProcessLogicLabs/TariffMill.git
 cd TariffMill
 ```
 
@@ -206,7 +206,7 @@ Version is automatically derived from git tags. See [version.py](Tariffmill/vers
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/royalpayne/TariffMill/issues)
+- **Issues**: [GitHub Issues](https://github.com/ProcessLogicLabs/TariffMill/issues)
 - **Documentation**: See this README and in-app help
 
 ## License

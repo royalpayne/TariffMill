@@ -2,11 +2,11 @@
 # ==============================================================================
 # TariffMill - Customs Documentation Processing System
 # ==============================================================================
-# Copyright (c) 2024-2025 Heath Payne. All Rights Reserved.
+# Copyright (c) 2024-2025 Process Logic Labs, LLC. All Rights Reserved.
 #
 # PROPRIETARY AND CONFIDENTIAL
 #
-# This software and its source code are the exclusive property of Heath Payne
+# This software and its source code are the exclusive property of Process Logic Labs, LLC
 # and are protected by copyright law and international treaties. Unauthorized
 # reproduction, distribution, or disclosure of this software, in whole or in
 # part, is strictly prohibited.
@@ -18,7 +18,7 @@
 # express or implied, including but not limited to the warranties of
 # merchantability, fitness for a particular purpose, and noninfringement.
 #
-# For licensing inquiries, contact: paynehl@gmail.com
+# For licensing inquiries, contact: admin@processlogiclabs.com
 # ==============================================================================
 #
 # Professional PyQt5 application for automating invoice processing, parts
@@ -38,8 +38,8 @@ DB_NAME = "tariffmill.db"
 
 # Copyright and Legal Information
 COPYRIGHT_YEAR = "2025-2026"
-COPYRIGHT_HOLDER = "Heath Payne"
-COPYRIGHT_EMAIL = "paynehl@gmail.com"
+COPYRIGHT_HOLDER = "Process Logic Labs, LLC"
+COPYRIGHT_EMAIL = "admin@processlogiclabs.com"
 COPYRIGHT_NOTICE = f"Copyright (c) {COPYRIGHT_YEAR} {COPYRIGHT_HOLDER}. All Rights Reserved."
 LICENSE_TYPE = "Proprietary"
 
@@ -143,7 +143,7 @@ logger = ErrorLogger()
 # Checks GitHub releases for new versions and provides update notifications.
 # Uses the GitHub API to fetch the latest release information.
 
-GITHUB_REPO = "royalpayne/TariffMill"
+GITHUB_REPO = "ProcessLogicLabs/TariffMill"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
 

@@ -30,7 +30,7 @@ Copy the Mermaid code blocks to [Mermaid Live Editor](https://mermaid.live/).
 
 - [Main README](../../README.md)
 - [License](../../LICENSE)
-- [Releases](https://github.com/royalpayne/TariffMill/releases)
+- [Releases](https://github.com/ProcessLogicLabs/TariffMill/releases)
 
 ## Version
 
