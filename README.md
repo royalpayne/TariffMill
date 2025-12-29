@@ -38,6 +38,10 @@ TariffMill is a desktop application for import/export businesses, customs broker
 - Export profiles for different broker requirements
 - Theme support (Light/Dark modes)
 
+## Presentation
+
+View the interactive [TariffMill Presentation](TariffMill_Presentation.html) for a visual overview of the application's purpose, workflow, and capabilities.
+
 ## Screenshots
 
 The application features:
