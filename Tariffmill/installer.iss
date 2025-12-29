@@ -2,8 +2,8 @@
 ; Build with: iscc installer.iss
 
 #define MyAppName "TariffMill"
-#define MyAppVersion "0.96.10"
-#define MyAppPublisher "TariffMill"
+#define MyAppVersion "0.96.11"
+#define MyAppPublisher "Process Logic Labs, LLC"
 #define MyAppExeName "TariffMill.exe"
 
 [Setup]
@@ -18,8 +18,11 @@ DisableProgramGroupPage=yes
 OutputDir=dist
 OutputBaseFilename=TariffMill_Setup_{#MyAppVersion}
 SetupIconFile=Resources\icon.ico
-Compression=lzma2
-SolidCompression=yes
+; Use faster compression for quicker installer startup
+; lzma2/max gives best compression but slow startup
+; lzma/fast gives good compression with faster startup
+Compression=lzma/fast
+SolidCompression=no
 WizardStyle=modern
 
 ; Privileges - no admin needed

@@ -23,9 +23,24 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+# Native splash screen - shows IMMEDIATELY when exe is launched (before Python loads)
+splash = Splash(
+    'Resources\\splash.png',
+    binaries=a.binaries,
+    datas=a.datas,
+    text_pos=(350, 280),
+    text_size=14,
+    text_color='#cccccc',
+    text_default='Initializing...',
+    minify_script=True,
+    always_on_top=True,
+)
+
 exe = EXE(
     pyz,
     a.scripts,
+    splash,
+    splash.binaries,
     a.binaries,
     a.datas,
     [],
