@@ -40,7 +40,7 @@ TariffMill is a desktop application for import/export businesses, customs broker
 
 ## Presentation
 
-View the interactive [TariffMill Presentation](TariffMill_Presentation.html) for a visual overview of the application's purpose, workflow, and capabilities.
+View the interactive [TariffMill Presentation](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ProcessLogicLabs/TariffMill/main/TariffMill_Presentation.html) for a visual overview of the application's purpose, workflow, and capabilities.
 
 ## Screenshots
 
