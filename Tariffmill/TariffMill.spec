@@ -1,12 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 
-# Using Python 3.12 - no need to bundle VC++ runtime DLLs
-# Python 3.12 uses commonly available VC++ runtime that ships with Windows 11
+# Python 3.12 installation directory
+PYTHON_DIR = r'C:\Users\payne\AppData\Local\Programs\Python\Python312'
 
 a = Analysis(
     ['tariffmill.py'],
     pathex=[],
-    binaries=[],
+    binaries=[
+        # Bundle VC++ runtime DLLs required by Python
+        (os.path.join(PYTHON_DIR, 'vcruntime140.dll'), '.'),
+        (os.path.join(PYTHON_DIR, 'vcruntime140_1.dll'), '.'),
+    ],
     datas=[('Resources', 'Resources')],
     hiddenimports=['pdfplumber', 'pdfplumber.utils', 'pdfminer', 'pdfminer.high_level', 'pdfminer.layout', 'pdfminer.pdfparser', 'pdfminer.pdfdocument', 'pdfminer.pdfpage', 'pdfminer.pdfinterp', 'pdfminer.converter', 'pdfminer.cmapdb', 'pdfminer.psparser', 'PIL', 'PIL.Image'],
     hookspath=[],
