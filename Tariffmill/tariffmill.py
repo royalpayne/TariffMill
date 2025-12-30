@@ -4279,21 +4279,21 @@ class TariffMill(QMainWindow):
         # Preview Column Visibility Group
         columns_group = QGroupBox("Result Preview Column Visibility")
         columns_layout = QVBoxLayout()
-        
+
         # Column names and their default visibility
         column_names = [
             "Product No", "Value", "HTS", "MID", "Qty1", "Qty2", "Qty Unit", "Dec",
             "Melt", "Cast", "Smelt", "Flag", "Steel%", "Al%", "Cu%", "Wood%", "Auto%", "Non-232%", "232 Status", "Cust Ref"
         ]
-        
+
         # Create checkboxes in a grid layout
         columns_grid = QGridLayout()
-        column_checkboxes = []
-        
+        self.preview_column_checkboxes = []  # Store as instance variable
+
         for i, col_name in enumerate(column_names):
             checkbox = QCheckBox(col_name)
             checkbox.setChecked(True)  # Default to visible
-            
+
             # Load saved visibility preference
             config_key = f'preview_col_visible_{i}'
             try:
@@ -4306,7 +4306,7 @@ class TariffMill(QMainWindow):
                     checkbox.setChecked(row[0] == '1')
             except:
                 pass
-            
+
             # Save preference and apply when changed
             def make_toggle_handler(col_idx, cb):
                 def handler(state):
@@ -4324,17 +4324,20 @@ class TariffMill(QMainWindow):
                     except Exception as e:
                         logger.error(f"Failed to save column visibility: {e}")
                 return handler
-            
+
             checkbox.stateChanged.connect(make_toggle_handler(i, checkbox))
-            column_checkboxes.append(checkbox)
-            
+            self.preview_column_checkboxes.append(checkbox)
+
             # Arrange in 5 columns
             row_num = i // 5
             col_num = i % 5
             columns_grid.addWidget(checkbox, row_num, col_num)
         
         columns_layout.addLayout(columns_grid)
-        
+
+        # Store column count for reference
+        self.preview_column_count = len(column_names)
+
         columns_info = QLabel("<small>Toggle columns to show or hide them in the Result Preview table.</small>")
         columns_info.setWordWrap(True)
         columns_info.setStyleSheet(f"color:{info_text_color}; padding:5px;")
@@ -6219,40 +6222,20 @@ class TariffMill(QMainWindow):
         """Apply saved column visibility settings to the preview table"""
         if not hasattr(self, 'table'):
             return
-        
+
         try:
             conn = sqlite3.connect(str(DB_PATH))
             c = conn.cursor()
-            
-            # First, check if we have all 15 column settings saved
-            # If not, reset all to visible (handles version upgrades with new columns)
-            c.execute("SELECT COUNT(*) FROM app_config WHERE key LIKE 'preview_col_visible_%'")
-            count_row = c.fetchone()
-            saved_count = count_row[0] if count_row else 0
-            
-            if saved_count < 17:
-                # Clear old settings and reset all columns to visible
-                c.execute("DELETE FROM app_config WHERE key LIKE 'preview_col_visible_%'")
-                for col_idx in range(17):
-                    c.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)",
-                              (f'preview_col_visible_{col_idx}', '1'))
-                conn.commit()
-                logger.info(f"Reset column visibility settings (had {saved_count}, need 17)")
-                # Show all columns
-                for col_idx in range(self.table.columnCount()):
-                    self.table.setColumnHidden(col_idx, False)
-            else:
-                # Apply saved settings
-                for col_idx in range(self.table.columnCount()):
-                    config_key = f'preview_col_visible_{col_idx}'
-                    c.execute("SELECT value FROM app_config WHERE key = ?", (config_key,))
-                    row = c.fetchone()
-                    # Default to visible if no setting saved
-                    is_visible = True if row is None else (row[0] == '1')
-                    self.table.setColumnHidden(col_idx, not is_visible)
-            
-            conn.close()
-            
+
+            # Apply saved settings for each column
+            for col_idx in range(self.table.columnCount()):
+                config_key = f'preview_col_visible_{col_idx}'
+                c.execute("SELECT value FROM app_config WHERE key = ?", (config_key,))
+                row = c.fetchone()
+                # Default to visible if no setting saved
+                is_visible = True if row is None else (row[0] == '1')
+                self.table.setColumnHidden(col_idx, not is_visible)
+
             conn.close()
         except Exception as e:
             logger.error(f"Error applying column visibility: {e}")
