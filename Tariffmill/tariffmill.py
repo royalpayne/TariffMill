@@ -16003,16 +16003,18 @@ Please fix this error in the template code. Return the complete corrected templa
         import urllib.request
         import urllib.error
         import json as json_module
+        import csv
+        import io
 
-        # USITC provides HTS data as a direct JSON download
-        # URL: https://www.usitc.gov/sites/default/files/tata/hts/hts_2025_basic_edition_json.json
+        # USITC now provides HTS data via export API at https://hts.usitc.gov/export
+        # CSV format: https://hts.usitc.gov/export?format=csv&from=0101&to=9999
 
         reply = QMessageBox.question(
             self,
             "Update HTS Database",
             "This will download the latest HTS data from the US International Trade Commission (USITC) "
             "and replace the current database.\n\n"
-            "File size is approximately 13 MB. The download may take a few minutes.\n\n"
+            "The download may take a few minutes depending on your connection.\n\n"
             "Do you want to continue?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
@@ -16025,6 +16027,7 @@ Please fix this error in the template code. Return the complete corrected templa
         progress.setWindowTitle("HTS Database Update")
         progress.setWindowModality(Qt.WindowModal)
         progress.setMinimumDuration(0)
+        progress.setMinimumWidth(400)
         progress.setValue(5)
         QApplication.processEvents()
 
@@ -16039,105 +16042,98 @@ Please fix this error in the template code. Return the complete corrected templa
                 shutil.copy2(hts_db_path, backup_path)
                 logger.info(f"Backed up HTS database to {backup_path}")
 
-            progress.setLabelText("Finding latest HTS file...")
+            progress.setLabelText("Connecting to USITC HTS database...")
             progress.setValue(10)
             QApplication.processEvents()
 
             if progress.wasCanceled():
                 return
 
-            # Try to find the HTS JSON file - start with current year and work backwards
+            # USITC provides direct CSV download of HTS Basic Edition
+            # Format: https://www.usitc.gov/tata/hts/hts_YYYY_basic_edition_csv.csv
             from datetime import datetime
             current_year = datetime.now().year
-            base_url = "https://www.usitc.gov/sites/default/files/tata/hts"
 
-            url = None
-            found_year = None
+            # Try multiple URL patterns - basic edition is most reliable
+            csv_urls = [
+                (f"https://www.usitc.gov/tata/hts/hts_{current_year}_basic_edition_csv.csv", current_year),
+                (f"https://www.usitc.gov/sites/default/files/tata/hts/hts_{current_year}_basic_edition_csv.csv", current_year),
+                (f"https://www.usitc.gov/tata/hts/hts_{current_year}_csv.csv", current_year),
+                (f"https://www.usitc.gov/tata/hts/hts_{current_year - 1}_basic_edition_csv.csv", current_year - 1),
+            ]
 
-            # Try current year first, then previous years as fallback
-            # Use Range request to check file existence (more reliable than HEAD)
-            for year in range(current_year, current_year - 3, -1):
-                test_url = f"{base_url}/hts_{year}_basic_edition_json.json"
-                progress.setLabelText(f"Checking for {year} HTS data...")
+            csv_data = None
+            download_year = current_year
+
+            for test_url, year in csv_urls:
+                progress.setLabelText(f"Downloading HTS {year} data...")
+                progress.setValue(15)
                 QApplication.processEvents()
 
+                if progress.wasCanceled():
+                    return
+
                 try:
+                    logger.info(f"Trying HTS download URL: {test_url}")
                     req = urllib.request.Request(
                         test_url,
                         headers={
                             'User-Agent': 'TariffMill/1.0 (HTS Database Update)',
-                            'Range': 'bytes=0-0'  # Request just 1 byte to check existence
+                            'Accept': 'text/csv,application/csv,*/*'
                         }
                     )
-                    with urllib.request.urlopen(req, timeout=15) as response:
-                        # 200 or 206 (partial content) means file exists
-                        if response.status in (200, 206):
-                            url = test_url
-                            found_year = year
-                            logger.info(f"Found HTS file for year {year}: {test_url}")
-                            break
+
+                    with urllib.request.urlopen(req, timeout=300) as response:  # 5 minute timeout
+                        # Read with progress updates
+                        total_size = int(response.headers.get('content-length', 0))
+                        downloaded = 0
+                        chunks = []
+
+                        while True:
+                            if progress.wasCanceled():
+                                QMessageBox.information(self, "Cancelled", "HTS update was cancelled.")
+                                return
+
+                            chunk = response.read(65536)  # 64KB chunks
+                            if not chunk:
+                                break
+                            chunks.append(chunk)
+                            downloaded += len(chunk)
+
+                            if total_size > 0:
+                                pct = 15 + int((downloaded / total_size) * 45)
+                                progress.setValue(pct)
+                                mb_downloaded = downloaded / (1024 * 1024)
+                                mb_total = total_size / (1024 * 1024)
+                                progress.setLabelText(f"Downloading... {mb_downloaded:.1f} / {mb_total:.1f} MB")
+                            else:
+                                # Unknown size - show bytes downloaded
+                                mb_downloaded = downloaded / (1024 * 1024)
+                                progress.setLabelText(f"Downloading... {mb_downloaded:.1f} MB")
+                            QApplication.processEvents()
+
+                        csv_data = b''.join(chunks).decode('utf-8')
+                        download_year = year
+                        logger.info(f"Successfully downloaded HTS from: {test_url}")
+                        break
+
                 except urllib.error.HTTPError as e:
-                    logger.info(f"HTS file not found for {year}: HTTP {e.code}")
+                    logger.info(f"HTS URL returned HTTP {e.code}: {test_url}")
                     continue
                 except urllib.error.URLError as e:
-                    logger.info(f"HTS file check failed for {year}: {e}")
+                    logger.info(f"HTS URL failed: {test_url} - {e}")
+                    continue
+                except Exception as e:
+                    logger.info(f"HTS download error: {test_url} - {e}")
                     continue
 
-            if not url:
-                QMessageBox.warning(
-                    self, "File Not Found",
-                    f"Could not find HTS data file for years {current_year} to {current_year - 2}.\n\n"
-                    "The USITC may have changed their file naming convention.\n"
-                    "Please check https://hts.usitc.gov/export for manual download."
-                )
-                return
-
-            progress.setLabelText(f"Downloading {found_year} HTS JSON file (~13 MB)...")
-            progress.setValue(15)
-            QApplication.processEvents()
-
-            req = urllib.request.Request(
-                url,
-                headers={
-                    'User-Agent': 'TariffMill/1.0 (HTS Database Update)',
-                    'Accept': 'application/json'
-                }
-            )
-
-            try:
-                with urllib.request.urlopen(req, timeout=120) as response:
-                    # Read with progress updates
-                    total_size = int(response.headers.get('content-length', 0))
-                    downloaded = 0
-                    chunks = []
-
-                    while True:
-                        if progress.wasCanceled():
-                            QMessageBox.information(self, "Cancelled", "HTS update was cancelled.")
-                            return
-
-                        chunk = response.read(65536)  # 64KB chunks
-                        if not chunk:
-                            break
-                        chunks.append(chunk)
-                        downloaded += len(chunk)
-
-                        if total_size > 0:
-                            pct = 10 + int((downloaded / total_size) * 50)
-                            progress.setValue(pct)
-                            mb_downloaded = downloaded / (1024 * 1024)
-                            mb_total = total_size / (1024 * 1024)
-                            progress.setLabelText(f"Downloading... {mb_downloaded:.1f} / {mb_total:.1f} MB")
-                        QApplication.processEvents()
-
-                    json_data = b''.join(chunks).decode('utf-8')
-                    data = json_module.loads(json_data)
-
-            except urllib.error.URLError as e:
+            if not csv_data:
                 QMessageBox.warning(
                     self, "Download Failed",
-                    f"Failed to download HTS data from USITC:\n\n{str(e)}\n\n"
-                    "Please check your internet connection and try again."
+                    "Could not download HTS data from USITC.\n\n"
+                    "Please check your internet connection or try again later.\n\n"
+                    "You can also manually download from:\n"
+                    "https://hts.usitc.gov/export"
                 )
                 return
 
@@ -16145,15 +16141,65 @@ Please fix this error in the template code. Return the complete corrected templa
             progress.setValue(65)
             QApplication.processEvents()
 
-            # Process the JSON data
+            # Check if we got HTML instead of CSV (error page or redirect)
+            if csv_data.strip().startswith('<!DOCTYPE') or csv_data.strip().startswith('<html'):
+                logger.error("USITC returned HTML instead of CSV - may need form submission")
+                logger.error(f"First 1000 chars: {csv_data[:1000]}")
+                QMessageBox.warning(
+                    self, "Download Failed",
+                    "USITC returned a web page instead of CSV data.\n\n"
+                    "The export API may require manual download.\n\n"
+                    "Please visit https://hts.usitc.gov/export manually,\n"
+                    "enter 0101 to 9999, and download the CSV file."
+                )
+                return
+
+            # Process the CSV data
             all_records = []
-            for item in data:
-                htsno = item.get('htsno', '')
+            csv_reader = csv.DictReader(io.StringIO(csv_data))
+
+            # Log the actual column names for debugging
+            fieldnames = csv_reader.fieldnames
+            logger.info(f"CSV columns found: {fieldnames}")
+
+            # Map various possible column names to our expected names
+            # USITC export format may use different column names
+            def get_column_value(row, *possible_names):
+                """Get value from row trying multiple possible column names."""
+                for name in possible_names:
+                    if name in row and row[name]:
+                        return str(row[name]).strip()
+                # Also try case-insensitive match
+                row_lower = {k.lower(): v for k, v in row.items()}
+                for name in possible_names:
+                    if name.lower() in row_lower and row_lower[name.lower()]:
+                        return str(row_lower[name.lower()]).strip()
+                return ''
+
+            for row in csv_reader:
+                if progress.wasCanceled():
+                    return
+
+                # Try various possible column names for HTS code
+                # USITC export may use: HTS Number, htsno, HTS, HTS Code, HTSNumber, etc.
+                htsno = get_column_value(row,
+                    'HTS Number', 'HTSNumber', 'HTS_Number', 'htsno', 'HTS',
+                    'HTS Code', 'HTSCode', 'HTS_Code', 'hts_number', 'hts')
+
                 if not htsno:
-                    continue
+                    # If no HTS column found, try the first column which might be the code
+                    if fieldnames and row.get(fieldnames[0]):
+                        first_val = str(row[fieldnames[0]]).strip()
+                        # Check if it looks like an HTS code (starts with digits, contains dots)
+                        if first_val and (first_val[0].isdigit() or first_val.startswith('0')):
+                            htsno = first_val
+                    if not htsno:
+                        continue
 
                 # Clean the HTS code (remove periods)
-                full_code = htsno.replace('.', '')
+                full_code = htsno.replace('.', '').strip()
+                if not full_code:
+                    continue
 
                 # Extract chapter from code
                 try:
@@ -16161,30 +16207,61 @@ Please fix this error in the template code. Return the complete corrected templa
                 except ValueError:
                     chapter = 0
 
-                # Units can be a list
-                units = item.get('units', [])
-                unit_str = ', '.join(units) if isinstance(units, list) else str(units or '')
+                # Get unit of quantity - try various column names
+                unit_str = get_column_value(row,
+                    'Unit of Quantity', 'UnitOfQuantity', 'Unit_of_Quantity',
+                    'units', 'Units', 'UoQ', 'Unit')
+
+                # Get description - try various column names
+                description = get_column_value(row,
+                    'Description', 'description', 'Desc', 'desc', 'Article Description')
+
+                # Get duty rates - try various column names
+                general_rate = get_column_value(row,
+                    'General Rate of Duty', 'GeneralRateOfDuty', 'General_Rate',
+                    'general', 'General', 'Gen Rate', 'General Rate')
+
+                special_rate = get_column_value(row,
+                    'Special Rate of Duty', 'SpecialRateOfDuty', 'Special_Rate',
+                    'special', 'Special', 'Special Rate')
+
+                column2_rate = get_column_value(row,
+                    'Column 2 Rate of Duty', 'Column2RateOfDuty', 'Column_2_Rate',
+                    'other', 'Other', 'Column 2', 'Col 2 Rate', 'Column2')
+
+                # Get indent level
+                indent_str = get_column_value(row, 'Indent', 'indent', 'Indentation', 'Level')
+                try:
+                    indent_level = int(indent_str) if indent_str else 0
+                except ValueError:
+                    indent_level = 0
 
                 record = {
                     'heading': full_code[:4] if len(full_code) >= 4 else full_code,
                     'subheading': full_code[:6] if len(full_code) >= 6 else full_code,
                     'stat_suffix': full_code[6:] if len(full_code) > 6 else '',
                     'full_code': full_code,
-                    'description': item.get('description', ''),
+                    'description': description,
                     'unit_of_quantity': unit_str,
-                    'general_rate': item.get('general', ''),
-                    'special_rate': item.get('special', ''),
-                    'column2_rate': item.get('other', ''),
+                    'general_rate': general_rate,
+                    'special_rate': special_rate,
+                    'column2_rate': column2_rate,
                     'chapter': chapter,
-                    'indent_level': int(item.get('indent', 0)),
+                    'indent_level': indent_level,
                 }
                 all_records.append(record)
 
             if not all_records:
+                # Log more details for debugging
+                logger.error(f"No records found. CSV columns: {fieldnames}")
+                # Show first 500 chars of CSV data for debugging
+                logger.error(f"First 500 chars of CSV: {csv_data[:500] if csv_data else 'EMPTY'}")
+
+                columns_msg = f"\n\nColumns found: {', '.join(fieldnames) if fieldnames else 'None'}"
                 QMessageBox.warning(
                     self, "Processing Failed",
-                    "Downloaded file contained no valid HTS records.\n\n"
-                    "The file format may have changed."
+                    f"Downloaded file contained no valid HTS records.\n\n"
+                    f"The file format may have changed.{columns_msg}"
                 )
                 return
 
@@ -16249,7 +16326,7 @@ Please fix this error in the template code. Return the complete corrected templa
             QMessageBox.information(
                 self, "Update Complete",
                 f"HTS database updated successfully!\n\n"
-                f"Year: {found_year}\n"
+                f"Year: {download_year} HTS Basic Edition\n"
                 f"Total records: {final_count:,}{backup_msg}"
             )
 
