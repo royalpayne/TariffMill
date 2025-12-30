@@ -15756,9 +15756,19 @@ Please fix this error in the template code. Return the complete corrected templa
 
         # Create menu
         hts_menu = QMenu(hts_menu_btn)
-        update_action = hts_menu.addAction("Update from USITC")
-        update_action.setToolTip("Download latest HTS data from the US International Trade Commission")
+        update_action = hts_menu.addAction("Update from USITC (Auto)")
+        update_action.setToolTip("Automatically download latest HTS data from the US International Trade Commission")
         update_action.triggered.connect(self.update_hts_from_usitc)
+
+        import_action = hts_menu.addAction("Import from CSV File...")
+        import_action.setToolTip("Import HTS data from a manually downloaded CSV file")
+        import_action.triggered.connect(self.import_hts_from_csv)
+
+        hts_menu.addSeparator()
+
+        download_link_action = hts_menu.addAction("Open USITC Download Page")
+        download_link_action.setToolTip("Open the USITC website to manually download HTS data")
+        download_link_action.triggered.connect(lambda: QDesktopServices.openUrl(QUrl("https://hts.usitc.gov/export")))
 
         hts_menu_btn.setMenu(hts_menu)
         title_row.addWidget(hts_menu_btn)
@@ -16339,6 +16349,267 @@ Please fix this error in the template code. Return the complete corrected templa
             QMessageBox.critical(
                 self, "Update Failed",
                 f"Failed to update HTS database:\n\n{str(e)}\n\n"
+                "If a backup exists, it has not been modified."
+            )
+
+    def import_hts_from_csv(self):
+        """Import HTS data from a manually downloaded CSV file."""
+        from PyQt5.QtWidgets import QProgressDialog, QFileDialog
+        from PyQt5.QtCore import Qt
+        import csv
+        import io
+
+        # Show file dialog
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select HTS CSV File",
+            "",
+            "CSV Files (*.csv);;All Files (*.*)"
+        )
+
+        if not file_path:
+            return
+
+        # Confirm import
+        reply = QMessageBox.question(
+            self,
+            "Import HTS Data",
+            f"This will import HTS data from:\n{file_path}\n\n"
+            "This will replace the current HTS database.\n\n"
+            "Do you want to continue?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        progress = QProgressDialog("Importing HTS data...", "Cancel", 0, 100, self)
+        progress.setWindowTitle("HTS Import")
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setMinimumWidth(400)
+        progress.setValue(5)
+        QApplication.processEvents()
+
+        try:
+            hts_db_path = RESOURCES_DIR / "References" / "hts.db"
+
+            # Backup current database
+            backup_path = None
+            if hts_db_path.exists():
+                backup_path = hts_db_path.with_suffix('.db.backup')
+                import shutil
+                shutil.copy2(hts_db_path, backup_path)
+                logger.info(f"Backed up HTS database to {backup_path}")
+
+            progress.setLabelText("Reading CSV file...")
+            progress.setValue(10)
+            QApplication.processEvents()
+
+            # Read the CSV file
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                csv_data = f.read()
+
+            if not csv_data.strip():
+                QMessageBox.warning(self, "Import Failed", "The selected file is empty.")
+                return
+
+            # Check if we got HTML instead of CSV
+            if csv_data.strip().startswith('<!DOCTYPE') or csv_data.strip().startswith('<html'):
+                QMessageBox.warning(
+                    self, "Import Failed",
+                    "The selected file appears to be HTML, not CSV.\n\n"
+                    "Please download the CSV format from the USITC website."
+                )
+                return
+
+            progress.setLabelText("Processing HTS records...")
+            progress.setValue(20)
+            QApplication.processEvents()
+
+            # Process the CSV data
+            all_records = []
+            csv_reader = csv.DictReader(io.StringIO(csv_data))
+
+            # Log the actual column names for debugging
+            fieldnames = csv_reader.fieldnames
+            logger.info(f"Import CSV columns found: {fieldnames}")
+
+            # Map various possible column names to our expected names
+            def get_column_value(row, *possible_names):
+                """Get value from row trying multiple possible column names."""
+                for name in possible_names:
+                    if name in row and row[name]:
+                        return str(row[name]).strip()
+                # Also try case-insensitive match
+                row_lower = {k.lower(): v for k, v in row.items()}
+                for name in possible_names:
+                    if name.lower() in row_lower and row_lower[name.lower()]:
+                        return str(row_lower[name.lower()]).strip()
+                return ''
+
+            row_count = 0
+            for row in csv_reader:
+                if progress.wasCanceled():
+                    return
+
+                row_count += 1
+                if row_count % 5000 == 0:
+                    progress.setLabelText(f"Processing record {row_count:,}...")
+                    progress.setValue(20 + min(40, int(row_count / 1000)))
+                    QApplication.processEvents()
+
+                # Try various possible column names for HTS code
+                htsno = get_column_value(row,
+                    'HTS Number', 'HTSNumber', 'HTS_Number', 'htsno', 'HTS',
+                    'HTS Code', 'HTSCode', 'HTS_Code', 'hts_number', 'hts')
+
+                if not htsno:
+                    # If no HTS column found, try the first column
+                    if fieldnames and row.get(fieldnames[0]):
+                        first_val = str(row[fieldnames[0]]).strip()
+                        if first_val and (first_val[0].isdigit() or first_val.startswith('0')):
+                            htsno = first_val
+                    if not htsno:
+                        continue
+
+                # Clean the HTS code (remove periods)
+                full_code = htsno.replace('.', '').strip()
+                if not full_code:
+                    continue
+
+                # Extract chapter from code
+                try:
+                    chapter = int(full_code[:2]) if len(full_code) >= 2 else 0
+                except ValueError:
+                    chapter = 0
+
+                # Get other fields
+                unit_str = get_column_value(row,
+                    'Unit of Quantity', 'UnitOfQuantity', 'Unit_of_Quantity',
+                    'units', 'Units', 'UoQ', 'Unit')
+
+                description = get_column_value(row,
+                    'Description', 'description', 'Desc', 'desc', 'Article Description')
+
+                general_rate = get_column_value(row,
+                    'General Rate of Duty', 'GeneralRateOfDuty', 'General_Rate',
+                    'general', 'General', 'Gen Rate', 'General Rate')
+
+                special_rate = get_column_value(row,
+                    'Special Rate of Duty', 'SpecialRateOfDuty', 'Special_Rate',
+                    'special', 'Special', 'Special Rate')
+
+                column2_rate = get_column_value(row,
+                    'Column 2 Rate of Duty', 'Column2RateOfDuty', 'Column_2_Rate',
+                    'other', 'Other', 'Column 2', 'Col 2 Rate', 'Column2')
+
+                indent_str = get_column_value(row, 'Indent', 'indent', 'Indentation', 'Level')
+                try:
+                    indent_level = int(indent_str) if indent_str else 0
+                except ValueError:
+                    indent_level = 0
+
+                record = {
+                    'heading': full_code[:4] if len(full_code) >= 4 else full_code,
+                    'subheading': full_code[:6] if len(full_code) >= 6 else full_code,
+                    'stat_suffix': full_code[6:] if len(full_code) > 6 else '',
+                    'full_code': full_code,
+                    'description': description,
+                    'unit_of_quantity': unit_str,
+                    'general_rate': general_rate,
+                    'special_rate': special_rate,
+                    'column2_rate': column2_rate,
+                    'chapter': chapter,
+                    'indent_level': indent_level,
+                }
+                all_records.append(record)
+
+            if not all_records:
+                logger.error(f"No records found. CSV columns: {fieldnames}")
+                columns_msg = f"\n\nColumns found: {', '.join(fieldnames) if fieldnames else 'None'}"
+                QMessageBox.warning(
+                    self, "Import Failed",
+                    f"No valid HTS records found in the CSV file.\n\n"
+                    f"Please ensure the file contains HTS data with recognizable column names.{columns_msg}"
+                )
+                return
+
+            progress.setLabelText(f"Importing {len(all_records):,} records into database...")
+            progress.setValue(65)
+            QApplication.processEvents()
+
+            # Update the database
+            conn = sqlite3.connect(str(hts_db_path))
+            cursor = conn.cursor()
+
+            # Clear existing data
+            cursor.execute("DELETE FROM hts_codes")
+
+            # Insert new records in batches
+            batch_size = 1000
+            for i in range(0, len(all_records), batch_size):
+                if progress.wasCanceled():
+                    conn.rollback()
+                    conn.close()
+                    QMessageBox.information(self, "Cancelled", "HTS import was cancelled. Database unchanged.")
+                    return
+
+                batch = all_records[i:i + batch_size]
+                for record in batch:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO hts_codes
+                        (heading, subheading, stat_suffix, full_code, description,
+                         unit_of_quantity, general_rate, special_rate, column2_rate,
+                         chapter, indent_level, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """, (
+                        record['heading'],
+                        record['subheading'],
+                        record['stat_suffix'],
+                        record['full_code'],
+                        record['description'],
+                        record['unit_of_quantity'],
+                        record['general_rate'],
+                        record['special_rate'],
+                        record['column2_rate'],
+                        record['chapter'],
+                        record['indent_level'],
+                    ))
+
+                pct = 65 + int((i / len(all_records)) * 30)
+                progress.setValue(pct)
+                progress.setLabelText(f"Importing records... {min(i + batch_size, len(all_records)):,} / {len(all_records):,}")
+                QApplication.processEvents()
+
+            conn.commit()
+
+            # Get final count
+            cursor.execute("SELECT COUNT(*) FROM hts_codes")
+            final_count = cursor.fetchone()[0]
+            conn.close()
+
+            progress.setValue(100)
+            progress.close()
+
+            backup_msg = f"\n\nA backup of the previous database was saved to:\n{backup_path}" if backup_path else ""
+            QMessageBox.information(
+                self, "Import Complete",
+                f"HTS database imported successfully!\n\n"
+                f"Source: {file_path}\n"
+                f"Total records: {final_count:,}{backup_msg}"
+            )
+
+            # Refresh the search results
+            self.clear_hts_database_search()
+
+        except Exception as e:
+            progress.close()
+            logger.error(f"HTS import failed: {e}")
+            QMessageBox.critical(
+                self, "Import Failed",
+                f"Failed to import HTS database:\n\n{str(e)}\n\n"
                 "If a backup exists, it has not been modified."
             )
 
