@@ -13180,19 +13180,57 @@ Please fix this error in the template code. Return the complete corrected templa
         Check if a package is installed, and offer to install if not.
         Returns True if package is available, False otherwise.
         """
-        # Check if already installed using importlib for reliable detection
         import importlib
         import importlib.util
+        import subprocess
+
+        # Method 1: Try direct import (most reliable for already-loaded packages)
         try:
-            # First try to find the spec (works even if not yet imported)
-            spec = importlib.util.find_spec(package_name)
-            if spec is not None:
-                return True
-            # Fallback: try direct import
             importlib.import_module(package_name)
             return True
         except (ImportError, ModuleNotFoundError):
             pass
+
+        # Method 2: Clear import caches and try find_spec (for newly installed packages)
+        try:
+            importlib.invalidate_caches()
+            spec = importlib.util.find_spec(package_name)
+            if spec is not None:
+                return True
+        except (ImportError, ModuleNotFoundError):
+            pass
+
+        # Method 3: Use pip to check if package is installed (most reliable for fresh installs)
+        try:
+            startupinfo = None
+            creationflags = 0
+            if sys.platform == 'win32':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                creationflags = subprocess.CREATE_NO_WINDOW
+
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "show", package_name],
+                capture_output=True,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=creationflags,
+                timeout=10
+            )
+            if result.returncode == 0 and package_name.lower() in result.stdout.lower():
+                # Package is installed but Python hasn't loaded it yet
+                # Try importing again after cache invalidation
+                importlib.invalidate_caches()
+                try:
+                    importlib.import_module(package_name)
+                    return True
+                except:
+                    # Package installed but can't be imported - may need app restart
+                    logger.info(f"Package {package_name} is installed but requires app restart to use")
+                    return True  # Return True since it IS installed
+        except Exception as e:
+            logger.debug(f"pip show check failed: {e}")
 
         # Track packages currently being installed
         if not hasattr(self, '_installing_packages'):
@@ -13222,11 +13260,31 @@ Please fix this error in the template code. Return the complete corrected templa
         return False
 
     def _install_package_background(self, package_name: str):
-        """Install a package in a hidden background process."""
+        """Install a package in a hidden background process with progress dialog."""
         import subprocess
         import threading
 
         self._installing_packages.add(package_name)
+
+        # Create progress dialog
+        progress = QProgressDialog(
+            f"Installing {package_name}...\nThis may take a minute.",
+            None,  # No cancel button
+            0, 0,  # Indeterminate progress (0, 0)
+            self
+        )
+        progress.setWindowTitle("Installing AI Package")
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)  # Show immediately
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setCancelButton(None)  # Remove cancel button
+        progress.setMinimumWidth(350)
+
+        # Store reference to close later
+        self._install_progress_dialog = progress
+        progress.show()
+        QApplication.processEvents()
 
         def do_install():
             try:
@@ -13257,8 +13315,8 @@ Please fix this error in the template code. Return the complete corrected templa
                     package_name, False, str(e)
                 ))
 
-        # Show installing message in status bar
-        self.statusBar().showMessage(f"Installing {package_name}... (this may take a minute)", 0)
+        # Show installing message in status bar as backup
+        self.statusBar().showMessage(f"Installing {package_name}...", 0)
 
         # Run in background thread
         thread = threading.Thread(target=do_install, daemon=True)
@@ -13268,6 +13326,11 @@ Please fix this error in the template code. Return the complete corrected templa
         """Handle package installation completion."""
         self._installing_packages.discard(package_name)
         self.statusBar().clearMessage()
+
+        # Close the progress dialog
+        if hasattr(self, '_install_progress_dialog') and self._install_progress_dialog:
+            self._install_progress_dialog.close()
+            self._install_progress_dialog = None
 
         if success:
             QMessageBox.information(
