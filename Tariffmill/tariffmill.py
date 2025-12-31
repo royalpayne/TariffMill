@@ -53,19 +53,13 @@ if sys.platform == 'win32':
 
 def update_splash(message):
     """Update PyInstaller native splash screen text."""
-    try:
-        import pyi_splash
-        pyi_splash.update_text(message)
-    except ImportError:
-        pass  # Not running from PyInstaller bundle
+    # Native splash is disabled - this is now a no-op
+    pass
 
 def close_splash():
     """Close PyInstaller native splash screen."""
-    try:
-        import pyi_splash
-        pyi_splash.close()
-    except ImportError:
-        pass  # Not running from PyInstaller bundle
+    # Native splash is disabled - this is now a no-op
+    pass
 
 # Update splash during module loading
 if __name__ == "__main__":
