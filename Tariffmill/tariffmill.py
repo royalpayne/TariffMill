@@ -1770,6 +1770,17 @@ def init_database():
         except Exception as e:
             logger.warning(f"Failed to check/add Sec301_Exclusion_Tariff column: {e}")
 
+        # Migration: Add hts_verified column to parts_master if it doesn't exist
+        # This column stores verification status and date of HTS code against hts.db
+        try:
+            c.execute("PRAGMA table_info(parts_master)")
+            columns = [col[1] for col in c.fetchall()]
+            if 'hts_verified' not in columns:
+                c.execute("ALTER TABLE parts_master ADD COLUMN hts_verified TEXT")
+                logger.info("Added hts_verified column to parts_master")
+        except Exception as e:
+            logger.warning(f"Failed to check/add hts_verified column: {e}")
+
         # Migration: Reset column visibility settings if we have outdated settings
         # (This handles upgrades from versions with fewer columns)
         try:
@@ -12921,6 +12932,9 @@ EXPORT DETAILS
         btn_export_missing = QPushButton("Export Missing HTS")
         btn_export_missing.setStyleSheet(self.get_button_style("secondary"))
         btn_export_missing.setToolTip("Export HTS codes missing CBP Qty1 to the reference file for lookup")
+        btn_verify_hts = QPushButton("Verify HTS")
+        btn_verify_hts.setStyleSheet(self.get_button_style("info"))
+        btn_verify_hts.setToolTip("Verify all HTS codes against hts.db and update qty_unit values")
         btn_export_by_client = QPushButton("Export by Client")
         btn_export_by_client.setStyleSheet(self.get_button_style("primary"))
         btn_export_by_client.setToolTip("Export parts list filtered by client code to Excel")
@@ -12929,10 +12943,12 @@ EXPORT DETAILS
         btn_save.clicked.connect(self.save_parts_table)
         btn_refresh.clicked.connect(self.refresh_parts_table)
         btn_export_missing.clicked.connect(self.export_missing_hts_codes)
+        btn_verify_hts.clicked.connect(self.verify_hts_codes_with_dialog)
         btn_export_by_client.clicked.connect(self.export_parts_by_client)
         edit_box.addWidget(QLabel("Edit:"))
         edit_box.addWidget(btn_add); edit_box.addWidget(btn_del); edit_box.addWidget(btn_save); edit_box.addWidget(btn_refresh)
         edit_box.addWidget(btn_export_missing)
+        edit_box.addWidget(btn_verify_hts)
         edit_box.addWidget(btn_export_by_client)
         edit_box.addStretch()
         layout.addLayout(edit_box)
@@ -12956,6 +12972,12 @@ EXPORT DETAILS
         btn_search_missing_hts.setToolTip("Find parts without HTS codes assigned")
         btn_search_missing_hts.clicked.connect(self.search_missing_hts)
         presets_layout.addWidget(btn_search_missing_hts)
+
+        btn_search_invalid_hts = QPushButton("Invalid HTS Codes")
+        btn_search_invalid_hts.setStyleSheet(self.get_button_style("danger"))
+        btn_search_invalid_hts.setToolTip("Find parts with HTS codes not found in HTS database")
+        btn_search_invalid_hts.clicked.connect(self.search_invalid_hts)
+        presets_layout.addWidget(btn_search_invalid_hts)
 
         btn_search_steel = QPushButton("Steel Parts")
         btn_search_steel.setStyleSheet(self.get_button_style("info"))
@@ -13094,9 +13116,9 @@ EXPORT DETAILS
         table_box = QGroupBox("Parts Master Table")
         tl = QVBoxLayout()
         self.parts_table = QTableWidget()
-        self.parts_table.setColumnCount(15)
+        self.parts_table.setColumnCount(16)
         self.parts_table.setHorizontalHeaderLabels([
-            "part_number", "description", "hts_code", "country_origin", "mid", "client_code", "steel_%", "aluminum_%", "copper_%", "wood_%", "auto_%", "non_steel_%", "qty_unit", "Sec301_Exclusion_Tariff", "updated_date"
+            "part_number", "description", "hts_code", "country_origin", "mid", "client_code", "steel_%", "aluminum_%", "copper_%", "wood_%", "auto_%", "non_steel_%", "qty_unit", "hts_verified", "Sec301_Exclusion_Tariff", "updated_date"
         ])
         self.parts_table.setEditTriggers(QTableWidget.AllEditTriggers)
         self.parts_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -13105,7 +13127,7 @@ EXPORT DETAILS
         self.parts_table.horizontalHeader().setStretchLastSection(True)
         self.parts_table.setSortingEnabled(False)  # Disabled for better performance
         # Set reasonable default column widths
-        default_widths = [120, 200, 100, 50, 120, 80, 60, 60, 60, 60, 60, 60, 60, 120, 150]
+        default_widths = [120, 200, 100, 50, 120, 80, 60, 60, 60, 60, 60, 60, 60, 120, 120, 150]
         for i, width in enumerate(default_widths):
             self.parts_table.setColumnWidth(i, width)
         tl.addWidget(self.parts_table)
@@ -16416,7 +16438,7 @@ Please fix this error in the template code. Return the complete corrected templa
             df = pd.read_sql("""
                 SELECT part_number, description, hts_code, country_origin, mid, client_code,
                        steel_ratio, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio, non_steel_ratio,
-                       qty_unit, Sec301_Exclusion_Tariff, last_updated as updated_date
+                       qty_unit, hts_verified, Sec301_Exclusion_Tariff, last_updated as updated_date
                 FROM parts_master ORDER BY part_number
             """, conn)
             conn.close()
@@ -16491,6 +16513,149 @@ Please fix this error in the template code. Return the complete corrected templa
         except Exception as e:
             logger.error(f"Silent HTS units import failed: {e}")
             return -1
+
+    def verify_hts_codes_in_parts_master(self, part_numbers=None):
+        """
+        Verify HTS codes in parts_master against hts.db and update hts_verified column.
+
+        For each part:
+        - If HTS found in hts.db: sets hts_verified to "Verified YYYY-MM-DD"
+        - If HTS NOT found in hts.db: sets hts_verified to "Invalid HTS - YYYY-MM-DD"
+        - Also updates qty_unit from hts.db if HTS is valid
+
+        Args:
+            part_numbers: List of part numbers to verify (if None, verifies all parts)
+
+        Returns:
+            Tuple of (verified_count, invalid_count, total_checked)
+        """
+        from datetime import datetime
+
+        hts_db_path = RESOURCES_DIR / "References" / "hts.db"
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        if not hts_db_path.exists():
+            logger.warning("hts.db not found, cannot verify HTS codes")
+            return (0, 0, 0)
+
+        try:
+            # Clean up HTS codes (remove dots for matching)
+            def normalize_hts(hts):
+                if pd.isna(hts) or hts is None:
+                    return ""
+                return str(hts).replace(".", "").strip()
+
+            # Load all valid HTS codes and their units from hts.db
+            hts_conn = sqlite3.connect(str(hts_db_path))
+            hts_cursor = hts_conn.cursor()
+            hts_cursor.execute("SELECT full_code, unit_of_quantity FROM hts_codes")
+            hts_data = {row[0]: row[1] for row in hts_cursor.fetchall()}
+            hts_conn.close()
+
+            if not hts_data:
+                logger.warning("No HTS codes found in hts.db")
+                return (0, 0, 0)
+
+            # Update parts_master database
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+
+            # Get parts with HTS codes (filter by part_numbers if provided)
+            if part_numbers:
+                placeholders = ','.join(['?' for _ in part_numbers])
+                c.execute(f"SELECT part_number, hts_code FROM parts_master WHERE hts_code IS NOT NULL AND hts_code != '' AND part_number IN ({placeholders})", part_numbers)
+            else:
+                c.execute("SELECT part_number, hts_code FROM parts_master WHERE hts_code IS NOT NULL AND hts_code != ''")
+            parts = c.fetchall()
+
+            verified_count = 0
+            invalid_count = 0
+
+            for part_number, hts_code in parts:
+                normalized = normalize_hts(hts_code)
+
+                if normalized in hts_data:
+                    # HTS is valid - update verified status and qty_unit
+                    qty_unit = hts_data[normalized] or ""
+                    c.execute("""UPDATE parts_master
+                                SET hts_verified=?, qty_unit=?
+                                WHERE part_number=?""",
+                              (f"Verified {today}", qty_unit, part_number))
+                    verified_count += 1
+                else:
+                    # HTS is invalid - mark as invalid
+                    c.execute("""UPDATE parts_master
+                                SET hts_verified=?
+                                WHERE part_number=?""",
+                              (f"Invalid HTS - {today}", part_number))
+                    invalid_count += 1
+
+            conn.commit()
+            conn.close()
+
+            total_checked = verified_count + invalid_count
+            logger.info(f"HTS verification complete: {verified_count} verified, {invalid_count} invalid, {total_checked} total")
+
+            return (verified_count, invalid_count, total_checked)
+
+        except Exception as e:
+            logger.error(f"HTS verification failed: {e}")
+            return (0, 0, 0)
+
+    def verify_hts_codes_with_dialog(self):
+        """Verify HTS codes in parts_master with progress dialog and results message."""
+        from PyQt5.QtWidgets import QProgressDialog
+        from PyQt5.QtCore import Qt
+
+        # Confirm action
+        reply = QMessageBox.question(
+            self,
+            "Verify HTS Codes",
+            "This will verify all HTS codes in the Parts Master against the HTS database.\n\n"
+            "- Valid HTS codes will be marked as 'Verified' with today's date\n"
+            "- Invalid HTS codes will be marked as 'Invalid HTS' with today's date\n"
+            "- Qty Unit values will be updated for valid HTS codes\n\n"
+            "Do you want to continue?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        # Show progress dialog
+        progress = QProgressDialog("Verifying HTS codes...", None, 0, 0, self)
+        progress.setWindowTitle("HTS Verification")
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setMinimumWidth(300)
+        progress.setValue(0)
+        QApplication.processEvents()
+
+        # Run verification
+        verified, invalid, total = self.verify_hts_codes_in_parts_master()
+
+        progress.close()
+
+        # Show results
+        if total == 0:
+            QMessageBox.information(
+                self, "Verification Complete",
+                "No parts with HTS codes found to verify."
+            )
+        else:
+            QMessageBox.information(
+                self, "Verification Complete",
+                f"HTS Code Verification Results:\n\n"
+                f"Total parts checked: {total:,}\n"
+                f"Valid HTS codes: {verified:,}\n"
+                f"Invalid HTS codes: {invalid:,}\n\n"
+                f"The 'hts_verified' column has been updated.\n"
+                f"Qty Unit values have been updated for valid codes."
+            )
+
+        # Refresh the parts table to show updated values
+        self.refresh_parts_table()
 
     def export_missing_hts_codes(self):
         """Export HTS codes that are missing from hts.db or missing Qty Unit values, including part numbers."""
@@ -17065,7 +17230,10 @@ Please fix this error in the template code. Return the complete corrected templa
         """Find parts with missing or empty HTS codes."""
         try:
             sql = """
-                SELECT * FROM parts_master
+                SELECT part_number, description, hts_code, country_origin, mid, client_code,
+                       steel_ratio, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio, non_steel_ratio,
+                       qty_unit, hts_verified, Sec301_Exclusion_Tariff, last_updated as updated_date
+                FROM parts_master
                 WHERE hts_code IS NULL OR hts_code = '' OR hts_code = 'UNKNOWN'
                 ORDER BY part_number
             """
@@ -17075,6 +17243,31 @@ Please fix this error in the template code. Return the complete corrected templa
 
             self.populate_parts_table(df)
             self._update_search_result(f"Found {len(df)} parts with missing HTS codes", "warning" if len(df) > 0 else "success")
+
+        except Exception as e:
+            logger.error(f"Search failed: {e}")
+            self._update_search_result(f"Search error: {e}", "error")
+
+    def search_invalid_hts(self):
+        """Find parts with invalid HTS codes (not found in hts.db)."""
+        try:
+            sql = """
+                SELECT part_number, description, hts_code, country_origin, mid, client_code,
+                       steel_ratio, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio, non_steel_ratio,
+                       qty_unit, hts_verified, Sec301_Exclusion_Tariff, last_updated as updated_date
+                FROM parts_master
+                WHERE hts_verified LIKE 'Invalid HTS%'
+                ORDER BY part_number
+            """
+            conn = sqlite3.connect(str(DB_PATH))
+            df = pd.read_sql(sql, conn)
+            conn.close()
+
+            self.populate_parts_table(df)
+            if len(df) > 0:
+                self._update_search_result(f"Found {len(df)} parts with invalid HTS codes", "error")
+            else:
+                self._update_search_result("No invalid HTS codes found. Run 'Verify HTS' to check all parts.", "success")
 
         except Exception as e:
             logger.error(f"Search failed: {e}")
