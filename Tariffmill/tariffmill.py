@@ -1509,24 +1509,30 @@ def get_232_info(hts_code):
 
 def parse_qty_unit(qty_unit_raw):
     """
-    Parse quantity unit from various formats including JSON arrays.
+    Parse quantity unit from various formats including JSON arrays and HTML tags.
 
     The HTS database may store unit_of_quantity as:
     - Plain string: "KG", "NO", "M2"
     - JSON array: '["kg"]', '["NO", "KG"]', '["no.", "kg"]'
+    - HTML formatted: 'DOZ/<U>KG</U>', 'NO./<U>KG</U>'
 
     Args:
         qty_unit_raw: Raw quantity unit value from database
 
     Returns:
-        Cleaned quantity unit string (e.g., "KG", "NO/KG") or empty string
+        Cleaned quantity unit string (e.g., "KG", "NO/KG", "DOZ/KG") or empty string
     """
+    import re
+
     if not qty_unit_raw or pd.isna(qty_unit_raw):
         return ""
 
     unit_str = str(qty_unit_raw).strip()
     if not unit_str:
         return ""
+
+    # Remove HTML tags like <U>, </U>, <u>, </u>, etc.
+    unit_str = re.sub(r'<[^>]+>', '', unit_str)
 
     # Check if it's a JSON array format like '["kg"]' or '["NO", "KG"]'
     if unit_str.startswith('[') and unit_str.endswith(']'):
@@ -1538,8 +1544,8 @@ def parse_qty_unit(qty_unit_raw):
                 # e.g., ["no.", "kg"] -> "NO/KG"
                 cleaned_units = []
                 for u in units:
-                    # Clean up each unit: remove trailing dots, uppercase
-                    clean_u = str(u).strip().rstrip('.').upper()
+                    # Clean up each unit: remove trailing dots, HTML tags, uppercase
+                    clean_u = re.sub(r'<[^>]+>', '', str(u)).strip().rstrip('.').upper()
                     if clean_u:
                         cleaned_units.append(clean_u)
                 if cleaned_units:
@@ -1548,8 +1554,16 @@ def parse_qty_unit(qty_unit_raw):
             # If JSON parsing fails, treat as plain string
             pass
 
-    # Plain string format - just uppercase and clean
-    return unit_str.rstrip('.').upper()
+    # Clean up: remove trailing dots, uppercase
+    unit_str = unit_str.rstrip('.').upper()
+
+    # Normalize common patterns
+    # "NO./" -> "NO/"
+    unit_str = re.sub(r'NO\./', 'NO/', unit_str)
+    # "DOZ./" -> "DOZ/"
+    unit_str = re.sub(r'DOZ\./', 'DOZ/', unit_str)
+
+    return unit_str
 
 
 def get_hts_qty_unit(hts_code):
@@ -1826,9 +1840,11 @@ def init_database():
         except Exception as e:
             logger.warning(f"Failed to check/add hts_verified column: {e}")
 
-        # Migration: Clean up qty_unit values with JSON array format (e.g., '["kg"]' -> 'KG')
+        # Migration: Clean up qty_unit values with JSON array format or HTML tags
+        # (e.g., '["kg"]' -> 'KG', 'DOZ/<U>KG</U>' -> 'DOZ/KG')
         try:
-            c.execute("SELECT part_number, qty_unit FROM parts_master WHERE qty_unit LIKE '[%'")
+            # Find qty_unit values that need cleaning: JSON arrays or HTML tags
+            c.execute("SELECT part_number, qty_unit FROM parts_master WHERE qty_unit LIKE '[%' OR qty_unit LIKE '%<%'")
             parts_to_clean = c.fetchall()
             if parts_to_clean:
                 cleaned_count = 0
@@ -1838,7 +1854,7 @@ def init_database():
                               (cleaned_unit, part_number))
                     cleaned_count += 1
                 if cleaned_count > 0:
-                    logger.info(f"Cleaned {cleaned_count} qty_unit values from JSON array format")
+                    logger.info(f"Cleaned {cleaned_count} qty_unit values (JSON arrays and HTML tags)")
         except Exception as e:
             logger.warning(f"Failed to clean qty_unit values: {e}")
 
