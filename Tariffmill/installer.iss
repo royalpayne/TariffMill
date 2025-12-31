@@ -2,7 +2,7 @@
 ; Build with: iscc installer.iss
 
 #define MyAppName "TariffMill"
-#define MyAppVersion "0.96.20"
+#define MyAppVersion "0.96.21"
 #define MyAppPublisher "Process Logic Labs, LLC"
 #define MyAppExeName "TariffMill.exe"
 
