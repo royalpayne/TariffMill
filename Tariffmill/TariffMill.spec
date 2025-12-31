@@ -18,32 +18,18 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['tkinter', '_tkinter', 'tk', 'tcl'],  # Exclude tkinter to avoid DLL issues
     noarchive=False,
     optimize=0,
 )
 pyz = PYZ(a.pure)
 
-# Native splash screen - shows IMMEDIATELY when exe is launched (before Python loads)
-# text_pos is lower-left corner of text, so offset left from center to approximate centering
-splash = Splash(
-    'Resources\\splash.png',
-    binaries=a.binaries,
-    datas=a.datas,
-    text_pos=(300, 280),
-    text_size=12,
-    text_font='Segoe UI',
-    text_color='#888888',
-    text_default='Initializing...',
-    minify_script=True,
-    always_on_top=True,
-)
+# Disabled native splash screen - was causing tkinter DLL issues
+# The app uses its own PyQt-based splash screen instead
 
 exe = EXE(
     pyz,
     a.scripts,
-    splash,
-    splash.binaries,
     a.binaries,
     a.datas,
     [],
