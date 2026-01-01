@@ -8142,7 +8142,8 @@ class TariffMill(QMainWindow):
         DUAL_UNITS = {'NO. AND KG', 'NO/KG', 'NO\\KG', 'NO., KG', 'NO. KG', 'NO KG',
                       'CU KG', 'CY KG', 'NI KG', 'PB KG', 'ZN KG', 'KG AMC',
                       'AG G', 'AU G', 'IR G', 'OS G', 'PD G', 'PT G', 'RH G', 'RU G',
-                      'DOZ., KG', 'DOZ. KG', 'DOZ KG', 'PRS., KG', 'PRS. KG', 'PRS KG'}
+                      'DOZ/KG', 'DOZ., KG', 'DOZ. KG', 'DOZ KG',
+                      'PRS/KG', 'PRS., KG', 'PRS. KG', 'PRS KG'}
 
         # Volume/Area/Length units (use quantity from invoice)
         MEASURE_UNITS = {'LITERS', 'PF.LITERS', 'BBL', 'M', 'LIN. M', 'M2', 'CM2', 'M3',
@@ -8185,8 +8186,8 @@ class TariffMill(QMainWindow):
                 if pd.notna(qty) and str(qty).strip():
                     try:
                         qty_val = float(str(qty).replace(',', '').strip())
-                        # Preserve 2 decimal places for dozen-based units (DOZ., KG etc.)
-                        if 'DOZ' in qty_unit:
+                        # Preserve 2 decimal places for DOZ and PRS based units (DOZ/KG, PRS/KG etc.)
+                        if 'DOZ' in qty_unit or 'PRS' in qty_unit:
                             return f"{qty_val:.2f}"
                         # For NO-based units, if qty appears to be in dozens (< 100 and has decimals),
                         # it may need conversion. Check quantity_unit from invoice to determine.
