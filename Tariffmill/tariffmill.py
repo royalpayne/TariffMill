@@ -6180,15 +6180,21 @@ class TariffMill(QMainWindow):
             return
 
         logger.info("Checking for updates on startup...")
-        
+
         def check_thread():
-            checker = UpdateChecker(VERSION)
-            has_update, latest, url, notes, download_url, error = checker.check_for_updates()
-            if has_update and not error:
-                # Schedule dialog to be shown on main thread
-                QTimer.singleShot(0, lambda: self.show_update_available_dialog(
-                    latest, url, notes, download_url))
-        
+            try:
+                checker = UpdateChecker(VERSION)
+                has_update, latest, url, notes, download_url, error = checker.check_for_updates()
+                logger.info(f"Update check result: has_update={has_update}, latest={latest}, error={error}")
+                if has_update and not error:
+                    # Schedule dialog to be shown on main thread
+                    QTimer.singleShot(0, lambda: self.show_update_available_dialog(
+                        latest, url, notes, download_url))
+                elif error:
+                    logger.warning(f"Update check error: {error}")
+            except Exception as e:
+                logger.error(f"Update check thread failed: {e}")
+
         # Run in background thread to not block startup
         thread = Thread(target=check_thread, daemon=True)
         thread.start()
