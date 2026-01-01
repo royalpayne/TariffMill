@@ -1923,23 +1923,28 @@ class AITemplateChatDialog(QDialog):
         self.send_btn.setEnabled(True)
         self.cancel_btn.setEnabled(False)
 
-        # Add to history and redisplay
-        self.conversation_history.append({"role": "assistant", "content": response})
-        self._display_chat_history()
+        # Extract code if present
+        code_match = re.search(r'```python\s*(.*?)\s*```', response, re.DOTALL)
+        if code_match:
+            # Auto-apply code changes to editor
+            self.code_edit.setPlainText(code_match.group(1))
+            self.pending_code = None
+            self.apply_btn.setEnabled(False)
+
+            # Store response without the code block for chat display
+            response_without_code = re.sub(r'```python\s*.*?\s*```', '[Code applied to editor]', response, flags=re.DOTALL)
+            self.conversation_history.append({"role": "assistant", "content": response_without_code})
+            self._display_chat_history()
+            self._append_system_message("Code changes automatically applied to the editor.")
+        else:
+            self.pending_code = None
+            # Add to history and redisplay
+            self.conversation_history.append({"role": "assistant", "content": response})
+            self._display_chat_history()
 
         # Scroll to bottom
         scrollbar = self.chat_display.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
-
-        # Extract code if present
-        code_match = re.search(r'```python\s*(.*?)\s*```', response, re.DOTALL)
-        if code_match:
-            self.pending_code = code_match.group(1)
-            self.apply_btn.setEnabled(True)
-            # Add system notification about code detection
-            self._append_system_message("Code changes detected. Click 'Apply Changes' to update the template.")
-        else:
-            self.pending_code = None
 
     def _append_system_message(self, message: str, is_error: bool = False):
         """Append a system notification message to the chat display."""
@@ -2511,34 +2516,62 @@ class AITemplateEditorDialog(QDialog):
         self.send_btn.setEnabled(True)
         self.cancel_btn.setEnabled(False)
 
-        # Add to history and redisplay
-        self.conversation_history.append({"role": "assistant", "content": response})
-        self._display_chat_history()
+        # Extract code if present
+        code_match = re.search(r'```python\s*(.*?)\s*```', response, re.DOTALL)
+        if code_match:
+            # Auto-apply code changes to editor
+            self.code_edit.setPlainText(code_match.group(1))
+            self.pending_code = None
+            self.apply_btn.setEnabled(False)
+
+            # Store response without the code block for chat display
+            response_without_code = re.sub(r'```python\s*.*?\s*```', '[Code applied to editor]', response, flags=re.DOTALL)
+            self.conversation_history.append({"role": "assistant", "content": response_without_code})
+            self._display_chat_history()
+            self._append_system_message("Code changes automatically applied to the editor.")
+        else:
+            self.pending_code = None
+            # Add to history and redisplay
+            self.conversation_history.append({"role": "assistant", "content": response})
+            self._display_chat_history()
 
         # Scroll to bottom
         scrollbar = self.chat_display.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
 
-        # Extract code if present
-        code_match = re.search(r'```python\s*(.*?)\s*```', response, re.DOTALL)
-        if code_match:
-            self.pending_code = code_match.group(1)
-            self.apply_btn.setEnabled(True)
+    def _append_system_message(self, message: str, is_error: bool = False):
+        """Append a system notification message to the chat display."""
+        color = "#f48771" if is_error else "#4ec9b0"  # Red for error, teal for info
+        icon = "⚠️" if is_error else "ℹ️"
+        html = f'''
+        <div style="margin: 8px 0; text-align: center;">
+            <div style="display: inline-block; background-color: #252526; color: {color}; padding: 8px 16px; border-radius: 6px; font-size: 10px; border: 1px solid #404040;">
+                {icon} {message}
+            </div>
+        </div>
+        '''
+        current_html = self.chat_display.toHtml()
+        if '</div></body>' in current_html:
+            current_html = current_html.replace('</div></body>', f'{html}</div></body>')
         else:
-            self.pending_code = None
+            self.chat_display.append(html)
+            return
+        self.chat_display.setHtml(current_html)
+        scrollbar = self.chat_display.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
 
     def _on_error(self, error: str):
         """Handle AI error."""
         self.send_btn.setEnabled(True)
         self.cancel_btn.setEnabled(False)
-        QMessageBox.warning(self, "AI Error", f"Error communicating with AI:\n\n{error}")
+        self._append_system_message(f"Error: {error}", is_error=True)
 
     def apply_changes(self):
-        """Apply the AI-suggested code changes."""
+        """Apply the AI-suggested code changes (manual fallback)."""
         if hasattr(self, 'pending_code') and self.pending_code:
             self.code_edit.setPlainText(self.pending_code)
             self.apply_btn.setEnabled(False)
-            QMessageBox.information(self, "Applied", "Code changes applied to the editor.")
+            self._append_system_message("Code changes applied to the editor.")
 
     def save_template(self):
         """Save the modified template."""
