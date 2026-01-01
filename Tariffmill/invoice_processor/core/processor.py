@@ -299,7 +299,7 @@ MEASURE_UNITS = {'LITERS', 'PF.LITERS', 'BBL', 'M', 'LIN. M', 'M2', 'CM2', 'M3',
                  'SQUARE', 'FIBER M', 'GBQ', 'MWH', 'THOUSAND M', 'THOUSAND M3'}
 
 # Units that should have BOTH Qty1 and Qty2 empty (measurement-only units per CBP requirements)
-NO_QTY_UNITS = {'M', 'M2', 'M3', 'DOZ', 'DPR', 'PRS', 'DOZ. PRS'}
+NO_QTY_UNITS = {'M', 'M2', 'M3'}
 
 
 def _get_qty1(row: pd.Series) -> str:

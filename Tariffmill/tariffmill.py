@@ -8110,7 +8110,7 @@ class TariffMill(QMainWindow):
                          'SQUARE', 'FIBER M', 'GBQ', 'MWH', 'THOUSAND M', 'THOUSAND M3'}
 
         # Units that should have BOTH Qty1 and Qty2 empty (measurement-only units per CBP requirements)
-        NO_QTY_UNITS = {'M', 'M2', 'M3', 'DOZ', 'DPR', 'PRS', 'DOZ. PRS'}
+        NO_QTY_UNITS = {'M', 'M2', 'M3'}
 
         def get_qty1(row):
             qty_unit = str(row.get('qty_unit', '')).strip().upper() if pd.notna(row.get('qty_unit')) else ''
@@ -21218,8 +21218,8 @@ Please fix this error in the template code. Return the complete corrected templa
     def ocrmill_refresh_input_files_light(self):
         """Lightweight refresh - only update if on OCRMill tab's Invoice Processing sub-tab"""
         try:
-            # Only refresh if on OCRMill tab (tab index 2)
-            if self.tabs.currentIndex() != 2:
+            # Only refresh if on OCRMill tab (tab index 1 - PDF Processing)
+            if self.tabs.currentIndex() != 1:
                 return
 
             # Only refresh if on Invoice Processing sub-tab (tab index 0)
@@ -21237,8 +21237,8 @@ Please fix this error in the template code. Return the complete corrected templa
     def ocrmill_refresh_output_files_light(self):
         """Lightweight refresh - only update if on OCRMill tab's Invoice Processing sub-tab"""
         try:
-            # Only refresh if on OCRMill tab (tab index 2)
-            if self.tabs.currentIndex() != 2:
+            # Only refresh if on OCRMill tab (tab index 1 - PDF Processing)
+            if self.tabs.currentIndex() != 1:
                 return
 
             # Only refresh if on Invoice Processing sub-tab (tab index 0)
