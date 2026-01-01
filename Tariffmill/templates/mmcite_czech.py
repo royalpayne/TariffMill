@@ -35,15 +35,15 @@ class MmciteCzechTemplate(BaseTemplate):
         text_lower = text.lower()
 
         # Look for mmcité a.s. - the Czech company
-        has_mmcite = 'mmcité a.s' in text_lower or 'mmcite a.s' in text_lower
+        has_mmcité = 'mmcité a.s' in text_lower or 'mmcité a.s' in text_lower
 
         # Look for Czech Republic origin
         has_czech = 'czech republic' in text_lower or 'uherské hradiště' in text_lower
 
         # Look for mmcité usa LLC as buyer (distinctive marker for these invoices)
-        has_mmcite_usa_buyer = 'mmcité usa llc' in text_lower or 'mmcite usa llc' in text_lower
+        has_mmcité_usa_buyer = 'mmcité usa llc' in text_lower or 'mmcité usa llc' in text_lower
 
-        return has_mmcite and (has_czech or has_mmcite_usa_buyer)
+        return has_mmcité and (has_czech or has_mmcité_usa_buyer)
 
     def get_confidence_score(self, text: str) -> float:
         """Return confidence score for template matching."""
@@ -54,13 +54,13 @@ class MmciteCzechTemplate(BaseTemplate):
         text_lower = text.lower()
 
         # Strong indicators
-        if 'mmcité a.s' in text_lower or 'mmcite a.s' in text_lower:
+        if 'mmcité a.s' in text_lower or 'mmcité a.s' in text_lower:
             score += 0.2
         if 'czech republic' in text_lower:
             score += 0.15
         if 'uherské hradiště' in text_lower:
             score += 0.1
-        if 'mmcité usa llc' in text_lower or 'mmcite usa llc' in text_lower:
+        if 'mmcité usa llc' in text_lower or 'mmcité usa llc' in text_lower:
             score += 0.1
 
         # Invoice format markers
@@ -127,7 +127,7 @@ class MmciteCzechTemplate(BaseTemplate):
             # Skip header and footer lines
             skip_patterns = [
                 'type / desciption', 'art. no.', 'description project',
-                'printed from sap', 'www.mmcite.com', 'tax recapitulation',
+                'printed from sap', 'www.mmcité.com', 'tax recapitulation',
                 'vat code', 'total:', 'exchange rate:', 'issued by:',
                 'notes:', 'celkem', 'souhrn', 'please note', 'vývozce',
                 'the exporter', 'taxable transaction', 'zdanitelné'

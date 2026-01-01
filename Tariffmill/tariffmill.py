@@ -1285,6 +1285,119 @@ def get_platform_database_paths():
     }
     return result
 
+
+def get_backup_settings():
+    """
+    Get database backup settings from shared config.
+
+    Returns:
+        Dict with backup configuration: enabled, folder, schedule, keep_count, backup_machine
+    """
+    config = load_shared_config()
+    return {
+        'enabled': config.getboolean('Backup', 'enabled', fallback=False),
+        'folder': config.get('Backup', 'folder', fallback=''),
+        'schedule': config.get('Backup', 'schedule', fallback='daily'),  # daily, weekly, startup
+        'keep_count': config.getint('Backup', 'keep_count', fallback=7),
+        'last_backup': config.get('Backup', 'last_backup', fallback=''),
+        'backup_machine': config.get('Backup', 'backup_machine', fallback=''),  # hostname of designated backup machine
+    }
+
+
+def get_current_hostname():
+    """Get the current machine's hostname."""
+    import socket
+    return socket.gethostname().upper()
+
+
+def is_backup_machine():
+    """Check if this machine is the designated backup machine."""
+    settings = get_backup_settings()
+    backup_machine = settings.get('backup_machine', '').strip().upper()
+    if not backup_machine:
+        return False  # No machine designated, backups disabled
+    current = get_current_hostname()
+    return current == backup_machine
+
+
+def set_backup_settings(enabled: bool, folder: str, schedule: str, keep_count: int, backup_machine: str = ''):
+    """
+    Save database backup settings to shared config.
+
+    Args:
+        enabled: Whether automatic backups are enabled
+        folder: Folder path for backup files
+        schedule: Backup schedule - 'daily', 'weekly', or 'startup'
+        keep_count: Number of backup files to keep (older ones are deleted)
+        backup_machine: Hostname of the designated backup machine (only this machine runs backups)
+    """
+    config = load_shared_config()
+    if not config.has_section('Backup'):
+        config.add_section('Backup')
+
+    config.set('Backup', 'enabled', str(enabled))
+    config.set('Backup', 'folder', folder)
+    config.set('Backup', 'schedule', schedule)
+    config.set('Backup', 'keep_count', str(keep_count))
+    config.set('Backup', 'backup_machine', backup_machine)
+    save_shared_config(config)
+
+
+def update_last_backup_time():
+    """Update the last backup timestamp in config."""
+    config = load_shared_config()
+    if not config.has_section('Backup'):
+        config.add_section('Backup')
+    config.set('Backup', 'last_backup', datetime.now().isoformat())
+    save_shared_config(config)
+
+
+def perform_database_backup(db_path: Path, backup_folder: str, keep_count: int = 7) -> tuple:
+    """
+    Create a backup copy of the database.
+
+    Args:
+        db_path: Path to the database file to backup
+        backup_folder: Folder to store backup files
+        keep_count: Number of backup files to retain
+
+    Returns:
+        Tuple of (success: bool, message: str, backup_path: str or None)
+    """
+    try:
+        backup_dir = Path(backup_folder)
+        backup_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create backup filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        db_name = db_path.stem
+        backup_name = f"{db_name}_backup_{timestamp}.db"
+        backup_path = backup_dir / backup_name
+
+        # Copy the database file
+        shutil.copy2(str(db_path), str(backup_path))
+
+        # Clean up old backups (keep only keep_count most recent)
+        backup_files = sorted(
+            backup_dir.glob(f"{db_name}_backup_*.db"),
+            key=lambda f: f.stat().st_mtime,
+            reverse=True
+        )
+        for old_backup in backup_files[keep_count:]:
+            try:
+                old_backup.unlink()
+            except Exception:
+                pass  # Ignore errors deleting old backups
+
+        # Update last backup time
+        update_last_backup_time()
+
+        return True, f"Backup created: {backup_name}", str(backup_path)
+
+    except Exception as e:
+        return False, f"Backup failed: {str(e)}", None
+
+
 # Database location - reads from config.ini or defaults to local
 DB_PATH = get_database_path()
 
@@ -5228,6 +5341,211 @@ class TariffMill(QMainWindow):
         shared_group.setLayout(shared_layout)
         database_layout.addWidget(shared_group)
 
+        # === Database Backup Configuration ===
+        backup_group = QGroupBox("Automatic Database Backup")
+        backup_layout = QVBoxLayout()
+
+        # Load current backup settings
+        backup_settings = get_backup_settings()
+
+        # Enable backup checkbox
+        backup_enabled_cb = QCheckBox("Enable automatic database backups")
+        backup_enabled_cb.setChecked(backup_settings.get('enabled', False))
+        backup_layout.addWidget(backup_enabled_cb)
+
+        # Backup folder row
+        backup_folder_row = QHBoxLayout()
+        backup_folder_label = QLabel("Backup Folder:")
+        backup_folder_label.setFixedWidth(85)
+        backup_folder_row.addWidget(backup_folder_label)
+
+        backup_folder_input = QLineEdit()
+        backup_folder_input.setPlaceholderText("e.g., C:\\Backups\\TariffMill or /home/backups")
+        backup_folder_input.setText(backup_settings.get('folder', ''))
+        backup_folder_row.addWidget(backup_folder_input)
+
+        backup_browse_btn = QPushButton("Browse...")
+        def browse_backup_folder():
+            folder = QFileDialog.getExistingDirectory(
+                dialog, "Select Backup Folder",
+                backup_folder_input.text() or str(Path.home())
+            )
+            if folder:
+                backup_folder_input.setText(folder)
+        backup_browse_btn.clicked.connect(browse_backup_folder)
+        backup_folder_row.addWidget(backup_browse_btn)
+        backup_layout.addLayout(backup_folder_row)
+
+        # Schedule row
+        schedule_row = QHBoxLayout()
+        schedule_label = QLabel("Schedule:")
+        schedule_label.setFixedWidth(85)
+        schedule_row.addWidget(schedule_label)
+
+        schedule_combo = QComboBox()
+        schedule_combo.addItems(["On Startup", "Daily", "Weekly"])
+        schedule_map = {'startup': 0, 'daily': 1, 'weekly': 2}
+        schedule_combo.setCurrentIndex(schedule_map.get(backup_settings.get('schedule', 'daily'), 1))
+        schedule_row.addWidget(schedule_combo)
+
+        schedule_row.addSpacing(20)
+
+        keep_label = QLabel("Keep backups:")
+        schedule_row.addWidget(keep_label)
+
+        keep_spin = QSpinBox()
+        keep_spin.setRange(1, 30)
+        keep_spin.setValue(backup_settings.get('keep_count', 7))
+        keep_spin.setSuffix(" files")
+        schedule_row.addWidget(keep_spin)
+
+        schedule_row.addStretch()
+        backup_layout.addLayout(schedule_row)
+
+        # Backup machine row (only this machine will run backups)
+        machine_row = QHBoxLayout()
+        machine_label = QLabel("Backup Machine:")
+        machine_label.setFixedWidth(85)
+        machine_row.addWidget(machine_label)
+
+        backup_machine_input = QLineEdit()
+        backup_machine_input.setPlaceholderText("Enter hostname of the machine that should run backups")
+        backup_machine_input.setText(backup_settings.get('backup_machine', ''))
+        machine_row.addWidget(backup_machine_input)
+
+        use_this_btn = QPushButton("Use This PC")
+        use_this_btn.setToolTip(f"Set to current machine: {get_current_hostname()}")
+        use_this_btn.clicked.connect(lambda: backup_machine_input.setText(get_current_hostname()))
+        machine_row.addWidget(use_this_btn)
+        backup_layout.addLayout(machine_row)
+
+        # Show current machine info
+        current_hostname = get_current_hostname()
+        is_designated = is_backup_machine()
+        if is_designated:
+            machine_status = f"<small>This machine ({current_hostname}) IS the designated backup machine.</small>"
+            status_color = "#00aa00"
+        elif backup_settings.get('backup_machine', ''):
+            machine_status = f"<small>This machine ({current_hostname}) is NOT the backup machine. Backups managed by: {backup_settings.get('backup_machine', '')}</small>"
+            status_color = info_text_color
+        else:
+            machine_status = f"<small>This machine: {current_hostname}. No backup machine designated yet.</small>"
+            status_color = info_text_color
+
+        machine_status_label = QLabel(machine_status)
+        machine_status_label.setStyleSheet(f"color:{status_color};")
+        backup_layout.addWidget(machine_status_label)
+
+        # Last backup info
+        last_backup_str = backup_settings.get('last_backup', '')
+        if last_backup_str:
+            try:
+                last_dt = datetime.fromisoformat(last_backup_str)
+                last_backup_display = last_dt.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                last_backup_display = "Unknown"
+        else:
+            last_backup_display = "Never"
+
+        last_backup_label = QLabel(f"<small>Last backup: {last_backup_display}</small>")
+        last_backup_label.setStyleSheet(f"color:{info_text_color};")
+        backup_layout.addWidget(last_backup_label)
+
+        # Backup action buttons
+        backup_btn_row = QHBoxLayout()
+
+        save_backup_btn = QPushButton("Save Backup Settings")
+        save_backup_btn.setStyleSheet(self.get_button_style("success"))
+        def save_backup_settings_func():
+            folder = backup_folder_input.text().strip()
+            enabled = backup_enabled_cb.isChecked()
+            backup_machine = backup_machine_input.text().strip().upper()
+
+            if enabled and not folder:
+                QMessageBox.warning(dialog, "Missing Folder",
+                    "Please specify a backup folder before enabling automatic backups.")
+                return
+
+            if enabled and not backup_machine:
+                QMessageBox.warning(dialog, "Missing Backup Machine",
+                    "Please specify which machine should run backups.\n\n"
+                    "Click 'Use This PC' to use the current machine, or enter a hostname.")
+                return
+
+            if enabled and folder:
+                # Verify folder exists or can be created
+                try:
+                    Path(folder).mkdir(parents=True, exist_ok=True)
+                except Exception as e:
+                    QMessageBox.critical(dialog, "Invalid Folder",
+                        f"Cannot access or create backup folder:\n{e}")
+                    return
+
+            schedule_values = ['startup', 'daily', 'weekly']
+            schedule = schedule_values[schedule_combo.currentIndex()]
+            keep_count = keep_spin.value()
+
+            set_backup_settings(enabled, folder, schedule, keep_count, backup_machine)
+
+            # Update the backup scheduler if window has one
+            if hasattr(self, '_setup_backup_scheduler'):
+                self._setup_backup_scheduler()
+
+            # Update machine status label
+            current = get_current_hostname()
+            if backup_machine and current == backup_machine:
+                machine_status_label.setText(f"<small>This machine ({current}) IS the designated backup machine.</small>")
+                machine_status_label.setStyleSheet("color:#00aa00;")
+            elif backup_machine:
+                machine_status_label.setText(f"<small>This machine ({current}) is NOT the backup machine. Backups managed by: {backup_machine}</small>")
+                machine_status_label.setStyleSheet(f"color:{info_text_color};")
+
+            QMessageBox.information(dialog, "Saved",
+                f"Backup settings saved.\n\n"
+                f"Enabled: {'Yes' if enabled else 'No'}\n"
+                f"Folder: {folder or '(not set)'}\n"
+                f"Schedule: {schedule.capitalize()}\n"
+                f"Keep: {keep_count} backups\n"
+                f"Backup Machine: {backup_machine or '(not set)'}")
+        save_backup_btn.clicked.connect(save_backup_settings_func)
+        backup_btn_row.addWidget(save_backup_btn)
+
+        backup_now_btn = QPushButton("Backup Now")
+        backup_now_btn.setStyleSheet(self.get_button_style("primary"))
+        def run_backup_now():
+            folder = backup_folder_input.text().strip()
+            if not folder:
+                QMessageBox.warning(dialog, "Missing Folder",
+                    "Please specify a backup folder first.")
+                return
+
+            keep_count = keep_spin.value()
+            success, message, backup_path = perform_database_backup(DB_PATH, folder, keep_count)
+
+            if success:
+                # Update last backup display
+                last_backup_label.setText(f"<small>Last backup: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</small>")
+                QMessageBox.information(dialog, "Backup Complete", message)
+            else:
+                QMessageBox.critical(dialog, "Backup Failed", message)
+        backup_now_btn.clicked.connect(run_backup_now)
+        backup_btn_row.addWidget(backup_now_btn)
+
+        backup_btn_row.addStretch()
+        backup_layout.addLayout(backup_btn_row)
+
+        backup_info = QLabel(
+            "<small><b>Note:</b> Only the designated Backup Machine will run automatic backups. "
+            "This prevents conflicts when multiple users share a database. "
+            "Old backups are automatically deleted when the keep count is exceeded.</small>"
+        )
+        backup_info.setWordWrap(True)
+        backup_info.setStyleSheet(f"color:{info_text_color}; padding:5px;")
+        backup_layout.addWidget(backup_info)
+
+        backup_group.setLayout(backup_layout)
+        database_layout.addWidget(backup_group)
+
         database_layout.addStretch()
         tabs.addTab(database_widget, "Database")
 
@@ -6187,18 +6505,104 @@ class TariffMill(QMainWindow):
             return
 
         logger.info("Checking for updates on startup...")
-        
+
+        # Store reference to self for thread-safe access
+        main_window = self
+
         def check_thread():
-            checker = UpdateChecker(VERSION)
-            has_update, latest, url, notes, download_url, error = checker.check_for_updates()
-            if has_update and not error:
-                # Schedule dialog to be shown on main thread
-                QTimer.singleShot(0, lambda: self.show_update_available_dialog(
-                    latest, url, notes, download_url))
-        
+            try:
+                checker = UpdateChecker(VERSION)
+                has_update, latest, url, notes, download_url, error = checker.check_for_updates()
+                logger.info(f"Startup update check result: has_update={has_update}, latest={latest}, error={error}")
+                if has_update and not error:
+                    logger.info(f"Update available! Scheduling dialog for version {latest}")
+                    # Schedule dialog to be shown on main thread
+                    # Use explicit variable capture to avoid closure issues
+                    def show_dialog():
+                        try:
+                            logger.info(f"Showing update dialog for {latest}")
+                            main_window.show_update_available_dialog(latest, url, notes, download_url)
+                        except Exception as e:
+                            logger.error(f"Error showing update dialog: {e}")
+                    QTimer.singleShot(100, show_dialog)
+                elif error:
+                    logger.warning(f"Startup update check had error: {error}")
+            except Exception as e:
+                logger.error(f"Exception in startup update check thread: {e}")
+
         # Run in background thread to not block startup
         thread = Thread(target=check_thread, daemon=True)
         thread.start()
+
+    def _setup_backup_scheduler(self):
+        """Set up automatic database backup based on configuration."""
+        backup_settings = get_backup_settings()
+
+        if not backup_settings.get('enabled', False):
+            logger.debug("Database backup is disabled")
+            return
+
+        # Check if this machine is the designated backup machine
+        if not is_backup_machine():
+            backup_machine = backup_settings.get('backup_machine', '')
+            current = get_current_hostname()
+            logger.debug(f"Database backup skipped: this machine ({current}) is not the designated backup machine ({backup_machine})")
+            return
+
+        folder = backup_settings.get('folder', '')
+        if not folder:
+            logger.warning("Backup enabled but no folder configured")
+            return
+
+        schedule = backup_settings.get('schedule', 'daily')
+        keep_count = backup_settings.get('keep_count', 7)
+        last_backup_str = backup_settings.get('last_backup', '')
+
+        # Determine if backup is needed
+        need_backup = False
+
+        if schedule == 'startup':
+            # Always backup on startup when schedule is 'startup'
+            need_backup = True
+            logger.info("Backup scheduled: on startup")
+        else:
+            # Check last backup time
+            if not last_backup_str:
+                need_backup = True
+                logger.info("Backup needed: no previous backup found")
+            else:
+                try:
+                    last_backup = datetime.fromisoformat(last_backup_str)
+                    now = datetime.now()
+
+                    if schedule == 'daily':
+                        # Backup if last backup was more than 24 hours ago
+                        if (now - last_backup).total_seconds() > 24 * 60 * 60:
+                            need_backup = True
+                            logger.info("Backup needed: daily schedule, last backup > 24 hours ago")
+                    elif schedule == 'weekly':
+                        # Backup if last backup was more than 7 days ago
+                        if (now - last_backup).total_seconds() > 7 * 24 * 60 * 60:
+                            need_backup = True
+                            logger.info("Backup needed: weekly schedule, last backup > 7 days ago")
+                except Exception as e:
+                    logger.warning(f"Could not parse last backup time: {e}")
+                    need_backup = True
+
+        if need_backup:
+            # Run backup in background thread
+            def backup_thread():
+                try:
+                    success, message, backup_path = perform_database_backup(DB_PATH, folder, keep_count)
+                    if success:
+                        logger.info(f"Automatic backup completed: {message}")
+                    else:
+                        logger.error(f"Automatic backup failed: {message}")
+                except Exception as e:
+                    logger.error(f"Exception during automatic backup: {e}")
+
+            thread = Thread(target=backup_thread, daemon=True)
+            thread.start()
 
     def _download_and_install_update(self, download_url: str, dialog: QDialog):
         """Download the update installer and run it."""
@@ -12289,10 +12693,12 @@ class TariffMill(QMainWindow):
         dialog.exec_()
 
     def _generate_billing_report(self, month: str):
-        """Generate a billing report file for the specified month."""
+        """Generate a professionally styled billing report with logo."""
         summary = self.get_billing_summary(month)
         rate = float(self.get_billing_setting('rate_per_file', '0'))
         amount_due = summary['export_count'] * rate
+        customer_name = self.get_billing_setting('customer_name', 'Valued Customer')
+        company_name = self.get_billing_setting('company_name', 'Process Logic Labs, LLC')
 
         # Prompt for save location
         default_name = f"TariffMill_Invoice_{month}.xlsx"
@@ -12306,69 +12712,188 @@ class TariffMill(QMainWindow):
             return
 
         try:
-            # Create workbook
-            import pandas as pd
             from openpyxl import Workbook
-            from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+            from openpyxl.styles import Font, Alignment, PatternFill, Border, Side, NamedStyle
+            from openpyxl.drawing.image import Image as XLImage
+            from openpyxl.utils import get_column_letter
 
             wb = Workbook()
             ws = wb.active
             ws.title = "Invoice"
 
-            # Header
-            ws['A1'] = "TariffMill Billing Invoice"
-            ws['A1'].font = Font(size=16, bold=True)
-            ws['A2'] = f"Period: {month}"
-            ws['A3'] = f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            # Define colors (TariffMill brand colors)
+            header_blue = "1E3C64"  # Dark blue
+            accent_purple = "7C5CFF"  # Purple accent
+            light_bg = "F5F7FA"  # Light background
+            border_color = "D1D5DB"  # Light gray border
 
-            # Summary section
-            ws['A5'] = "Summary"
-            ws['A5'].font = Font(bold=True)
-            ws['A6'] = "Total Exports:"
-            ws['B6'] = summary['export_count']
-            ws['A7'] = "Total Lines Processed:"
-            ws['B7'] = summary['total_lines']
-            ws['A8'] = "Total Value Processed:"
-            ws['B8'] = f"${summary['total_value']:,.2f}"
-            ws['A9'] = "Rate per Export:"
-            ws['B9'] = f"${rate:.2f}"
-            ws['A10'] = "Amount Due:"
-            ws['B10'] = f"${amount_due:,.2f}"
-            ws['A10'].font = Font(bold=True)
-            ws['B10'].font = Font(bold=True)
+            # Define borders
+            thin_border = Border(
+                left=Side(style='thin', color=border_color),
+                right=Side(style='thin', color=border_color),
+                top=Side(style='thin', color=border_color),
+                bottom=Side(style='thin', color=border_color)
+            )
 
-            # Details section
-            ws['A12'] = "Export Details"
-            ws['A12'].font = Font(bold=True)
+            # Set column widths
+            ws.column_dimensions['A'].width = 4
+            ws.column_dimensions['B'].width = 18
+            ws.column_dimensions['C'].width = 25
+            ws.column_dimensions['D'].width = 12
+            ws.column_dimensions['E'].width = 18
+            ws.column_dimensions['F'].width = 12
+            ws.column_dimensions['G'].width = 15
+            ws.column_dimensions['H'].width = 15
+            ws.column_dimensions['I'].width = 18
 
-            headers = ["File #", "Date", "Time", "File Name", "Lines", "Value", "MID", "Folder Profile"]
-            for col, header in enumerate(headers, 1):
-                cell = ws.cell(row=13, column=col)
+            # Add logo if available
+            logo_path = RESOURCES_DIR / "splash.png"
+            if logo_path.exists():
+                try:
+                    img = XLImage(str(logo_path))
+                    img.width = 180
+                    img.height = 100
+                    ws.add_image(img, 'B2')
+                except Exception as e:
+                    logger.warning(f"Could not add logo to invoice: {e}")
+
+            # Header section - Company info (right side)
+            ws.merge_cells('F2:I2')
+            ws['F2'] = company_name
+            ws['F2'].font = Font(size=14, bold=True, color=header_blue)
+            ws['F2'].alignment = Alignment(horizontal='right')
+
+            ws.merge_cells('F3:I3')
+            ws['F3'] = "www.processlogiclabs.com"
+            ws['F3'].font = Font(size=10, color="666666")
+            ws['F3'].alignment = Alignment(horizontal='right')
+
+            # Invoice title
+            ws.merge_cells('B8:I8')
+            ws['B8'] = "INVOICE"
+            ws['B8'].font = Font(size=24, bold=True, color=header_blue)
+            ws['B8'].alignment = Alignment(horizontal='center')
+
+            # Invoice details row
+            ws['B10'] = "Invoice Number:"
+            ws['B10'].font = Font(bold=True, color=header_blue)
+            ws['C10'] = f"INV-{month.replace('-', '')}"
+            ws['C10'].font = Font(size=11)
+
+            ws['E10'] = "Invoice Date:"
+            ws['E10'].font = Font(bold=True, color=header_blue)
+            ws['F10'] = datetime.now().strftime('%B %d, %Y')
+            ws['F10'].font = Font(size=11)
+
+            ws['H10'] = "Period:"
+            ws['H10'].font = Font(bold=True, color=header_blue)
+            ws['I10'] = month
+            ws['I10'].font = Font(size=11)
+
+            # Bill To section
+            ws.merge_cells('B12:C12')
+            ws['B12'] = "BILL TO:"
+            ws['B12'].font = Font(size=11, bold=True, color=header_blue)
+
+            ws.merge_cells('B13:D13')
+            ws['B13'] = customer_name
+            ws['B13'].font = Font(size=12)
+
+            # Summary box with background
+            summary_start_row = 15
+            ws.merge_cells(f'F{summary_start_row}:I{summary_start_row}')
+            ws[f'F{summary_start_row}'] = "INVOICE SUMMARY"
+            ws[f'F{summary_start_row}'].font = Font(size=11, bold=True, color="FFFFFF")
+            ws[f'F{summary_start_row}'].fill = PatternFill(start_color=header_blue, end_color=header_blue, fill_type="solid")
+            ws[f'F{summary_start_row}'].alignment = Alignment(horizontal='center')
+
+            summary_items = [
+                ("Total Exports:", summary['export_count']),
+                ("Lines Processed:", f"{summary['total_lines']:,}"),
+                ("Value Processed:", f"${summary['total_value']:,.2f}"),
+                ("Rate per Export:", f"${rate:.2f}"),
+            ]
+
+            for i, (label, value) in enumerate(summary_items):
+                row = summary_start_row + 1 + i
+                ws[f'F{row}'] = label
+                ws[f'F{row}'].font = Font(size=10)
+                ws[f'F{row}'].fill = PatternFill(start_color=light_bg, end_color=light_bg, fill_type="solid")
+                ws.merge_cells(f'G{row}:I{row}')
+                ws[f'G{row}'] = str(value)
+                ws[f'G{row}'].font = Font(size=10)
+                ws[f'G{row}'].alignment = Alignment(horizontal='right')
+                ws[f'G{row}'].fill = PatternFill(start_color=light_bg, end_color=light_bg, fill_type="solid")
+
+            # Amount Due (highlighted)
+            due_row = summary_start_row + len(summary_items) + 1
+            ws[f'F{due_row}'] = "AMOUNT DUE:"
+            ws[f'F{due_row}'].font = Font(size=12, bold=True, color="FFFFFF")
+            ws[f'F{due_row}'].fill = PatternFill(start_color=accent_purple, end_color=accent_purple, fill_type="solid")
+            ws.merge_cells(f'G{due_row}:I{due_row}')
+            ws[f'G{due_row}'] = f"${amount_due:,.2f}"
+            ws[f'G{due_row}'].font = Font(size=12, bold=True, color="FFFFFF")
+            ws[f'G{due_row}'].alignment = Alignment(horizontal='right')
+            ws[f'G{due_row}'].fill = PatternFill(start_color=accent_purple, end_color=accent_purple, fill_type="solid")
+
+            # Export Details section
+            details_start_row = due_row + 3
+            ws.merge_cells(f'B{details_start_row}:I{details_start_row}')
+            ws[f'B{details_start_row}'] = "EXPORT DETAILS"
+            ws[f'B{details_start_row}'].font = Font(size=11, bold=True, color="FFFFFF")
+            ws[f'B{details_start_row}'].fill = PatternFill(start_color=header_blue, end_color=header_blue, fill_type="solid")
+
+            # Table headers
+            headers = ["#", "File Number", "Date", "Time", "File Name", "Lines", "Value", "Profile"]
+            header_row = details_start_row + 1
+            for col, header in enumerate(headers, 2):
+                cell = ws.cell(row=header_row, column=col)
                 cell.value = header
-                cell.font = Font(bold=True)
-                cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
+                cell.font = Font(bold=True, size=10, color=header_blue)
+                cell.fill = PatternFill(start_color=light_bg, end_color=light_bg, fill_type="solid")
+                cell.border = thin_border
+                cell.alignment = Alignment(horizontal='center')
 
-            for row_idx, record in enumerate(summary['records'], 14):
-                ws.cell(row=row_idx, column=1).value = record.get('file_number', '')
-                ws.cell(row=row_idx, column=2).value = record.get('export_date', '')
-                ws.cell(row=row_idx, column=3).value = record.get('export_time', '')
-                ws.cell(row=row_idx, column=4).value = record.get('file_name', '')
-                ws.cell(row=row_idx, column=5).value = record.get('line_count', 0)
-                ws.cell(row=row_idx, column=6).value = f"${record.get('total_value', 0):,.2f}"
-                ws.cell(row=row_idx, column=7).value = record.get('mid', '')
-                ws.cell(row=row_idx, column=8).value = record.get('folder_profile', '')
+            # Table data
+            for idx, record in enumerate(summary['records'], 1):
+                row = header_row + idx
+                data = [
+                    idx,
+                    record.get('file_number', ''),
+                    record.get('export_date', ''),
+                    record.get('export_time', ''),
+                    record.get('file_name', '')[:30] if record.get('file_name') else '',
+                    record.get('line_count', 0),
+                    f"${record.get('total_value', 0):,.2f}",
+                    record.get('folder_profile', '')[:15] if record.get('folder_profile') else ''
+                ]
+                for col, value in enumerate(data, 2):
+                    cell = ws.cell(row=row, column=col)
+                    cell.value = value
+                    cell.font = Font(size=9)
+                    cell.border = thin_border
+                    if col in [2, 6, 7]:  # Center align numbers
+                        cell.alignment = Alignment(horizontal='center')
+                    # Alternate row colors
+                    if idx % 2 == 0:
+                        cell.fill = PatternFill(start_color="F9FAFB", end_color="F9FAFB", fill_type="solid")
 
-            # Auto-size columns
-            for col in ws.columns:
-                max_length = 0
-                col_letter = col[0].column_letter
-                for cell in col:
-                    try:
-                        if cell.value:
-                            max_length = max(max_length, len(str(cell.value)))
-                    except:
-                        pass
-                ws.column_dimensions[col_letter].width = max_length + 2
+            # Footer
+            footer_row = header_row + len(summary['records']) + 3
+            ws.merge_cells(f'B{footer_row}:I{footer_row}')
+            ws[f'B{footer_row}'] = "Thank you for using TariffMill!"
+            ws[f'B{footer_row}'].font = Font(size=11, italic=True, color="666666")
+            ws[f'B{footer_row}'].alignment = Alignment(horizontal='center')
+
+            ws.merge_cells(f'B{footer_row + 1}:I{footer_row + 1}')
+            ws[f'B{footer_row + 1}'] = f"Generated by TariffMill on {datetime.now().strftime('%Y-%m-%d %H:%M')} | © 2025 Process Logic Labs, LLC"
+            ws[f'B{footer_row + 1}'].font = Font(size=8, color="999999")
+            ws[f'B{footer_row + 1}'].alignment = Alignment(horizontal='center')
+
+            # Set print area and page setup
+            ws.print_title_rows = '1:8'
+            ws.page_setup.orientation = 'landscape'
+            ws.page_setup.fitToPage = True
 
             wb.save(file_path)
             QMessageBox.information(self, "Report Generated", f"Billing report saved to:\n{file_path}")
@@ -14292,10 +14817,12 @@ EXPORT DETAILS
         tm_cards_layout = QHBoxLayout()
         parts_card = self._create_stats_dialog_card("Parts Master", "0", "total parts")
         clients_card = self._create_stats_dialog_card("Clients", "0", "active clients")
+        rows_card = self._create_stats_dialog_card("Data Rows", "0", "rows processed")
         today_card = self._create_stats_dialog_card("Today", "0", "invoices processed")
         value_card = self._create_stats_dialog_card("Total Value", "$0", "all invoices")
         tm_cards_layout.addWidget(parts_card)
         tm_cards_layout.addWidget(clients_card)
+        tm_cards_layout.addWidget(rows_card)
         tm_cards_layout.addWidget(today_card)
         tm_cards_layout.addWidget(value_card)
         tm_layout.addLayout(tm_cards_layout)
@@ -14306,15 +14833,16 @@ EXPORT DETAILS
         tm_layout.addWidget(exports_label)
 
         exports_table = QTableWidget()
-        exports_table.setColumnCount(5)
+        exports_table.setColumnCount(6)
         exports_table.setHorizontalHeaderLabels([
-            "Date/Time", "Client", "Export Type", "Parts Count", "Status"
+            "Date/Time", "User", "Client", "Export Type", "Parts Count", "Status"
         ])
         exports_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        exports_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        exports_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        exports_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        exports_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         exports_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
         exports_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        exports_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
         exports_table.setAlternatingRowColors(True)
         exports_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         exports_table.verticalHeader().setVisible(False)
@@ -14380,6 +14908,9 @@ EXPORT DETAILS
             # TariffMill Stats
             parts_count = 0
             clients_count = 0
+            rows_processed = 0
+            today_invoices = 0
+            total_value = 0.0
             if hasattr(self, 'db') and self.db:
                 try:
                     cursor = self.db.cursor()
@@ -14387,14 +14918,56 @@ EXPORT DETAILS
                     parts_count = cursor.fetchone()[0] or 0
                     cursor.execute("SELECT COUNT(DISTINCT client_name) FROM parts_master WHERE client_name IS NOT NULL AND client_name != ''")
                     clients_count = cursor.fetchone()[0] or 0
+                    # Get total rows processed from billing_records
+                    cursor.execute("SELECT COALESCE(SUM(line_count), 0) FROM billing_records")
+                    rows_processed = cursor.fetchone()[0] or 0
+                    # Get today's invoice count
+                    cursor.execute("SELECT COUNT(*) FROM billing_records WHERE export_date = date('now')")
+                    today_invoices = cursor.fetchone()[0] or 0
+                    # Get total value processed
+                    cursor.execute("SELECT COALESCE(SUM(total_value), 0) FROM billing_records")
+                    total_value = cursor.fetchone()[0] or 0.0
                 except Exception:
                     pass
 
             self._update_stats_dialog_card(parts_card, f"{parts_count:,}", "total parts")
             self._update_stats_dialog_card(clients_card, str(clients_count), "active clients")
-            self._update_stats_dialog_card(today_card, "0", "invoices processed")
-            self._update_stats_dialog_card(value_card, "$0", "all invoices")
+            self._update_stats_dialog_card(rows_card, f"{rows_processed:,}", "rows processed")
+            self._update_stats_dialog_card(today_card, str(today_invoices), "invoices processed")
+            self._update_stats_dialog_card(value_card, f"${total_value:,.2f}", "all invoices")
+
+            # Populate Recent Exports table
             exports_table.setRowCount(0)
+            if hasattr(self, 'db') and self.db:
+                try:
+                    cursor = self.db.cursor()
+                    cursor.execute("""
+                        SELECT export_date, export_time, user_name, folder_profile,
+                               map_profile, line_count, invoice_sent
+                        FROM billing_records
+                        ORDER BY export_date DESC, export_time DESC
+                        LIMIT 20
+                    """)
+                    rows = cursor.fetchall()
+                    exports_table.setRowCount(len(rows))
+                    for row_idx, row in enumerate(rows):
+                        export_date, export_time, user_name, folder_profile, map_profile, line_count, invoice_sent = row
+                        # Date/Time
+                        datetime_str = f"{export_date} {export_time}" if export_time else export_date
+                        exports_table.setItem(row_idx, 0, QTableWidgetItem(datetime_str or ""))
+                        # User
+                        exports_table.setItem(row_idx, 1, QTableWidgetItem(user_name or "Unknown"))
+                        # Client (folder profile)
+                        exports_table.setItem(row_idx, 2, QTableWidgetItem(folder_profile or ""))
+                        # Export Type (map profile)
+                        exports_table.setItem(row_idx, 3, QTableWidgetItem(map_profile or "Standard"))
+                        # Parts Count
+                        exports_table.setItem(row_idx, 4, QTableWidgetItem(str(line_count or 0)))
+                        # Status
+                        status = "Sent" if invoice_sent else "Processed"
+                        exports_table.setItem(row_idx, 5, QTableWidgetItem(status))
+                except Exception as e:
+                    logger.error(f"Error loading recent exports: {e}")
 
             # OCRMill Stats
             if hasattr(self, 'ocrmill_db') and self.ocrmill_db:
@@ -18273,9 +18846,10 @@ Please fix this error in the template code. Return the complete corrected templa
 
         # Create menu
         hts_menu = QMenu(hts_menu_btn)
-        update_action = hts_menu.addAction("Update from USITC (Auto)")
-        update_action.setToolTip("Automatically download latest HTS data from the US International Trade Commission")
-        update_action.triggered.connect(self.update_hts_from_usitc)
+
+        import_json_action = hts_menu.addAction("Import from JSON File...")
+        import_json_action.setToolTip("Import HTS data from CBP JSON export file (recommended)")
+        import_json_action.triggered.connect(self.import_hts_from_json)
 
         import_action = hts_menu.addAction("Import from CSV File...")
         import_action.setToolTip("Import HTS data from a manually downloaded CSV file")
@@ -18298,7 +18872,7 @@ Please fix this error in the template code. Return the complete corrected templa
 
         layout.addLayout(title_row)
 
-        # Info box
+        # Info box with version display
         info_box = QGroupBox("Reference Information")
         info_layout = QVBoxLayout()
         info_text = QLabel(
@@ -18307,6 +18881,13 @@ Please fix this error in the template code. Return the complete corrected templa
         )
         info_text.setWordWrap(True)
         info_layout.addWidget(info_text)
+
+        # HTS Version label
+        self.hts_version_label = QLabel("")
+        self.hts_version_label.setStyleSheet("color: #00aaff; font-weight: bold;")
+        info_layout.addWidget(self.hts_version_label)
+        self._update_hts_version_label()
+
         info_box.setLayout(info_layout)
         layout.addWidget(info_box)
 
@@ -18526,31 +19107,126 @@ Please fix this error in the template code. Return the complete corrected templa
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to search HTS database: {e}")
 
+    def _get_hts_version_info(self) -> dict:
+        """Get HTS database version info from metadata table."""
+        hts_db_path = RESOURCES_DIR / "References" / "hts.db"
+        if not hts_db_path.exists():
+            return {"version": None, "record_count": 0, "imported_date": None}
+
+        try:
+            conn = sqlite3.connect(str(hts_db_path))
+            cursor = conn.cursor()
+
+            # Get record count
+            cursor.execute("SELECT COUNT(*) FROM hts_codes")
+            record_count = cursor.fetchone()[0] or 0
+
+            # Try to get metadata (may not exist in older databases)
+            version = None
+            imported_date = None
+            try:
+                cursor.execute("SELECT key, value FROM hts_metadata WHERE key IN ('version', 'imported_date')")
+                for row in cursor.fetchall():
+                    if row[0] == 'version':
+                        version = row[1]
+                    elif row[0] == 'imported_date':
+                        imported_date = row[1]
+            except sqlite3.OperationalError:
+                # Metadata table doesn't exist yet
+                pass
+
+            conn.close()
+            return {"version": version, "record_count": record_count, "imported_date": imported_date}
+        except Exception as e:
+            logger.error(f"Failed to get HTS version info: {e}")
+            return {"version": None, "record_count": 0, "imported_date": None}
+
+    def _set_hts_version_info(self, conn, version: str = None):
+        """Set HTS database version info in metadata table."""
+        from datetime import datetime
+        cursor = conn.cursor()
+
+        # Create metadata table if it doesn't exist
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS hts_metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+
+        # Set version and imported date
+        imported_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if version:
+            cursor.execute("INSERT OR REPLACE INTO hts_metadata (key, value) VALUES ('version', ?)", (version,))
+        cursor.execute("INSERT OR REPLACE INTO hts_metadata (key, value) VALUES ('imported_date', ?)", (imported_date,))
+        conn.commit()
+
+    def _update_hts_version_label(self):
+        """Update the HTS version label with current database info."""
+        if not hasattr(self, 'hts_version_label'):
+            return
+
+        info = self._get_hts_version_info()
+        parts = []
+
+        if info['version']:
+            parts.append(f"HTS Version: {info['version']}")
+        if info['record_count'] > 0:
+            parts.append(f"{info['record_count']:,} records")
+        if info['imported_date']:
+            parts.append(f"Imported: {info['imported_date']}")
+
+        if parts:
+            self.hts_version_label.setText(" | ".join(parts))
+        else:
+            self.hts_version_label.setText("No HTS data loaded")
+
     def clear_hts_database_search(self):
         """Clear HTS database search and results"""
         self.hts_db_search.clear()
         self.hts_db_table.setRowCount(0)
         self.hts_db_count_label.setText("Enter a search term to find HTS codes (showing first 500 results)")
 
-    def update_hts_from_usitc(self):
-        """Download and update HTS database from USITC website."""
-        from PyQt5.QtWidgets import QProgressDialog
+    def import_hts_from_json(self):
+        """Import HTS data from CBP JSON export file."""
+        from PyQt5.QtWidgets import QProgressDialog, QFileDialog, QInputDialog
         from PyQt5.QtCore import Qt
-        import urllib.request
-        import urllib.error
-        import json as json_module
-        import csv
-        import io
+        from datetime import datetime
+        import json
 
-        # USITC now provides HTS data via export API at https://hts.usitc.gov/export
-        # CSV format: https://hts.usitc.gov/export?format=csv&from=0101&to=9999
+        # Show file dialog - default to Resources/References folder
+        default_path = str(RESOURCES_DIR / "References")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select HTS JSON File",
+            default_path,
+            "JSON Files (*.json);;All Files (*.*)"
+        )
 
+        if not file_path:
+            return
+
+        # Ask for HTS version year
+        current_year = datetime.now().year
+        hts_version, ok = QInputDialog.getText(
+            self,
+            "HTS Version",
+            "Enter the HTS year/version (e.g., 2025, 2024 Rev.1):",
+            text=str(current_year)
+        )
+
+        if not ok:
+            return
+
+        hts_version = hts_version.strip() or str(current_year)
+
+        # Confirm import
         reply = QMessageBox.question(
             self,
-            "Update HTS Database",
-            "This will download the latest HTS data from the US International Trade Commission (USITC) "
-            "and replace the current database.\n\n"
-            "The download may take a few minutes depending on your connection.\n\n"
+            "Import HTS Data",
+            f"This will import HTS data from:\n{file_path}\n\n"
+            f"HTS Version: {hts_version}\n\n"
+            "This will replace the current HTS database.\n\n"
             "Do you want to continue?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
@@ -18559,8 +19235,8 @@ Please fix this error in the template code. Return the complete corrected templa
         if reply != QMessageBox.Yes:
             return
 
-        progress = QProgressDialog("Downloading HTS data from USITC...", "Cancel", 0, 100, self)
-        progress.setWindowTitle("HTS Database Update")
+        progress = QProgressDialog("Importing HTS data from JSON...", "Cancel", 0, 100, self)
+        progress.setWindowTitle("HTS Import")
         progress.setWindowModality(Qt.WindowModal)
         progress.setMinimumDuration(0)
         progress.setMinimumWidth(400)
@@ -18578,159 +19254,34 @@ Please fix this error in the template code. Return the complete corrected templa
                 shutil.copy2(hts_db_path, backup_path)
                 logger.info(f"Backed up HTS database to {backup_path}")
 
-            progress.setLabelText("Connecting to USITC HTS database...")
+            progress.setLabelText("Reading JSON file...")
             progress.setValue(10)
             QApplication.processEvents()
 
-            if progress.wasCanceled():
-                return
+            # Read the JSON file
+            with open(file_path, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
 
-            # USITC provides direct CSV download of HTS Basic Edition
-            # Format: https://www.usitc.gov/tata/hts/hts_YYYY_basic_edition_csv.csv
-            from datetime import datetime
-            current_year = datetime.now().year
-
-            # Try multiple URL patterns - basic edition is most reliable
-            csv_urls = [
-                (f"https://www.usitc.gov/tata/hts/hts_{current_year}_basic_edition_csv.csv", current_year),
-                (f"https://www.usitc.gov/sites/default/files/tata/hts/hts_{current_year}_basic_edition_csv.csv", current_year),
-                (f"https://www.usitc.gov/tata/hts/hts_{current_year}_csv.csv", current_year),
-                (f"https://www.usitc.gov/tata/hts/hts_{current_year - 1}_basic_edition_csv.csv", current_year - 1),
-            ]
-
-            csv_data = None
-            download_year = current_year
-
-            for test_url, year in csv_urls:
-                progress.setLabelText(f"Downloading HTS {year} data...")
-                progress.setValue(15)
-                QApplication.processEvents()
-
-                if progress.wasCanceled():
-                    return
-
-                try:
-                    logger.info(f"Trying HTS download URL: {test_url}")
-                    req = urllib.request.Request(
-                        test_url,
-                        headers={
-                            'User-Agent': 'TariffMill/1.0 (HTS Database Update)',
-                            'Accept': 'text/csv,application/csv,*/*'
-                        }
-                    )
-
-                    with urllib.request.urlopen(req, timeout=300) as response:  # 5 minute timeout
-                        # Read with progress updates
-                        total_size = int(response.headers.get('content-length', 0))
-                        downloaded = 0
-                        chunks = []
-
-                        while True:
-                            if progress.wasCanceled():
-                                QMessageBox.information(self, "Cancelled", "HTS update was cancelled.")
-                                return
-
-                            chunk = response.read(65536)  # 64KB chunks
-                            if not chunk:
-                                break
-                            chunks.append(chunk)
-                            downloaded += len(chunk)
-
-                            if total_size > 0:
-                                pct = 15 + int((downloaded / total_size) * 45)
-                                progress.setValue(pct)
-                                mb_downloaded = downloaded / (1024 * 1024)
-                                mb_total = total_size / (1024 * 1024)
-                                progress.setLabelText(f"Downloading... {mb_downloaded:.1f} / {mb_total:.1f} MB")
-                            else:
-                                # Unknown size - show bytes downloaded
-                                mb_downloaded = downloaded / (1024 * 1024)
-                                progress.setLabelText(f"Downloading... {mb_downloaded:.1f} MB")
-                            QApplication.processEvents()
-
-                        csv_data = b''.join(chunks).decode('utf-8')
-                        download_year = year
-                        logger.info(f"Successfully downloaded HTS from: {test_url}")
-                        break
-
-                except urllib.error.HTTPError as e:
-                    logger.info(f"HTS URL returned HTTP {e.code}: {test_url}")
-                    continue
-                except urllib.error.URLError as e:
-                    logger.info(f"HTS URL failed: {test_url} - {e}")
-                    continue
-                except Exception as e:
-                    logger.info(f"HTS download error: {test_url} - {e}")
-                    continue
-
-            if not csv_data:
-                QMessageBox.warning(
-                    self, "Download Failed",
-                    "Could not download HTS data from USITC.\n\n"
-                    "Please check your internet connection or try again later.\n\n"
-                    "You can also manually download from:\n"
-                    "https://hts.usitc.gov/export"
-                )
+            if not json_data or not isinstance(json_data, list):
+                QMessageBox.warning(self, "Import Failed", "The JSON file does not contain valid HTS data.")
                 return
 
             progress.setLabelText("Processing HTS records...")
-            progress.setValue(65)
+            progress.setValue(20)
             QApplication.processEvents()
 
-            # Check if we got HTML instead of CSV (error page or redirect)
-            if csv_data.strip().startswith('<!DOCTYPE') or csv_data.strip().startswith('<html'):
-                logger.error("USITC returned HTML instead of CSV - may need form submission")
-                logger.error(f"First 1000 chars: {csv_data[:1000]}")
-                QMessageBox.warning(
-                    self, "Download Failed",
-                    "USITC returned a web page instead of CSV data.\n\n"
-                    "The export API may require manual download.\n\n"
-                    "Please visit https://hts.usitc.gov/export manually,\n"
-                    "enter 0101 to 9999, and download the CSV file."
-                )
-                return
-
-            # Process the CSV data
+            # Process the JSON data
             all_records = []
-            csv_reader = csv.DictReader(io.StringIO(csv_data))
+            total_items = len(json_data)
 
-            # Log the actual column names for debugging
-            fieldnames = csv_reader.fieldnames
-            logger.info(f"CSV columns found: {fieldnames}")
-
-            # Map various possible column names to our expected names
-            # USITC export format may use different column names
-            def get_column_value(row, *possible_names):
-                """Get value from row trying multiple possible column names."""
-                for name in possible_names:
-                    if name in row and row[name]:
-                        return str(row[name]).strip()
-                # Also try case-insensitive match
-                row_lower = {k.lower(): v for k, v in row.items()}
-                for name in possible_names:
-                    if name.lower() in row_lower and row_lower[name.lower()]:
-                        return str(row_lower[name.lower()]).strip()
-                return ''
-
-            for row in csv_reader:
+            for idx, item in enumerate(json_data):
                 if progress.wasCanceled():
                     return
 
-                # Try various possible column names for HTS code
-                # USITC export may use: HTS Number, htsno, HTS, HTS Code, HTSNumber, etc.
-                htsno = get_column_value(row,
-                    'HTS Number', 'HTSNumber', 'HTS_Number', 'htsno', 'HTS',
-                    'HTS Code', 'HTSCode', 'HTS_Code', 'hts_number', 'hts')
-
+                # Get HTS number (skip entries without htsno)
+                htsno = item.get('htsno', '').strip()
                 if not htsno:
-                    # If no HTS column found, try the first column which might be the code
-                    if fieldnames and row.get(fieldnames[0]):
-                        first_val = str(row[fieldnames[0]]).strip()
-                        # Check if it looks like an HTS code (starts with digits, contains dots)
-                        if first_val and (first_val[0].isdigit() or first_val.startswith('0')):
-                            htsno = first_val
-                    if not htsno:
-                        continue
+                    continue
 
                 # Clean the HTS code (remove periods)
                 full_code = htsno.replace('.', '').strip()
@@ -18743,34 +19294,26 @@ Please fix this error in the template code. Return the complete corrected templa
                 except ValueError:
                     chapter = 0
 
-                # Get unit of quantity - try various column names
-                unit_str = get_column_value(row,
-                    'Unit of Quantity', 'UnitOfQuantity', 'Unit_of_Quantity',
-                    'units', 'Units', 'UoQ', 'Unit')
-
-                # Get description - try various column names
-                description = get_column_value(row,
-                    'Description', 'description', 'Desc', 'desc', 'Article Description')
-
-                # Get duty rates - try various column names
-                general_rate = get_column_value(row,
-                    'General Rate of Duty', 'GeneralRateOfDuty', 'General_Rate',
-                    'general', 'General', 'Gen Rate', 'General Rate')
-
-                special_rate = get_column_value(row,
-                    'Special Rate of Duty', 'SpecialRateOfDuty', 'Special_Rate',
-                    'special', 'Special', 'Special Rate')
-
-                column2_rate = get_column_value(row,
-                    'Column 2 Rate of Duty', 'Column2RateOfDuty', 'Column_2_Rate',
-                    'other', 'Other', 'Column 2', 'Col 2 Rate', 'Column2')
-
                 # Get indent level
-                indent_str = get_column_value(row, 'Indent', 'indent', 'Indentation', 'Level')
                 try:
-                    indent_level = int(indent_str) if indent_str else 0
-                except ValueError:
+                    indent_level = int(item.get('indent', 0))
+                except (ValueError, TypeError):
                     indent_level = 0
+
+                # Get units - JSON has array like ["No."] or ["kg", "doz"]
+                units = item.get('units', [])
+                if isinstance(units, list):
+                    unit_str = '/'.join(str(u).upper() for u in units if u)
+                else:
+                    unit_str = str(units) if units else ''
+
+                # Get description
+                description = item.get('description', '').strip()
+
+                # Get duty rates
+                general_rate = item.get('general', '').strip()
+                special_rate = item.get('special', '').strip()
+                column2_rate = item.get('other', '').strip()
 
                 record = {
                     'heading': full_code[:4] if len(full_code) >= 4 else full_code,
@@ -18787,38 +19330,56 @@ Please fix this error in the template code. Return the complete corrected templa
                 }
                 all_records.append(record)
 
-            if not all_records:
-                # Log more details for debugging
-                logger.error(f"No records found. CSV columns: {fieldnames}")
-                # Show first 500 chars of CSV data for debugging
-                logger.error(f"First 500 chars of CSV: {csv_data[:500] if csv_data else 'EMPTY'}")
+                # Update progress every 1000 items
+                if idx % 1000 == 0:
+                    pct = 20 + int((idx / total_items) * 30)
+                    progress.setValue(pct)
+                    progress.setLabelText(f"Processing records... {idx:,} / {total_items:,}")
+                    QApplication.processEvents()
 
-                columns_msg = f"\n\nColumns found: {', '.join(fieldnames) if fieldnames else 'None'}"
+            if not all_records:
                 QMessageBox.warning(
                     self, "Processing Failed",
-                    f"Downloaded file contained no valid HTS records.\n\n"
-                    f"The file format may have changed.{columns_msg}"
+                    "JSON file contained no valid HTS records with htsno values."
                 )
                 return
 
             progress.setLabelText(f"Updating database with {len(all_records):,} records...")
-            progress.setValue(75)
+            progress.setValue(55)
             QApplication.processEvents()
 
             # Update the database
             conn = sqlite3.connect(str(hts_db_path))
             cursor = conn.cursor()
 
+            # Create hts_codes table if it doesn't exist
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS hts_codes (
+                    heading TEXT,
+                    subheading TEXT,
+                    stat_suffix TEXT,
+                    full_code TEXT PRIMARY KEY,
+                    description TEXT,
+                    unit_of_quantity TEXT,
+                    general_rate TEXT,
+                    special_rate TEXT,
+                    column2_rate TEXT,
+                    chapter INTEGER,
+                    indent_level INTEGER,
+                    updated_at TEXT
+                )
+            """)
+
             # Clear existing data
             cursor.execute("DELETE FROM hts_codes")
 
-            # Insert new records in batches for better performance
+            # Insert new records in batches
             batch_size = 1000
             for i in range(0, len(all_records), batch_size):
                 if progress.wasCanceled():
                     conn.rollback()
                     conn.close()
-                    QMessageBox.information(self, "Cancelled", "HTS update was cancelled. Database unchanged.")
+                    QMessageBox.information(self, "Cancelled", "HTS import was cancelled. Database unchanged.")
                     return
 
                 batch = all_records[i:i + batch_size]
@@ -18843,11 +19404,13 @@ Please fix this error in the template code. Return the complete corrected templa
                         record['indent_level'],
                     ))
 
-                pct = 75 + int((i / len(all_records)) * 20)
+                pct = 55 + int((i / len(all_records)) * 40)
                 progress.setValue(pct)
-                progress.setLabelText(f"Inserting records... {min(i + batch_size, len(all_records)):,} / {len(all_records):,}")
+                progress.setLabelText(f"Importing records... {min(i + batch_size, len(all_records)):,} / {len(all_records):,}")
                 QApplication.processEvents()
 
+            # Save version metadata
+            self._set_hts_version_info(conn, hts_version)
             conn.commit()
 
             # Get final count
@@ -18858,30 +19421,42 @@ Please fix this error in the template code. Return the complete corrected templa
             progress.setValue(100)
             progress.close()
 
+            # Update version label
+            self._update_hts_version_label()
+
             backup_msg = f"\n\nA backup of the previous database was saved to:\n{backup_path}" if backup_path else ""
             QMessageBox.information(
-                self, "Update Complete",
-                f"HTS database updated successfully!\n\n"
-                f"Year: {download_year} HTS Basic Edition\n"
+                self, "Import Complete",
+                f"HTS database imported successfully!\n\n"
+                f"Source: {file_path}\n"
+                f"HTS Version: {hts_version}\n"
                 f"Total records: {final_count:,}{backup_msg}"
             )
 
-            # Refresh the search results if any
+            # Refresh the search results
             self.clear_hts_database_search()
 
+        except json.JSONDecodeError as e:
+            progress.close()
+            logger.error(f"HTS JSON parse failed: {e}")
+            QMessageBox.critical(
+                self, "Import Failed",
+                f"Failed to parse JSON file:\n\n{str(e)}"
+            )
         except Exception as e:
             progress.close()
-            logger.error(f"HTS update failed: {e}")
+            logger.error(f"HTS JSON import failed: {e}")
             QMessageBox.critical(
-                self, "Update Failed",
-                f"Failed to update HTS database:\n\n{str(e)}\n\n"
+                self, "Import Failed",
+                f"Failed to import HTS database:\n\n{str(e)}\n\n"
                 "If a backup exists, it has not been modified."
             )
 
     def import_hts_from_csv(self):
         """Import HTS data from a manually downloaded CSV file."""
-        from PyQt5.QtWidgets import QProgressDialog, QFileDialog
+        from PyQt5.QtWidgets import QProgressDialog, QFileDialog, QInputDialog
         from PyQt5.QtCore import Qt
+        from datetime import datetime
         import csv
         import io
 
@@ -18896,11 +19471,26 @@ Please fix this error in the template code. Return the complete corrected templa
         if not file_path:
             return
 
+        # Ask for HTS version year
+        current_year = datetime.now().year
+        hts_version, ok = QInputDialog.getText(
+            self,
+            "HTS Version",
+            "Enter the HTS year/version (e.g., 2025, 2024 Rev.1):",
+            text=str(current_year)
+        )
+
+        if not ok:
+            return
+
+        hts_version = hts_version.strip() or str(current_year)
+
         # Confirm import
         reply = QMessageBox.question(
             self,
             "Import HTS Data",
             f"This will import HTS data from:\n{file_path}\n\n"
+            f"HTS Version: {hts_version}\n\n"
             "This will replace the current HTS database.\n\n"
             "Do you want to continue?",
             QMessageBox.Yes | QMessageBox.No,
@@ -19109,6 +19699,8 @@ Please fix this error in the template code. Return the complete corrected templa
                 progress.setLabelText(f"Importing records... {min(i + batch_size, len(all_records)):,} / {len(all_records):,}")
                 QApplication.processEvents()
 
+            # Save version metadata
+            self._set_hts_version_info(conn, hts_version)
             conn.commit()
 
             # Get final count
@@ -19119,11 +19711,15 @@ Please fix this error in the template code. Return the complete corrected templa
             progress.setValue(100)
             progress.close()
 
+            # Update version label
+            self._update_hts_version_label()
+
             backup_msg = f"\n\nA backup of the previous database was saved to:\n{backup_path}" if backup_path else ""
             QMessageBox.information(
                 self, "Import Complete",
                 f"HTS database imported successfully!\n\n"
                 f"Source: {file_path}\n"
+                f"HTS Version: {hts_version}\n"
                 f"Total records: {final_count:,}{backup_msg}"
             )
 
@@ -21862,6 +22458,8 @@ if __name__ == "__main__":
             QTimer.singleShot(1000, win._enable_input_fields)
             # Check for updates after a short delay (non-blocking)
             QTimer.singleShot(2000, win.check_for_updates_startup)
+            # Run scheduled database backup after a short delay
+            QTimer.singleShot(3000, win._setup_backup_scheduler)
 
         # Start initialization after a brief delay to let splash render
         QTimer.singleShot(50, finish_initialization)
