@@ -584,7 +584,7 @@ class LicenseManager:
 # role-based access control, and offline credential caching.
 
 # GitHub API URL for private repo access (use API endpoint, not raw.githubusercontent)
-AUTH_CONFIG_URL = "https://api.github.com/repos/process-logic-labs/TariffMill_Config/contents/auth_users.json"
+AUTH_CONFIG_URL = "https://api.github.com/repos/ProcessLogicLabs/TariffMill/contents/auth_users.json"
 # Personal Access Token for private repo (read-only, contents scope)
 # Set TARIFFMILL_GITHUB_TOKEN environment variable or use local auth_users.json
 # Generate at: https://github.com/settings/tokens/new?scopes=repo
@@ -625,11 +625,15 @@ class AuthenticationManager:
 
             # Build the Windows user identifier
             windows_user = f"{domain.upper()}\\{username.lower()}"
+            logger.info(f"Attempting Windows auth for: {windows_user}")
 
             # Fetch remote users
             remote_users = self._fetch_remote_users()
             if remote_users is None:
+                logger.warning("Failed to fetch remote users")
                 return False, "Could not fetch user list", None
+
+            logger.debug(f"Fetched {len(remote_users)} users")
 
             # Look for Windows user in user list (case-insensitive)
             for user_key, user_data in remote_users.items():
