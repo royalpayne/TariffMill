@@ -123,7 +123,7 @@ if __name__ == "__main__":
     update_splash("Loading PyQt5 components...")
 
 from PyQt5.QtWidgets import *
-from PyQt5.QtCore import Qt, QMimeData, pyqtSignal, QTimer, QSize, QEventLoop, QRect, QSettings, QThread, QThreadPool, QRunnable, QObject, QUrl
+from PyQt5.QtCore import Qt, QMimeData, pyqtSignal, pyqtSlot, QTimer, QSize, QEventLoop, QRect, QSettings, QThread, QThreadPool, QRunnable, QObject, QUrl
 from PyQt5.QtGui import QColor, QFont, QDrag, QKeySequence, QIcon, QPixmap, QPainter, QDoubleValidator, QCursor, QPen, QTextCursor, QTextCharFormat, QSyntaxHighlighter, QTextFormat, QDesktopServices
 from PyQt5.QtSvg import QSvgRenderer
 
@@ -6187,9 +6187,12 @@ class TariffMill(QMainWindow):
                 has_update, latest, url, notes, download_url, error = checker.check_for_updates()
                 logger.info(f"Update check result: has_update={has_update}, latest={latest}, error={error}")
                 if has_update and not error:
-                    # Schedule dialog to be shown on main thread
-                    QTimer.singleShot(0, lambda: self.show_update_available_dialog(
-                        latest, url, notes, download_url))
+                    # Store results for main thread to pick up
+                    self._pending_update = (latest, url, notes, download_url)
+                    # Use QMetaObject.invokeMethod for thread-safe GUI update
+                    from PyQt5.QtCore import QMetaObject, Qt as QtCore_Qt, Q_ARG
+                    QMetaObject.invokeMethod(self, "_show_pending_update_dialog",
+                                           QtCore_Qt.QueuedConnection)
                 elif error:
                     logger.warning(f"Update check error: {error}")
             except Exception as e:
@@ -6198,6 +6201,15 @@ class TariffMill(QMainWindow):
         # Run in background thread to not block startup
         thread = Thread(target=check_thread, daemon=True)
         thread.start()
+
+    @pyqtSlot()
+    def _show_pending_update_dialog(self):
+        """Show update dialog from pending update data (called from main thread)"""
+        if hasattr(self, '_pending_update') and self._pending_update:
+            latest, url, notes, download_url = self._pending_update
+            self._pending_update = None
+            logger.info(f"Showing update dialog for version {latest}")
+            self.show_update_available_dialog(latest, url, notes, download_url)
 
     def _download_and_install_update(self, download_url: str, dialog: QDialog):
         """Download the update installer and run it."""
