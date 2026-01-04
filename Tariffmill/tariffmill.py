@@ -5954,6 +5954,15 @@ class TariffMill(QMainWindow):
         save_templates_btn.setStyleSheet(self.get_button_style("primary"))
         def save_shared_templates_setting():
             folder_path = shared_templates_input.text().strip()
+            # Normalize path for cross-platform compatibility
+            if folder_path:
+                if sys.platform == 'win32':
+                    # On Windows, convert forward slashes to backslashes (except UNC paths)
+                    if not folder_path.startswith('\\\\'):
+                        folder_path = folder_path.replace('/', '\\')
+                else:
+                    # On Linux/Mac, convert backslashes to forward slashes
+                    folder_path = folder_path.replace('\\', '/')
             self.set_billing_setting('shared_templates_folder', folder_path)
             if folder_path:
                 # Validate the path exists
@@ -18089,15 +18098,21 @@ Please fix this error in the template code. Return the complete corrected templa
         """Refresh the templates list by re-scanning the templates directory."""
         import re as regex_module
 
+        # Check if OCRMill UI has been initialized
+        if not hasattr(self, 'ocrmill_templates_list'):
+            return
+
         # Re-discover templates from disk
         try:
             from templates import refresh_templates
             refresh_templates()
         except Exception as e:
-            self.ocrmill_log(f"Warning: Could not refresh templates module: {e}")
+            if hasattr(self, 'ocrmill_log'):
+                self.ocrmill_log(f"Warning: Could not refresh templates module: {e}")
 
-        # Reload processor's template list
-        self.ocrmill_processor.reload_templates()
+        # Reload processor's template list (if processor exists)
+        if hasattr(self, 'ocrmill_processor') and self.ocrmill_processor:
+            self.ocrmill_processor.reload_templates()
 
         # Clear list and data
         self.ocrmill_templates_list.clear()
@@ -18139,23 +18154,44 @@ Please fix this error in the template code. Return the complete corrected templa
         # Load shared templates if configured
         shared_folder = self.get_billing_setting('shared_templates_folder', '')
         if shared_folder:
-            shared_path = Path(shared_folder)
+            # Normalize path for cross-platform compatibility (Windows/Linux)
+            # Handle UNC paths (\\server\share), Windows paths (C:\), and Linux paths (/mnt/)
+            shared_folder_normalized = shared_folder.strip()
+            if sys.platform == 'win32':
+                # On Windows, convert forward slashes to backslashes (except for UNC paths)
+                if not shared_folder_normalized.startswith('\\\\'):
+                    shared_folder_normalized = shared_folder_normalized.replace('/', '\\')
+            else:
+                # On Linux/Mac, convert backslashes to forward slashes
+                shared_folder_normalized = shared_folder_normalized.replace('\\', '/')
+
+            shared_path = Path(shared_folder_normalized)
+
+            # Debug: Log shared folder status
+            if hasattr(self, 'ocrmill_log'):
+                self.ocrmill_log(f"Shared templates folder: {shared_folder_normalized}")
+                self.ocrmill_log(f"Shared path exists: {shared_path.exists()}, is_dir: {shared_path.is_dir() if shared_path.exists() else 'N/A'}")
+
             if shared_path.exists() and shared_path.is_dir():
                 # Track local template names to avoid duplicates
                 local_names = {t['file_name'] for t in self.ocrmill_templates_data}
 
+                shared_template_count = 0
                 for file_path in sorted(shared_path.glob("*.py")):
                     if file_path.name in excluded:
                         continue
 
                     # Skip if a local template with the same filename exists
                     if file_path.stem in local_names:
+                        if hasattr(self, 'ocrmill_log'):
+                            self.ocrmill_log(f"Skipping shared template '{file_path.stem}' - local copy exists")
                         continue
 
                     template_info = self._extract_template_info_from_file(file_path)
                     if template_info:
                         template_info['is_shared'] = True
                         self.ocrmill_templates_data.append(template_info)
+                        shared_template_count += 1
 
                         # Create list item with shared indicator
                         display_text = f"{template_info['name']} (Shared)"
@@ -18165,6 +18201,9 @@ Please fix this error in the template code. Return the complete corrected templa
                         # Use slightly different style for shared templates
                         item.setForeground(QColor("#6B7280"))  # Gray text for shared
                         self.ocrmill_templates_list.addItem(item)
+
+                if hasattr(self, 'ocrmill_log'):
+                    self.ocrmill_log(f"Loaded {shared_template_count} shared templates")
 
     def _extract_template_info_from_file(self, file_path: Path) -> dict:
         """Extract template metadata from a template file."""

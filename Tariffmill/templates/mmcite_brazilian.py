@@ -263,23 +263,23 @@ class MMCiteBrazilianTemplate(BaseTemplate):
         Extract manufacturer/supplier name from Brazilian invoice.
 
         Looks for common patterns in Brazilian invoices:
-        - Company name in header (typically mmcité or similar)
+        - Company name in header (typically mmcite or similar)
         - Exporter/Supplier field
 
         Returns normalized name for database lookup (without legal suffixes).
         """
-        # Pattern 1: Look for "mmcité" Brazil variations
+        # Pattern 1: Look for "mmcite" Brazil variations
         brazil_patterns = [
-            r'mmcit[ée]\s+(?:do\s+)?brasil',  # mmcité do Brasil or mmcité brasil
-            r'mmcit[ée]\s+ltda',               # mmcité Ltda
+            r'mmcite\s+(?:do\s+)?brasil',  # mmcite do Brasil or mmcite brasil
+            r'mmcite\s+ltda',               # mmcite Ltda
         ]
 
         for pattern in brazil_patterns:
             if re.search(pattern, text, re.IGNORECASE):
                 return "MMCITE S/A BRAZIL"
 
-        # Pattern 2: Just "mmcité" without Brazil context - assume Czech
-        if re.search(r'mmcit[ée]', text, re.IGNORECASE):
+        # Pattern 2: Just "mmcite" without Brazil context - assume Czech
+        if re.search(r'mmcite', text, re.IGNORECASE):
             # Check if Brazil is mentioned elsewhere
             if re.search(r'brasil|brazil', text, re.IGNORECASE):
                 return "MMCITE S/A BRAZIL"
