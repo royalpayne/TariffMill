@@ -6804,70 +6804,70 @@ class TariffMill(QMainWindow):
                 }
             """)
         elif theme_name == "Muted Cyan":
-            # Muted Cyan theme - professional balanced cyan inspired by enterprise software
+            # Muted Cyan theme - professional blue-toned cyan inspired by enterprise software
             app.setStyleSheet("""
                 QGroupBox {
                     font-weight: normal;
-                    border: 1px solid #b0c4c8;
+                    border: 1px solid #b0c0d0;
                     border-radius: 6px;
                     margin-top: 12px;
                     padding-top: 10px;
-                    background-color: #f5f8f9;
+                    background-color: #f5f8fc;
                 }
                 QGroupBox::title {
                     subcontrol-origin: margin;
                     subcontrol-position: top left;
                     left: 12px;
                     padding: 2px 8px;
-                    color: #4a7880;
-                    background: #e8f0f2;
+                    color: #4a7088;
+                    background: #e8eef5;
                     border-radius: 4px;
                 }
                 QTabWidget::pane {
-                    border: 1px solid #b0c4c8;
+                    border: 1px solid #b0c0d0;
                     border-radius: 6px;
                     background: #ffffff;
                 }
                 QTabBar::tab {
-                    background: #e8f0f2;
-                    color: #4a6870;
+                    background: #e8eef5;
+                    color: #4a6080;
                     padding: 8px 16px;
-                    border: 1px solid #b0c4c8;
+                    border: 1px solid #b0c0d0;
                     border-bottom: none;
                     border-top-left-radius: 6px;
                     border-top-right-radius: 6px;
                     margin-right: 2px;
                 }
                 QTabBar::tab:selected {
-                    background: #4a7880;
+                    background: #4a7088;
                     color: #ffffff;
-                    border-bottom: 2px solid #4a7880;
+                    border-bottom: 2px solid #4a7088;
                 }
                 QTabBar::tab:hover:!selected {
-                    background: #d0e0e4;
+                    background: #d0dce8;
                 }
                 QLineEdit, QSpinBox, QDoubleSpinBox {
                     background: #ffffff;
-                    color: #2d3a41;
-                    border: 1px solid #b0c4c8;
+                    color: #2d3746;
+                    border: 1px solid #b0c0d0;
                     border-radius: 4px;
                     padding: 5px 8px;
-                    selection-background-color: #4a7880;
+                    selection-background-color: #4a7088;
                     selection-color: #ffffff;
                 }
                 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
-                    border: 2px solid #4a7880;
+                    border: 2px solid #4a7088;
                 }
                 QComboBox {
                     background: #ffffff;
-                    color: #2d3a41;
-                    border: 1px solid #b0c4c8;
+                    color: #2d3746;
+                    border: 1px solid #b0c0d0;
                     border-radius: 4px;
                     padding: 5px 8px;
                     padding-right: 25px;
                 }
                 QComboBox:focus {
-                    border: 2px solid #4a7880;
+                    border: 2px solid #4a7088;
                 }
                 QComboBox::drop-down {
                     border: none;
@@ -6877,170 +6877,170 @@ class TariffMill(QMainWindow):
                     image: none;
                     border-left: 5px solid transparent;
                     border-right: 5px solid transparent;
-                    border-top: 6px solid #6a8c94;
+                    border-top: 6px solid #6a8498;
                     margin-right: 5px;
                 }
                 QComboBox QAbstractItemView {
                     background-color: #ffffff;
-                    color: #2d3a41;
-                    selection-background-color: #4a7880;
+                    color: #2d3746;
+                    selection-background-color: #4a7088;
                     selection-color: #ffffff;
-                    border: 1px solid #b0c4c8;
+                    border: 1px solid #b0c0d0;
                     border-radius: 4px;
                 }
                 QListWidget {
                     background: #ffffff;
-                    color: #2d3a41;
-                    border: 1px solid #b0c4c8;
+                    color: #2d3746;
+                    border: 1px solid #b0c0d0;
                     border-radius: 4px;
-                    alternate-background-color: #f5f8f9;
+                    alternate-background-color: #f5f8fc;
                 }
                 QListWidget::item {
                     padding: 5px;
                     border-radius: 3px;
                 }
                 QListWidget::item:selected {
-                    background: #4a7880;
+                    background: #4a7088;
                     color: #ffffff;
                 }
                 QListWidget::item:hover:!selected {
-                    background: #e0eaec;
+                    background: #e0e8f0;
                 }
                 QPushButton {
-                    background: #4a7880;
+                    background: #4a7088;
                     color: #ffffff;
-                    border: 1px solid #3a6870;
+                    border: 1px solid #3a6080;
                     border-radius: 4px;
                     padding: 6px 14px;
                     font-weight: normal;
                 }
                 QPushButton:hover {
-                    background: #5a8890;
-                    border: 1px solid #4a7880;
+                    background: #5a80a0;
+                    border: 1px solid #4a7088;
                 }
                 QPushButton:pressed {
-                    background: #3a6870;
+                    background: #3a6080;
                 }
                 QScrollBar:vertical {
-                    background: #e8f0f2;
+                    background: #e8eef5;
                     width: 12px;
                     border-radius: 6px;
                 }
                 QScrollBar::handle:vertical {
-                    background: #8aa8b0;
+                    background: #8aa0b8;
                     border-radius: 5px;
                     min-height: 30px;
                     margin: 2px;
                 }
                 QScrollBar::handle:vertical:hover {
-                    background: #6a8c94;
+                    background: #6a8498;
                 }
                 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                     height: 0px;
                 }
                 QScrollBar:horizontal {
-                    background: #e8f0f2;
+                    background: #e8eef5;
                     height: 12px;
                     border-radius: 6px;
                 }
                 QScrollBar::handle:horizontal {
-                    background: #8aa8b0;
+                    background: #8aa0b8;
                     border-radius: 5px;
                     min-width: 30px;
                     margin: 2px;
                 }
                 QScrollBar::handle:horizontal:hover {
-                    background: #6a8c94;
+                    background: #6a8498;
                 }
                 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
                     width: 0px;
                 }
                 QHeaderView::section {
-                    background: #4a7880;
+                    background: #4a7088;
                     color: #ffffff;
                     padding: 6px;
                     border: none;
-                    border-right: 1px solid #3a6870;
-                    border-bottom: 1px solid #3a6870;
+                    border-right: 1px solid #3a6080;
+                    border-bottom: 1px solid #3a6080;
                     font-weight: normal;
                 }
                 QTableWidget {
                     background-color: #ffffff;
-                    alternate-background-color: #f5f8f9;
-                    gridline-color: #d0e0e4;
-                    color: #2d3a41;
-                    border: 1px solid #b0c4c8;
+                    alternate-background-color: #f5f8fc;
+                    gridline-color: #d0dce8;
+                    color: #2d3746;
+                    border: 1px solid #b0c0d0;
                     border-radius: 4px;
                 }
                 QTableWidget::item:selected {
-                    background-color: #4a7880;
+                    background-color: #4a7088;
                     color: #ffffff;
                 }
                 QLabel {
-                    color: #2d3a41;
+                    color: #2d3746;
                 }
                 QMenu {
                     background-color: #ffffff;
-                    color: #2d3a41;
-                    border: 1px solid #b0c4c8;
+                    color: #2d3746;
+                    border: 1px solid #b0c0d0;
                     border-radius: 4px;
                 }
                 QMenu::item:selected {
-                    background-color: #4a7880;
+                    background-color: #4a7088;
                     color: #ffffff;
                 }
                 QMenuBar {
-                    background: #4a7880;
+                    background: #4a7088;
                     color: #ffffff;
                 }
                 QMenuBar::item:selected {
-                    background: #5a8890;
+                    background: #5a80a0;
                     border-radius: 4px;
                 }
                 QTextEdit, QPlainTextEdit {
                     background: #ffffff;
-                    color: #2d3a41;
-                    border: 1px solid #b0c4c8;
+                    color: #2d3746;
+                    border: 1px solid #b0c0d0;
                     border-radius: 4px;
                 }
                 QCheckBox {
-                    color: #2d3a41;
+                    color: #2d3746;
                 }
                 QCheckBox::indicator {
                     width: 16px;
                     height: 16px;
                     border-radius: 3px;
-                    border: 1px solid #b0c4c8;
+                    border: 1px solid #b0c0d0;
                     background: #ffffff;
                 }
                 QCheckBox::indicator:checked {
-                    background: #4a7880;
-                    border: 1px solid #4a7880;
+                    background: #4a7088;
+                    border: 1px solid #4a7088;
                 }
                 QRadioButton {
-                    color: #2d3a41;
+                    color: #2d3746;
                 }
                 QRadioButton::indicator {
                     width: 16px;
                     height: 16px;
                     border-radius: 8px;
-                    border: 1px solid #b0c4c8;
+                    border: 1px solid #b0c0d0;
                     background: #ffffff;
                 }
                 QRadioButton::indicator:checked {
-                    background: #4a7880;
+                    background: #4a7088;
                     border: 4px solid #ffffff;
-                    outline: 1px solid #4a7880;
+                    outline: 1px solid #4a7088;
                 }
                 QProgressBar {
-                    background: #e8f0f2;
-                    border: 1px solid #b0c4c8;
+                    background: #e8eef5;
+                    border: 1px solid #b0c0d0;
                     border-radius: 4px;
                     text-align: center;
-                    color: #2d3a41;
+                    color: #2d3746;
                 }
                 QProgressBar::chunk {
-                    background: #4a7880;
+                    background: #4a7088;
                     border-radius: 3px;
                 }
             """)
@@ -8254,33 +8254,33 @@ class TariffMill(QMainWindow):
         return palette
 
     def get_muted_cyan_palette(self):
-        """Create a Muted Cyan palette - professional muted cyan inspired by enterprise software"""
+        """Create a Muted Cyan palette - professional muted blue-cyan inspired by enterprise software"""
         from PyQt5.QtGui import QPalette, QColor
         from PyQt5.QtWidgets import QApplication
 
-        # Get user's saved highlight color for this theme (balanced cyan)
-        highlight_color = get_theme_color('preview_highlight_color', '#4A7880', 'Muted Cyan')
+        # Get user's saved highlight color for this theme (blue-toned cyan)
+        highlight_color = get_theme_color('preview_highlight_color', '#4A7088', 'Muted Cyan')
 
         palette = QPalette()
-        # Balanced muted cyan colors - between green-teal and blue
-        palette.setColor(QPalette.Window, QColor(245, 248, 249))  # Light gray with cyan tint (#F5F8F9)
-        palette.setColor(QPalette.WindowText, QColor(45, 58, 65))  # Dark cyan-gray text (#2D3A41)
+        # Blue-toned muted cyan colors
+        palette.setColor(QPalette.Window, QColor(245, 248, 252))  # Light gray with blue tint (#F5F8FC)
+        palette.setColor(QPalette.WindowText, QColor(45, 55, 70))  # Dark blue-gray text (#2D3746)
         palette.setColor(QPalette.Base, QColor(255, 255, 255))  # White for inputs
-        palette.setColor(QPalette.AlternateBase, QColor(245, 248, 249))  # Subtle alternating (#F5F8F9)
+        palette.setColor(QPalette.AlternateBase, QColor(245, 248, 252))  # Subtle alternating (#F5F8FC)
         palette.setColor(QPalette.ToolTipBase, QColor(255, 255, 255))  # White tooltips
-        palette.setColor(QPalette.ToolTipText, QColor(45, 58, 65))  # Dark tooltip text
-        palette.setColor(QPalette.Text, QColor(45, 58, 65))  # Primary text (#2D3A41)
-        palette.setColor(QPalette.Button, QColor(232, 240, 242))  # Light cyan-gray for buttons (#E8F0F2)
-        palette.setColor(QPalette.ButtonText, QColor(45, 58, 65))  # Dark button text
+        palette.setColor(QPalette.ToolTipText, QColor(45, 55, 70))  # Dark tooltip text
+        palette.setColor(QPalette.Text, QColor(45, 55, 70))  # Primary text (#2D3746)
+        palette.setColor(QPalette.Button, QColor(232, 238, 245))  # Light blue-gray for buttons (#E8EEF5)
+        palette.setColor(QPalette.ButtonText, QColor(45, 55, 70))  # Dark button text
         palette.setColor(QPalette.BrightText, QColor(200, 80, 80))  # Muted red for alerts
-        palette.setColor(QPalette.Link, QColor(74, 120, 128))  # Muted cyan links (#4A7880)
-        palette.setColor(QPalette.Highlight, QColor(highlight_color))  # Muted cyan selection
+        palette.setColor(QPalette.Link, QColor(74, 112, 136))  # Blue-toned links (#4A7088)
+        palette.setColor(QPalette.Highlight, QColor(highlight_color))  # Blue-toned selection
         palette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))  # White on selection
         palette.setColor(QPalette.Light, QColor(255, 255, 255))  # White
-        palette.setColor(QPalette.Midlight, QColor(232, 240, 242))  # Light cyan-gray (#E8F0F2)
-        palette.setColor(QPalette.Mid, QColor(176, 196, 200))  # Mid cyan-gray (#B0C4C8)
-        palette.setColor(QPalette.Dark, QColor(138, 168, 176))  # Darker cyan-gray (#8AA8B0)
-        palette.setColor(QPalette.Shadow, QColor(106, 140, 148))  # Shadow cyan (#6A8C94)
+        palette.setColor(QPalette.Midlight, QColor(232, 238, 245))  # Light blue-gray (#E8EEF5)
+        palette.setColor(QPalette.Mid, QColor(176, 192, 210))  # Mid blue-gray (#B0C0D2)
+        palette.setColor(QPalette.Dark, QColor(138, 160, 185))  # Darker blue-gray (#8AA0B9)
+        palette.setColor(QPalette.Shadow, QColor(106, 130, 158))  # Shadow blue (#6A829E)
         return palette
 
     def get_macos_palette(self):
@@ -8378,9 +8378,9 @@ class TariffMill(QMainWindow):
             self.ocrmill_templates_table.setStyleSheet("""
                 QTableWidget {
                     background: #ffffff;
-                    border: 1px solid #b0c4c8;
+                    border: 1px solid #b0c0d0;
                     border-radius: 6px;
-                    gridline-color: #d0e0e4;
+                    gridline-color: #d0dce8;
                     font-size: 13px;
                 }
                 QTableWidget::item {
@@ -8388,20 +8388,20 @@ class TariffMill(QMainWindow):
                     background-color: #ffffff;
                 }
                 QTableWidget::item:alternate {
-                    background-color: #f5f8f9;
+                    background-color: #f5f8fc;
                 }
                 QTableWidget::item:selected {
-                    background-color: #4a7880;
+                    background-color: #4a7088;
                     color: #ffffff;
                 }
                 QTableWidget::item:hover:!selected {
-                    background-color: #e0eaec;
+                    background-color: #e0e8f0;
                 }
                 QHeaderView::section {
-                    background-color: #4a7880;
+                    background-color: #4a7088;
                     color: #ffffff;
                     padding: 6px;
-                    border: 1px solid #3a6870;
+                    border: 1px solid #3a6080;
                     font-weight: bold;
                 }
             """)
@@ -15814,24 +15814,24 @@ class TariffMill(QMainWindow):
             }
         elif theme == "Muted Cyan":
             return {
-                'bg_primary': '#f5f8f9',
-                'bg_secondary': '#e8f0f2',
+                'bg_primary': '#f5f8fc',
+                'bg_secondary': '#e8eef5',
                 'bg_input': '#ffffff',
-                'bg_code': '#f0f6f7',
-                'border': '#b0c4c8',
-                'border_focus': '#4a7880',
-                'text': '#2d3a41',
-                'text_muted': '#6a8c94',
-                'text_header': '#2d3a41',
-                'accent': '#4a7880',
-                'success': '#3a7870',
+                'bg_code': '#f0f4f8',
+                'border': '#b0c0d0',
+                'border_focus': '#4a7088',
+                'text': '#2d3746',
+                'text_muted': '#6a8498',
+                'text_header': '#2d3746',
+                'accent': '#4a7088',
+                'success': '#3a7080',
                 'danger': '#9c4850',
                 'warning': '#9c7848',
-                'selection': '#d0e0e4',
-                'user_bubble': '#4a7880',
+                'selection': '#d0dce8',
+                'user_bubble': '#4a7088',
                 'user_bubble_text': '#ffffff',
-                'ai_bubble': '#e0eaec',
-                'ai_bubble_text': '#2d3a41',
+                'ai_bubble': '#e0e8f0',
+                'ai_bubble_text': '#2d3746',
             }
         elif theme == "macOS":
             return {
@@ -16003,16 +16003,16 @@ class TariffMill(QMainWindow):
             card_value_color = "#0096c7"
             card_subtitle_color = "#7aa0a8"
         elif theme == "muted_cyan":
-            dialog_bg = "#f5f8f9"
-            group_border = "#b0c4c8"
-            text_color = "#2d3a41"
-            label_color = "#3d4a51"
-            accent_color = "#4a7880"
-            card_bg = "#e8f0f2"
-            card_border = "#b0c4c8"
-            card_title_color = "#5a7078"
-            card_value_color = "#4a7880"
-            card_subtitle_color = "#7a8a90"
+            dialog_bg = "#f5f8fc"
+            group_border = "#b0c0d0"
+            text_color = "#2d3746"
+            label_color = "#3d4656"
+            accent_color = "#4a7088"
+            card_bg = "#e8eef5"
+            card_border = "#b0c0d0"
+            card_title_color = "#5a6880"
+            card_value_color = "#4a7088"
+            card_subtitle_color = "#7a8898"
         else:  # dark/ocean
             dialog_bg = "#1a1a2e"
             group_border = "#3c3c3c"
@@ -16669,28 +16669,28 @@ class TariffMill(QMainWindow):
             table.setStyleSheet("""
                 QTableWidget {
                     background-color: #ffffff;
-                    color: #2d3a41;
-                    gridline-color: #d0e0e4;
-                    border: 1px solid #b0c4c8;
+                    color: #2d3746;
+                    gridline-color: #d0dce8;
+                    border: 1px solid #b0c0d0;
                     border-radius: 4px;
                 }
                 QTableWidget::item {
                     padding: 4px;
                 }
                 QTableWidget::item:alternate {
-                    background-color: #f5f8f9;
+                    background-color: #f5f8fc;
                 }
                 QTableWidget::item:selected {
-                    background-color: #4a7880;
+                    background-color: #4a7088;
                     color: #ffffff;
                 }
                 QHeaderView::section {
-                    background-color: #e8f0f2;
-                    color: #2d3a41;
+                    background-color: #e8eef5;
+                    color: #2d3746;
                     padding: 6px;
                     border: none;
-                    border-right: 1px solid #b0c4c8;
-                    border-bottom: 1px solid #b0c4c8;
+                    border-right: 1px solid #b0c0d0;
+                    border-bottom: 1px solid #b0c0d0;
                     font-weight: bold;
                 }
             """)
