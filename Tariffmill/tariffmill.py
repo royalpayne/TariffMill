@@ -123,7 +123,7 @@ if __name__ == "__main__":
     update_splash("Loading PyQt5 components...")
 
 from PyQt5.QtWidgets import *
-from PyQt5.QtCore import Qt, QMimeData, pyqtSignal, QTimer, QSize, QEventLoop, QRect, QSettings, QThread, QThreadPool, QRunnable, QObject, QUrl, QTime
+from PyQt5.QtCore import Qt, QMimeData, pyqtSignal, pyqtSlot, QTimer, QSize, QEventLoop, QRect, QSettings, QThread, QThreadPool, QRunnable, QObject, QUrl, QTime
 from PyQt5.QtGui import QColor, QFont, QDrag, QKeySequence, QIcon, QPixmap, QPainter, QDoubleValidator, QCursor, QPen, QTextCursor, QTextCharFormat, QSyntaxHighlighter, QTextFormat, QDesktopServices
 from PyQt5.QtSvg import QSvgRenderer
 
@@ -7262,23 +7262,43 @@ class TariffMill(QMainWindow):
                 logger.info(f"Startup update check result: has_update={has_update}, latest={latest}, error={error}")
                 if has_update and not error:
                     logger.info(f"Update available! Scheduling dialog for version {latest}")
-                    # Schedule dialog to be shown on main thread
-                    # Use explicit variable capture to avoid closure issues
-                    def show_dialog():
-                        try:
-                            logger.info(f"Showing update dialog for {latest}")
-                            main_window.show_update_available_dialog(latest, url, notes, download_url)
-                        except Exception as e:
-                            logger.error(f"Error showing update dialog: {e}")
-                    QTimer.singleShot(100, show_dialog)
+                    # Store update info for main thread to access
+                    main_window._pending_update = {
+                        'latest': latest,
+                        'url': url,
+                        'notes': notes,
+                        'download_url': download_url
+                    }
+                    # Use QMetaObject.invokeMethod for thread-safe main thread call
+                    from PyQt5.QtCore import QMetaObject, Qt, Q_ARG
+                    QMetaObject.invokeMethod(main_window, "_show_pending_update_dialog", Qt.QueuedConnection)
                 elif error:
                     logger.warning(f"Startup update check had error: {error}")
             except Exception as e:
                 logger.error(f"Exception in startup update check thread: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
 
         # Run in background thread to not block startup
         thread = Thread(target=check_thread, daemon=True)
         thread.start()
+
+    @pyqtSlot()
+    def _show_pending_update_dialog(self):
+        """Show the update dialog from the main thread (called via QMetaObject.invokeMethod)"""
+        try:
+            if hasattr(self, '_pending_update') and self._pending_update:
+                update_info = self._pending_update
+                self._pending_update = None
+                logger.info(f"Showing update dialog for {update_info['latest']}")
+                self.show_update_available_dialog(
+                    update_info['latest'],
+                    update_info['url'],
+                    update_info['notes'],
+                    update_info['download_url']
+                )
+        except Exception as e:
+            logger.error(f"Error showing update dialog: {e}")
 
     def _setup_backup_scheduler(self):
         """Set up automatic database backup based on configuration."""
