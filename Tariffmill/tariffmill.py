@@ -8298,33 +8298,34 @@ class TariffMill(QMainWindow):
         return palette
 
     def get_muted_cyan_palette(self):
-        """Create a Muted Cyan palette - professional muted blue-cyan inspired by enterprise software"""
+        """Create a Muted Cyan palette - professional muted cyan based on RGB(141, 178, 188)"""
         from PyQt5.QtGui import QPalette, QColor
         from PyQt5.QtWidgets import QApplication
 
-        # Get user's saved highlight color for this theme (blue-toned cyan)
-        highlight_color = get_theme_color('preview_highlight_color', '#4A7088', 'Muted Cyan')
+        # Base color: RGB(141, 178, 188) - muted teal-cyan
+        # Get user's saved highlight color for this theme
+        highlight_color = get_theme_color('preview_highlight_color', '#8DB2BC', 'Muted Cyan')
 
         palette = QPalette()
-        # Blue-toned muted cyan colors
-        palette.setColor(QPalette.Window, QColor(245, 248, 252))  # Light gray with blue tint (#F5F8FC)
-        palette.setColor(QPalette.WindowText, QColor(45, 55, 70))  # Dark blue-gray text (#2D3746)
+        # Muted cyan colors derived from base RGB(141, 178, 188)
+        palette.setColor(QPalette.Window, QColor(232, 242, 245))  # Very light tint of base (#E8F2F5)
+        palette.setColor(QPalette.WindowText, QColor(45, 60, 65))  # Dark cyan-gray text (#2D3C41)
         palette.setColor(QPalette.Base, QColor(255, 255, 255))  # White for inputs
-        palette.setColor(QPalette.AlternateBase, QColor(245, 248, 252))  # Subtle alternating (#F5F8FC)
+        palette.setColor(QPalette.AlternateBase, QColor(225, 238, 242))  # Subtle alternating (#E1EEF2)
         palette.setColor(QPalette.ToolTipBase, QColor(255, 255, 255))  # White tooltips
-        palette.setColor(QPalette.ToolTipText, QColor(45, 55, 70))  # Dark tooltip text
-        palette.setColor(QPalette.Text, QColor(45, 55, 70))  # Primary text (#2D3746)
-        palette.setColor(QPalette.Button, QColor(232, 238, 245))  # Light blue-gray for buttons (#E8EEF5)
-        palette.setColor(QPalette.ButtonText, QColor(45, 55, 70))  # Dark button text
-        palette.setColor(QPalette.BrightText, QColor(200, 80, 80))  # Muted red for alerts
-        palette.setColor(QPalette.Link, QColor(74, 112, 136))  # Blue-toned links (#4A7088)
-        palette.setColor(QPalette.Highlight, QColor(highlight_color))  # Blue-toned selection
+        palette.setColor(QPalette.ToolTipText, QColor(45, 60, 65))  # Dark tooltip text
+        palette.setColor(QPalette.Text, QColor(45, 60, 65))  # Primary text (#2D3C41)
+        palette.setColor(QPalette.Button, QColor(198, 220, 226))  # Light cyan for buttons (#C6DCE2)
+        palette.setColor(QPalette.ButtonText, QColor(45, 60, 65))  # Dark button text
+        palette.setColor(QPalette.BrightText, QColor(180, 80, 80))  # Muted red for alerts
+        palette.setColor(QPalette.Link, QColor(100, 140, 150))  # Darker cyan links (#648C96)
+        palette.setColor(QPalette.Highlight, QColor(highlight_color))  # Base color for selection (#8DB2BC)
         palette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))  # White on selection
         palette.setColor(QPalette.Light, QColor(255, 255, 255))  # White
-        palette.setColor(QPalette.Midlight, QColor(232, 238, 245))  # Light blue-gray (#E8EEF5)
-        palette.setColor(QPalette.Mid, QColor(176, 192, 210))  # Mid blue-gray (#B0C0D2)
-        palette.setColor(QPalette.Dark, QColor(138, 160, 185))  # Darker blue-gray (#8AA0B9)
-        palette.setColor(QPalette.Shadow, QColor(106, 130, 158))  # Shadow blue (#6A829E)
+        palette.setColor(QPalette.Midlight, QColor(198, 220, 226))  # Light cyan (#C6DCE2)
+        palette.setColor(QPalette.Mid, QColor(141, 178, 188))  # Base color (#8DB2BC)
+        palette.setColor(QPalette.Dark, QColor(110, 145, 155))  # Darker shade (#6E919B)
+        palette.setColor(QPalette.Shadow, QColor(85, 115, 125))  # Shadow shade (#55737D)
         return palette
 
     def get_macos_palette(self):
@@ -8371,8 +8372,8 @@ class TariffMill(QMainWindow):
         if r > 200 and g > 230 and b > 230:
             return "light_cyan"
 
-        # Muted Cyan: Window = (245, 248, 248) - light gray with slight cyan tint
-        if r > 240 and g > 245 and b > 245 and g == b:
+        # Muted Cyan: Window = (232, 242, 245) - light cyan tint based on RGB(141,178,188)
+        if r > 225 and r < 240 and g > 235 and b > 240 and b > r:
             return "muted_cyan"
 
         # Ocean: Window = (26, 48, 80) - dark blue, blue > red significantly
@@ -8422,9 +8423,9 @@ class TariffMill(QMainWindow):
             self.ocrmill_templates_table.setStyleSheet("""
                 QTableWidget {
                     background: #ffffff;
-                    border: 1px solid #b0c0d0;
+                    border: 1px solid #8db2bc;
                     border-radius: 6px;
-                    gridline-color: #d0dce8;
+                    gridline-color: #c6dce2;
                     font-size: 13px;
                 }
                 QTableWidget::item {
@@ -8432,20 +8433,20 @@ class TariffMill(QMainWindow):
                     background-color: #ffffff;
                 }
                 QTableWidget::item:alternate {
-                    background-color: #f5f8fc;
+                    background-color: #e8f2f5;
                 }
                 QTableWidget::item:selected {
-                    background-color: #4a7088;
+                    background-color: #8db2bc;
                     color: #ffffff;
                 }
                 QTableWidget::item:hover:!selected {
-                    background-color: #e0e8f0;
+                    background-color: #c6dce2;
                 }
                 QHeaderView::section {
-                    background-color: #4a7088;
+                    background-color: #8db2bc;
                     color: #ffffff;
                     padding: 6px;
-                    border: 1px solid #3a6080;
+                    border: 1px solid #6e919b;
                     font-weight: bold;
                 }
             """)
@@ -16030,10 +16031,11 @@ class TariffMill(QMainWindow):
         dialog.setWindowTitle("TariffMill Statistics")
         dialog.setMinimumSize(900, 700)
 
-        # Detect current theme and set appropriate colors
-        theme = self._detect_current_theme()
+        # Get current theme name directly
+        theme_name = getattr(self, 'current_theme', 'System Default')
 
-        if theme == "light_cyan":
+        if theme_name == "Light Cyan":
+            theme = "light_cyan"
             dialog_bg = "#e0f6f7"
             group_border = "#b8d4dc"
             text_color = "#1a5a6e"
@@ -16044,18 +16046,20 @@ class TariffMill(QMainWindow):
             card_title_color = "#5a8a98"
             card_value_color = "#0096c7"
             card_subtitle_color = "#7aa0a8"
-        elif theme == "muted_cyan":
-            dialog_bg = "#f5f8fc"
-            group_border = "#b0c0d0"
-            text_color = "#2d3746"
-            label_color = "#3d4656"
-            accent_color = "#4a7088"
-            card_bg = "#e8eef5"
-            card_border = "#b0c0d0"
-            card_title_color = "#5a6880"
-            card_value_color = "#4a7088"
-            card_subtitle_color = "#7a8898"
-        elif theme == "ocean":
+        elif theme_name == "Muted Cyan":
+            theme = "muted_cyan"
+            dialog_bg = "#e8f2f5"
+            group_border = "#8db2bc"
+            text_color = "#2d3c41"
+            label_color = "#3d4c51"
+            accent_color = "#6e919b"
+            card_bg = "#c6dce2"
+            card_border = "#8db2bc"
+            card_title_color = "#55737d"
+            card_value_color = "#6e919b"
+            card_subtitle_color = "#648c96"
+        elif theme_name == "Ocean":
+            theme = "ocean"
             dialog_bg = "#1a3050"
             group_border = "#3a6a9a"
             text_color = "#e0f0ff"
@@ -16066,7 +16070,8 @@ class TariffMill(QMainWindow):
             card_title_color = "#8ac4e0"
             card_value_color = "#00b8d4"
             card_subtitle_color = "#7eb0c8"
-        else:  # dark
+        elif theme_name == "Fusion (Dark)":
+            theme = "dark"
             dialog_bg = "#2d2d2d"
             group_border = "#4a4a4a"
             text_color = "#e0e0e0"
@@ -16077,6 +16082,30 @@ class TariffMill(QMainWindow):
             card_title_color = "#aaaaaa"
             card_value_color = "#00d4ff"
             card_subtitle_color = "#888888"
+        elif theme_name == "macOS":
+            theme = "macos"
+            dialog_bg = "#ececec"
+            group_border = "#c8c8c8"
+            text_color = "#1d1d1f"
+            label_color = "#3d3d3f"
+            accent_color = "#007aff"
+            card_bg = "#f5f5f7"
+            card_border = "#d2d2d7"
+            card_title_color = "#6e6e73"
+            card_value_color = "#007aff"
+            card_subtitle_color = "#86868b"
+        else:  # Fusion (Light), System Default, or any other light theme
+            theme = "fusion_light"
+            dialog_bg = "#f0f0f0"
+            group_border = "#c0c0c0"
+            text_color = "#1a1a1a"
+            label_color = "#2a2a2a"
+            accent_color = "#0078d4"
+            card_bg = "#ffffff"
+            card_border = "#d0d0d0"
+            card_title_color = "#606060"
+            card_value_color = "#0078d4"
+            card_subtitle_color = "#808080"
 
         # Store theme colors for use by helper methods
         self._stats_theme_colors = {
@@ -16722,28 +16751,28 @@ class TariffMill(QMainWindow):
             table.setStyleSheet("""
                 QTableWidget {
                     background-color: #ffffff;
-                    color: #2d3746;
-                    gridline-color: #d0dce8;
-                    border: 1px solid #b0c0d0;
+                    color: #2d3c41;
+                    gridline-color: #c6dce2;
+                    border: 1px solid #8db2bc;
                     border-radius: 4px;
                 }
                 QTableWidget::item {
                     padding: 4px;
                 }
                 QTableWidget::item:alternate {
-                    background-color: #f5f8fc;
+                    background-color: #e8f2f5;
                 }
                 QTableWidget::item:selected {
-                    background-color: #4a7088;
+                    background-color: #8db2bc;
                     color: #ffffff;
                 }
                 QHeaderView::section {
-                    background-color: #e8eef5;
-                    color: #2d3746;
+                    background-color: #c6dce2;
+                    color: #2d3c41;
                     padding: 6px;
                     border: none;
-                    border-right: 1px solid #b0c0d0;
-                    border-bottom: 1px solid #b0c0d0;
+                    border-right: 1px solid #8db2bc;
+                    border-bottom: 1px solid #8db2bc;
                     font-weight: bold;
                 }
             """)
@@ -16776,7 +16805,7 @@ class TariffMill(QMainWindow):
                     font-weight: bold;
                 }
             """)
-        else:  # dark
+        elif theme == "dark":
             table.setStyleSheet("""
                 QTableWidget {
                     background-color: #2d2d2d;
@@ -16802,6 +16831,64 @@ class TariffMill(QMainWindow):
                     border: none;
                     border-right: 1px solid #4a4a4a;
                     border-bottom: 1px solid #4a4a4a;
+                    font-weight: bold;
+                }
+            """)
+        elif theme == "macos":
+            table.setStyleSheet("""
+                QTableWidget {
+                    background-color: #ffffff;
+                    color: #1d1d1f;
+                    gridline-color: #d2d2d7;
+                    border: 1px solid #c8c8c8;
+                    border-radius: 4px;
+                }
+                QTableWidget::item {
+                    padding: 4px;
+                }
+                QTableWidget::item:alternate {
+                    background-color: #f5f5f7;
+                }
+                QTableWidget::item:selected {
+                    background-color: #007aff;
+                    color: #ffffff;
+                }
+                QHeaderView::section {
+                    background-color: #f5f5f7;
+                    color: #1d1d1f;
+                    padding: 6px;
+                    border: none;
+                    border-right: 1px solid #d2d2d7;
+                    border-bottom: 1px solid #d2d2d7;
+                    font-weight: bold;
+                }
+            """)
+        else:  # fusion_light or any other light theme
+            table.setStyleSheet("""
+                QTableWidget {
+                    background-color: #ffffff;
+                    color: #1a1a1a;
+                    gridline-color: #d0d0d0;
+                    border: 1px solid #c0c0c0;
+                    border-radius: 4px;
+                }
+                QTableWidget::item {
+                    padding: 4px;
+                }
+                QTableWidget::item:alternate {
+                    background-color: #f5f5f5;
+                }
+                QTableWidget::item:selected {
+                    background-color: #0078d4;
+                    color: #ffffff;
+                }
+                QHeaderView::section {
+                    background-color: #e8e8e8;
+                    color: #1a1a1a;
+                    padding: 6px;
+                    border: none;
+                    border-right: 1px solid #c0c0c0;
+                    border-bottom: 1px solid #c0c0c0;
                     font-weight: bold;
                 }
             """)
