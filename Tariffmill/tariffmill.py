@@ -7224,14 +7224,16 @@ class TariffMill(QMainWindow):
         self.bottom_status.setText("Ready")
 
     def show_update_available_dialog(self, latest_version, release_url, release_notes, download_url):
-        """Show dialog when an update is available"""
+        """Show dialog when an update is available - OS-aware"""
+        import sys
+
         dialog = QDialog(self)
         dialog.setWindowTitle("Update Available")
         dialog.resize(500, 400)
         layout = QVBoxLayout(dialog)
 
         # Header
-        header = QLabel(f"<h2>🎉 New Version Available!</h2>")
+        header = QLabel(f"<h2>New Version Available!</h2>")
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
 
@@ -7253,20 +7255,22 @@ class TariffMill(QMainWindow):
         notes_group.setLayout(notes_layout)
         layout.addWidget(notes_group)
 
-        # Buttons
+        # Buttons - OS-aware
         btn_layout = QHBoxLayout()
 
-        if download_url:
-            download_btn = QPushButton("Download Update")
-            download_btn.setStyleSheet(self.get_button_style("success"))
-            download_btn.clicked.connect(lambda: self._download_and_install_update(download_url, dialog))
-            btn_layout.addWidget(download_btn)
-
-        # Add pip install button for Linux/macOS users
-        pip_btn = QPushButton("Copy pip Command")
-        pip_btn.setToolTip("Copy the pip install command for Linux/macOS users")
-        pip_btn.clicked.connect(lambda: self._copy_pip_install_command(dialog))
-        btn_layout.addWidget(pip_btn)
+        if sys.platform == 'win32':
+            # Windows: Show download button for .exe installer
+            if download_url:
+                download_btn = QPushButton("Download && Install")
+                download_btn.setStyleSheet(self.get_button_style("success"))
+                download_btn.clicked.connect(lambda: self._download_and_install_update(download_url, dialog))
+                btn_layout.addWidget(download_btn)
+        else:
+            # Linux/macOS: Show update button that runs git pull + pip install
+            update_btn = QPushButton("Update Now")
+            update_btn.setStyleSheet(self.get_button_style("success"))
+            update_btn.clicked.connect(lambda: self._run_linux_update(dialog))
+            btn_layout.addWidget(update_btn)
 
         view_btn = QPushButton("View on GitHub")
         view_btn.clicked.connect(lambda: (webbrowser.open(release_url), dialog.accept()))
@@ -7280,23 +7284,103 @@ class TariffMill(QMainWindow):
         self.center_dialog(dialog)
         dialog.exec_()
 
-    def _copy_pip_install_command(self, dialog):
-        """Copy the pipx install command to clipboard for Linux/macOS users"""
-        pipx_command = "pipx install git+https://github.com/ProcessLogicLabs/TariffMill.git"
-        pipx_upgrade = "pipx upgrade tariffmill"
-        clipboard = QApplication.clipboard()
-        clipboard.setText(pipx_command)
+    def _run_linux_update(self, dialog):
+        """Run update on Linux/macOS using git pull and pip install."""
+        import subprocess
+        import os
 
-        # Show confirmation with pipx instructions
-        QMessageBox.information(
-            dialog,
-            "Command Copied",
-            f"The install command has been copied to your clipboard:\n\n"
-            f"{pipx_command}\n\n"
-            f"If TariffMill is already installed, use:\n{pipx_upgrade}\n\n"
-            f"Note: pipx is recommended for Linux. Install it first with:\n"
-            f"sudo apt install pipx && pipx ensurepath"
-        )
+        dialog.accept()
+
+        # Find the install directory (where tariffmill.py is located)
+        install_dir = Path(__file__).parent.parent
+        venv_dir = install_dir / '.venv'
+
+        # Create progress dialog
+        progress_dialog = QDialog(self)
+        progress_dialog.setWindowTitle("Updating TariffMill")
+        progress_dialog.setFixedSize(450, 200)
+        progress_layout = QVBoxLayout(progress_dialog)
+
+        progress_label = QLabel("Updating TariffMill...")
+        progress_layout.addWidget(progress_label)
+
+        output_text = QTextEdit()
+        output_text.setReadOnly(True)
+        output_text.setMaximumHeight(100)
+        progress_layout.addWidget(output_text)
+
+        progress_dialog.show()
+        QApplication.processEvents()
+
+        try:
+            # Step 1: Git pull
+            progress_label.setText("Pulling latest changes from GitHub...")
+            QApplication.processEvents()
+
+            result = subprocess.run(
+                ['git', 'pull', 'origin', 'main'],
+                cwd=str(install_dir),
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            output_text.append(f"$ git pull origin main\n{result.stdout}{result.stderr}")
+            QApplication.processEvents()
+
+            if result.returncode != 0:
+                raise Exception(f"Git pull failed: {result.stderr}")
+
+            # Step 2: pip install -e .
+            progress_label.setText("Installing updates...")
+            QApplication.processEvents()
+
+            # Use the venv pip if available
+            if venv_dir.exists():
+                pip_path = venv_dir / 'bin' / 'pip'
+            else:
+                pip_path = 'pip3'
+
+            result = subprocess.run(
+                [str(pip_path), 'install', '-e', '.'],
+                cwd=str(install_dir),
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
+            output_text.append(f"\n$ pip install -e .\n{result.stdout}{result.stderr}")
+            QApplication.processEvents()
+
+            if result.returncode != 0:
+                raise Exception(f"pip install failed: {result.stderr}")
+
+            progress_dialog.close()
+
+            # Success - ask to restart
+            reply = QMessageBox.question(
+                self, "Update Complete",
+                "TariffMill has been updated successfully!\n\n"
+                "The application needs to restart to apply the update.\n\n"
+                "Restart now?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+
+            if reply == QMessageBox.Yes:
+                # Restart the application
+                python = sys.executable
+                os.execl(python, python, *sys.argv)
+
+        except Exception as e:
+            progress_dialog.close()
+            QMessageBox.critical(
+                self, "Update Failed",
+                f"Failed to update TariffMill:\n\n{str(e)}\n\n"
+                f"You can try updating manually:\n"
+                f"cd {install_dir}\n"
+                f"git pull origin main\n"
+                f"pip install -e ."
+            )
+            logger.error(f"Linux update failed: {e}")
 
     def check_for_updates_startup(self):
         """Check for updates on startup (runs in background thread)"""
