@@ -14434,24 +14434,23 @@ class TariffMill(QMainWindow):
         # Export Details section
         elements.append(Paragraph("EXPORT DETAILS", section_header_style))
 
-        # Table headers
-        detail_headers = ["#", "File #", "Date", "File Name", "Lines", "Value"]
+        # Table headers (removed Value column)
+        detail_headers = ["#", "File #", "Date", "File Name", "Lines"]
         detail_data = [detail_headers]
 
         for idx, record in enumerate(summary['records'], 1):
             file_name = record.get('file_name', '')
-            if len(file_name) > 25:
-                file_name = file_name[:22] + "..."
+            if len(file_name) > 35:
+                file_name = file_name[:32] + "..."
             detail_data.append([
                 str(idx),
                 str(record.get('file_number', '')),
                 record.get('export_date', ''),
                 file_name,
-                str(record.get('line_count', 0)),
-                f"${record.get('total_value', 0):,.2f}"
+                str(record.get('line_count', 0))
             ])
 
-        detail_table = Table(detail_data, colWidths=[0.4*inch, 0.8*inch, 1*inch, 2.5*inch, 0.7*inch, 1.1*inch])
+        detail_table = Table(detail_data, colWidths=[0.4*inch, 0.8*inch, 1*inch, 3.6*inch, 0.7*inch])
         detail_style = [
             # Header row
             ('BACKGROUND', (0, 0), (-1, 0), brand_blue),
@@ -14463,7 +14462,6 @@ class TariffMill(QMainWindow):
             ('FONTSIZE', (0, 1), (-1, -1), 8),
             ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # # column
             ('ALIGN', (4, 1), (4, -1), 'CENTER'),  # Lines column
-            ('ALIGN', (5, 1), (5, -1), 'RIGHT'),   # Value column
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('PADDING', (0, 0), (-1, -1), 6),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D1D5DB')),
@@ -16057,14 +16055,25 @@ class TariffMill(QMainWindow):
             card_title_color = "#5a6880"
             card_value_color = "#4a7088"
             card_subtitle_color = "#7a8898"
-        else:  # dark/ocean
-            dialog_bg = "#1a1a2e"
-            group_border = "#3c3c3c"
-            text_color = "#cccccc"
+        elif theme == "ocean":
+            dialog_bg = "#1a3050"
+            group_border = "#3a6a9a"
+            text_color = "#e0f0ff"
+            label_color = "#c0e0f0"
+            accent_color = "#00a8cc"
+            card_bg = "#1e3a55"
+            card_border = "#3a6a9a"
+            card_title_color = "#8ac4e0"
+            card_value_color = "#00b8d4"
+            card_subtitle_color = "#7eb0c8"
+        else:  # dark
+            dialog_bg = "#2d2d2d"
+            group_border = "#4a4a4a"
+            text_color = "#e0e0e0"
             label_color = "#cccccc"
             accent_color = "#00d4ff"
-            card_bg = "#1e3a5f"
-            card_border = "#2a5a8f"
+            card_bg = "#3a3a3a"
+            card_border = "#505050"
             card_title_color = "#aaaaaa"
             card_value_color = "#00d4ff"
             card_subtitle_color = "#888888"
@@ -16738,28 +16747,62 @@ class TariffMill(QMainWindow):
                     font-weight: bold;
                 }
             """)
-        else:  # dark/ocean
+        elif theme == "ocean":
             table.setStyleSheet("""
                 QTableWidget {
-                    background-color: #1e1e1e;
-                    color: #cccccc;
-                    gridline-color: #3c3c3c;
-                    border: 1px solid #3c3c3c;
+                    background-color: #1a3550;
+                    color: #e0f0ff;
+                    gridline-color: #3a6a9a;
+                    border: 1px solid #3a6a9a;
                     border-radius: 4px;
                 }
                 QTableWidget::item {
                     padding: 4px;
                 }
+                QTableWidget::item:alternate {
+                    background-color: #1e3a55;
+                }
                 QTableWidget::item:selected {
-                    background-color: #264f78;
+                    background-color: #00a8cc;
+                    color: #ffffff;
                 }
                 QHeaderView::section {
-                    background-color: #2d2d2d;
-                    color: #cccccc;
+                    background-color: #2a4a6a;
+                    color: #c0e0f0;
                     padding: 6px;
                     border: none;
-                    border-right: 1px solid #3c3c3c;
-                    border-bottom: 1px solid #3c3c3c;
+                    border-right: 1px solid #3a6a9a;
+                    border-bottom: 1px solid #3a6a9a;
+                    font-weight: bold;
+                }
+            """)
+        else:  # dark
+            table.setStyleSheet("""
+                QTableWidget {
+                    background-color: #2d2d2d;
+                    color: #e0e0e0;
+                    gridline-color: #4a4a4a;
+                    border: 1px solid #4a4a4a;
+                    border-radius: 4px;
+                }
+                QTableWidget::item {
+                    padding: 4px;
+                }
+                QTableWidget::item:alternate {
+                    background-color: #353535;
+                }
+                QTableWidget::item:selected {
+                    background-color: #0078d4;
+                    color: #ffffff;
+                }
+                QHeaderView::section {
+                    background-color: #3a3a3a;
+                    color: #e0e0e0;
+                    padding: 6px;
+                    border: none;
+                    border-right: 1px solid #4a4a4a;
+                    border-bottom: 1px solid #4a4a4a;
+                    font-weight: bold;
                 }
             """)
 
