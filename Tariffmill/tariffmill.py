@@ -1868,6 +1868,17 @@ def init_database():
             additional_info TEXT
         )""")
 
+        # Create file_number_divisions table for managing file number patterns per division
+        c.execute("""CREATE TABLE IF NOT EXISTS file_number_divisions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            division_name TEXT NOT NULL,
+            prefix TEXT NOT NULL,
+            total_length INTEGER NOT NULL,
+            description TEXT,
+            is_active INTEGER DEFAULT 1,
+            created_date TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
+
         # Migration: Add manufacturer_name and customer_id columns to mid_table if they don't exist
         try:
             c.execute("PRAGMA table_info(mid_table)")
@@ -3955,13 +3966,25 @@ class TariffMill(QMainWindow):
         self.mid_combo.currentTextChanged.connect(self.on_mid_changed)
         values_layout.addRow(self.mid_label, self.mid_combo)
 
+        # Division selector (for file number pattern enforcement)
+        self.division_combo = QComboBox()
+        self.division_combo.setToolTip("Select a division to enforce file number pattern (prefix + length)")
+        self.division_combo.currentIndexChanged.connect(self._on_division_changed)
+        values_layout.addRow("Division:", self.division_combo)
+
         # File Number (mandatory billing reference)
         self.file_number_input = ForceEditableLineEdit("")
         self.file_number_input.setObjectName("file_number_input")
         self.file_number_input.setPlaceholderText("Enter file number (required)...")
         self.file_number_input.setToolTip("Billing reference number - required for export")
         self.file_number_input.textChanged.connect(self.update_invoice_check)
+        self.file_number_input.textChanged.connect(self._update_file_number_validation)
         values_layout.addRow("File Number *:", self.file_number_input)
+
+        # File number validation indicator
+        self.file_number_validation_label = QLabel("")
+        self.file_number_validation_label.setStyleSheet("font-size: 11px;")
+        values_layout.addRow("", self.file_number_validation_label)
 
         # TODO: Customer Reference - To be implemented with XML export at a later date
         # # Customer Reference Number (for XML export)
@@ -4653,7 +4676,14 @@ class TariffMill(QMainWindow):
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Administration")
-        dialog.resize(900, 650)
+
+        # Size dialog to 75% of user's screen with minimum size
+        screen = QApplication.primaryScreen().availableGeometry()
+        width = max(1100, int(screen.width() * 0.75))
+        height = max(800, int(screen.height() * 0.75))
+        dialog.resize(width, height)
+        dialog.setMinimumSize(1000, 700)
+
         layout = QVBoxLayout(dialog)
 
         # Header with warning
@@ -4720,6 +4750,7 @@ class TariffMill(QMainWindow):
         event_filter.addItem("All Events", "")
         event_filter.addItem("Successful Exports", "EXPORT_SUCCESS")
         event_filter.addItem("Blocked - No File Number", "EXPORT_BLOCKED_NO_FILE_NUMBER")
+        event_filter.addItem("Blocked - Invalid Format", "EXPORT_BLOCKED_INVALID_FORMAT")
         event_filter.addItem("Blocked - Totals Mismatch", "EXPORT_BLOCKED_TOTALS_MISMATCH")
         event_filter.addItem("Blocked - Empty", "EXPORT_BLOCKED_EMPTY")
         filter_layout.addWidget(event_filter)
@@ -12392,6 +12423,7 @@ class TariffMill(QMainWindow):
         - Must be at least 3 characters
         - Must contain at least one alphanumeric character
         - Cannot be common test values like 'test', 'xxx', '123', 'abc'
+        - If a division is selected, must match prefix and length requirements
 
         Returns:
             tuple: (is_valid: bool, error_message: str)
@@ -12418,6 +12450,19 @@ class TariffMill(QMainWindow):
         for pattern in blocked_patterns:
             if re.match(pattern, file_number.lower()):
                 return False, f"'{file_number}' is not a valid file number. Please enter the actual file/reference number."
+
+        # Validate against selected division pattern (if any)
+        if hasattr(self, 'division_combo'):
+            division_data = self.division_combo.currentData()
+            if division_data:
+                div_id, prefix, total_length = division_data
+                div_name = self.division_combo.currentText().split(' (')[0]  # Get just the name
+
+                if not file_number.startswith(prefix):
+                    return False, f"File number must start with '{prefix}' for {div_name} division."
+
+                if len(file_number) != total_length:
+                    return False, f"File number must be exactly {total_length} characters for {div_name} division (currently {len(file_number)})."
 
         return True, ""
 
@@ -12695,7 +12740,18 @@ class TariffMill(QMainWindow):
 
     def setup_billing_tab(self, tab_widget):
         """Setup the Billing tab for the Configuration dialog."""
-        layout = QVBoxLayout(tab_widget)
+        # Use a scroll area to handle all the content
+        from PyQt5.QtWidgets import QScrollArea
+
+        tab_layout = QVBoxLayout(tab_widget)
+        tab_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QScrollArea.NoFrame)
+
+        scroll_content = QWidget()
+        layout = QVBoxLayout(scroll_content)
 
         # Title
         title = QLabel("<h2>Billing Configuration</h2>")
@@ -12800,14 +12856,17 @@ class TariffMill(QMainWindow):
         self.user_table = QTableWidget()
         self.user_table.setColumnCount(4)
         self.user_table.setHorizontalHeaderLabels(["Email", "Name", "Role", "Actions"])
-        self.user_table.horizontalHeader().setStretchLastSection(True)
-        self.user_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.user_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.user_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.user_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.user_table.horizontalHeader().setStretchLastSection(False)
+        self.user_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)  # Email stretches
+        self.user_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
+        self.user_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+        self.user_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
+        self.user_table.setColumnWidth(1, 110)  # Name
+        self.user_table.setColumnWidth(2, 90)   # Role
+        self.user_table.setColumnWidth(3, 120)  # Actions - symbol buttons
         self.user_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.user_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.user_table.setMinimumHeight(150)
+        self.user_table.setMinimumHeight(180)
         user_layout.addWidget(self.user_table)
 
         # User management buttons
@@ -12835,7 +12894,61 @@ class TariffMill(QMainWindow):
         # Load users on tab creation
         QTimer.singleShot(100, self._refresh_user_list)
 
+        # File Number Divisions Section
+        divisions_group = QGroupBox("File Number Divisions")
+        divisions_layout = QVBoxLayout()
+
+        divisions_info = QLabel("<small>Define file number patterns for different divisions. Each division has a required prefix and total character length.</small>")
+        divisions_info.setWordWrap(True)
+        divisions_info.setStyleSheet("color:#666; padding:5px;")
+        divisions_layout.addWidget(divisions_info)
+
+        # Divisions table
+        self.divisions_table = QTableWidget()
+        self.divisions_table.setColumnCount(5)
+        self.divisions_table.setHorizontalHeaderLabels(["Division Name", "Prefix", "Length", "Description", "Active"])
+        self.divisions_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.divisions_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.divisions_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.divisions_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.divisions_table.setMinimumHeight(120)
+        divisions_layout.addWidget(self.divisions_table)
+
+        # Division management buttons
+        div_btn_layout = QHBoxLayout()
+
+        btn_refresh_divisions = QPushButton("Refresh")
+        btn_refresh_divisions.clicked.connect(self._refresh_divisions_list)
+        div_btn_layout.addWidget(btn_refresh_divisions)
+
+        btn_add_division = QPushButton("Add Division")
+        btn_add_division.setStyleSheet(self.get_button_style("primary"))
+        btn_add_division.clicked.connect(self._add_division_dialog)
+        div_btn_layout.addWidget(btn_add_division)
+
+        btn_edit_division = QPushButton("Edit")
+        btn_edit_division.clicked.connect(self._edit_division_dialog)
+        div_btn_layout.addWidget(btn_edit_division)
+
+        btn_delete_division = QPushButton("Delete")
+        btn_delete_division.setStyleSheet(self.get_button_style("danger"))
+        btn_delete_division.clicked.connect(self._delete_division)
+        div_btn_layout.addWidget(btn_delete_division)
+
+        div_btn_layout.addStretch()
+
+        divisions_layout.addLayout(div_btn_layout)
+        divisions_group.setLayout(divisions_layout)
+        layout.addWidget(divisions_group)
+
+        # Load divisions on tab creation
+        QTimer.singleShot(150, self._refresh_divisions_list)
+
         layout.addStretch()
+
+        # Set up scroll area
+        scroll_area.setWidget(scroll_content)
+        tab_layout.addWidget(scroll_area)
 
     def _save_billing_settings_from_tab(self):
         """Save billing settings from the Configuration dialog tab."""
@@ -12857,6 +12970,341 @@ class TariffMill(QMainWindow):
             self.billing_smtp_password.text(),
             self.billing_admin_email.text()
         )
+
+    # =========================================================================
+    # File Number Division Management Methods
+    # =========================================================================
+
+    def _refresh_divisions_list(self):
+        """Refresh the divisions table from database."""
+        if not hasattr(self, 'divisions_table'):
+            return
+
+        self.divisions_table.setRowCount(0)
+
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+            c.execute("SELECT id, division_name, prefix, total_length, description, is_active FROM file_number_divisions ORDER BY division_name")
+            divisions = c.fetchall()
+            conn.close()
+
+            for div_id, name, prefix, length, desc, is_active in divisions:
+                row = self.divisions_table.rowCount()
+                self.divisions_table.insertRow(row)
+
+                name_item = QTableWidgetItem(name)
+                name_item.setData(Qt.UserRole, div_id)  # Store ID for later use
+                self.divisions_table.setItem(row, 0, name_item)
+                self.divisions_table.setItem(row, 1, QTableWidgetItem(prefix))
+                self.divisions_table.setItem(row, 2, QTableWidgetItem(str(length)))
+                self.divisions_table.setItem(row, 3, QTableWidgetItem(desc or ""))
+
+                active_item = QTableWidgetItem("Yes" if is_active else "No")
+                if not is_active:
+                    active_item.setForeground(QColor("#999"))
+                self.divisions_table.setItem(row, 4, active_item)
+
+        except Exception as e:
+            logger.error(f"Failed to load divisions: {e}")
+
+        # Also refresh the division combo on the PDF Processing tab if it exists
+        self._refresh_division_combo()
+
+    def _add_division_dialog(self):
+        """Show dialog to add a new file number division."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Add File Number Division")
+        dialog.resize(400, 250)
+        layout = QVBoxLayout(dialog)
+
+        form = QFormLayout()
+
+        name_input = QLineEdit()
+        name_input.setPlaceholderText("e.g., West Coast, Import Division")
+        form.addRow("Division Name:", name_input)
+
+        prefix_input = QLineEdit()
+        prefix_input.setPlaceholderText("e.g., 76, 33, ABC")
+        prefix_input.setMaxLength(10)
+        form.addRow("Prefix:", prefix_input)
+
+        length_spin = QSpinBox()
+        length_spin.setRange(1, 20)
+        length_spin.setValue(7)
+        length_spin.setToolTip("Total length of the file number including the prefix")
+        form.addRow("Total Length:", length_spin)
+
+        desc_input = QLineEdit()
+        desc_input.setPlaceholderText("Optional description")
+        form.addRow("Description:", desc_input)
+
+        # Preview label
+        preview_label = QLabel("")
+        preview_label.setStyleSheet("color: #666; font-style: italic;")
+        form.addRow("Example:", preview_label)
+
+        def update_preview():
+            prefix = prefix_input.text()
+            length = length_spin.value()
+            if prefix and length > len(prefix):
+                remaining = length - len(prefix)
+                example = prefix + "X" * remaining
+                preview_label.setText(f"{example} ({len(prefix)} char prefix + {remaining} chars = {length} total)")
+            else:
+                preview_label.setText("")
+
+        prefix_input.textChanged.connect(update_preview)
+        length_spin.valueChanged.connect(update_preview)
+
+        layout.addLayout(form)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        btn_cancel = QPushButton("Cancel")
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_layout.addWidget(btn_cancel)
+
+        btn_save = QPushButton("Add Division")
+        btn_save.setStyleSheet(self.get_button_style("primary"))
+        btn_layout.addWidget(btn_save)
+
+        layout.addLayout(btn_layout)
+
+        def save_division():
+            name = name_input.text().strip()
+            prefix = prefix_input.text().strip()
+            length = length_spin.value()
+            desc = desc_input.text().strip()
+
+            if not name:
+                QMessageBox.warning(dialog, "Missing Input", "Please enter a division name.")
+                return
+            if not prefix:
+                QMessageBox.warning(dialog, "Missing Input", "Please enter a prefix.")
+                return
+            if length <= len(prefix):
+                QMessageBox.warning(dialog, "Invalid Length", "Total length must be greater than the prefix length.")
+                return
+
+            try:
+                conn = sqlite3.connect(str(DB_PATH))
+                c = conn.cursor()
+                c.execute("INSERT INTO file_number_divisions (division_name, prefix, total_length, description) VALUES (?, ?, ?, ?)",
+                         (name, prefix, length, desc))
+                conn.commit()
+                conn.close()
+                dialog.accept()
+                self._refresh_divisions_list()
+                QMessageBox.information(self, "Success", f"Division '{name}' added successfully.")
+            except Exception as e:
+                logger.error(f"Failed to add division: {e}")
+                QMessageBox.critical(dialog, "Error", f"Failed to add division: {e}")
+
+        btn_save.clicked.connect(save_division)
+        self.center_dialog(dialog)
+        dialog.exec_()
+
+    def _edit_division_dialog(self):
+        """Show dialog to edit a selected file number division."""
+        selected = self.divisions_table.selectedItems()
+        if not selected:
+            QMessageBox.warning(self, "No Selection", "Please select a division to edit.")
+            return
+
+        row = self.divisions_table.currentRow()
+        div_id = self.divisions_table.item(row, 0).data(Qt.UserRole)
+        current_name = self.divisions_table.item(row, 0).text()
+        current_prefix = self.divisions_table.item(row, 1).text()
+        current_length = int(self.divisions_table.item(row, 2).text())
+        current_desc = self.divisions_table.item(row, 3).text()
+        current_active = self.divisions_table.item(row, 4).text() == "Yes"
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Edit File Number Division")
+        dialog.resize(400, 280)
+        layout = QVBoxLayout(dialog)
+
+        form = QFormLayout()
+
+        name_input = QLineEdit(current_name)
+        form.addRow("Division Name:", name_input)
+
+        prefix_input = QLineEdit(current_prefix)
+        prefix_input.setMaxLength(10)
+        form.addRow("Prefix:", prefix_input)
+
+        length_spin = QSpinBox()
+        length_spin.setRange(1, 20)
+        length_spin.setValue(current_length)
+        form.addRow("Total Length:", length_spin)
+
+        desc_input = QLineEdit(current_desc)
+        form.addRow("Description:", desc_input)
+
+        active_check = QCheckBox("Active")
+        active_check.setChecked(current_active)
+        form.addRow("Status:", active_check)
+
+        # Preview label
+        preview_label = QLabel("")
+        preview_label.setStyleSheet("color: #666; font-style: italic;")
+        form.addRow("Example:", preview_label)
+
+        def update_preview():
+            prefix = prefix_input.text()
+            length = length_spin.value()
+            if prefix and length > len(prefix):
+                remaining = length - len(prefix)
+                example = prefix + "X" * remaining
+                preview_label.setText(f"{example} ({len(prefix)} char prefix + {remaining} chars = {length} total)")
+            else:
+                preview_label.setText("")
+
+        prefix_input.textChanged.connect(update_preview)
+        length_spin.valueChanged.connect(update_preview)
+        update_preview()
+
+        layout.addLayout(form)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        btn_cancel = QPushButton("Cancel")
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_layout.addWidget(btn_cancel)
+
+        btn_save = QPushButton("Save Changes")
+        btn_save.setStyleSheet(self.get_button_style("primary"))
+        btn_layout.addWidget(btn_save)
+
+        layout.addLayout(btn_layout)
+
+        def save_changes():
+            name = name_input.text().strip()
+            prefix = prefix_input.text().strip()
+            length = length_spin.value()
+            desc = desc_input.text().strip()
+            is_active = 1 if active_check.isChecked() else 0
+
+            if not name:
+                QMessageBox.warning(dialog, "Missing Input", "Please enter a division name.")
+                return
+            if not prefix:
+                QMessageBox.warning(dialog, "Missing Input", "Please enter a prefix.")
+                return
+            if length <= len(prefix):
+                QMessageBox.warning(dialog, "Invalid Length", "Total length must be greater than the prefix length.")
+                return
+
+            try:
+                conn = sqlite3.connect(str(DB_PATH))
+                c = conn.cursor()
+                c.execute("UPDATE file_number_divisions SET division_name=?, prefix=?, total_length=?, description=?, is_active=? WHERE id=?",
+                         (name, prefix, length, desc, is_active, div_id))
+                conn.commit()
+                conn.close()
+                dialog.accept()
+                self._refresh_divisions_list()
+                QMessageBox.information(self, "Success", f"Division '{name}' updated successfully.")
+            except Exception as e:
+                logger.error(f"Failed to update division: {e}")
+                QMessageBox.critical(dialog, "Error", f"Failed to update division: {e}")
+
+        btn_save.clicked.connect(save_changes)
+        self.center_dialog(dialog)
+        dialog.exec_()
+
+    def _delete_division(self):
+        """Delete the selected file number division."""
+        selected = self.divisions_table.selectedItems()
+        if not selected:
+            QMessageBox.warning(self, "No Selection", "Please select a division to delete.")
+            return
+
+        row = self.divisions_table.currentRow()
+        div_id = self.divisions_table.item(row, 0).data(Qt.UserRole)
+        div_name = self.divisions_table.item(row, 0).text()
+
+        reply = QMessageBox.question(self, "Confirm Delete",
+                                    f"Are you sure you want to delete the division '{div_name}'?",
+                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+            c.execute("DELETE FROM file_number_divisions WHERE id=?", (div_id,))
+            conn.commit()
+            conn.close()
+            self._refresh_divisions_list()
+            QMessageBox.information(self, "Deleted", f"Division '{div_name}' has been deleted.")
+        except Exception as e:
+            logger.error(f"Failed to delete division: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to delete division: {e}")
+
+    def _get_divisions(self):
+        """Get list of active file number divisions from database."""
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            c = conn.cursor()
+            c.execute("SELECT id, division_name, prefix, total_length FROM file_number_divisions WHERE is_active=1 ORDER BY division_name")
+            divisions = c.fetchall()
+            conn.close()
+            return divisions
+        except Exception as e:
+            logger.error(f"Failed to get divisions: {e}")
+            return []
+
+    def _refresh_division_combo(self):
+        """Refresh the division combo box on the PDF Processing tab."""
+        if not hasattr(self, 'division_combo'):
+            return
+
+        current_selection = self.division_combo.currentData()
+        self.division_combo.clear()
+        self.division_combo.addItem("-- No Division --", None)
+
+        divisions = self._get_divisions()
+        for div_id, name, prefix, length in divisions:
+            self.division_combo.addItem(f"{name} ({prefix}*, {length} chars)", (div_id, prefix, length))
+
+        # Restore selection if possible
+        if current_selection:
+            for i in range(self.division_combo.count()):
+                if self.division_combo.itemData(i) and self.division_combo.itemData(i)[0] == current_selection[0]:
+                    self.division_combo.setCurrentIndex(i)
+                    break
+
+    def _validate_file_number(self, file_number: str) -> tuple:
+        """
+        Validate file number against selected division rules.
+        Returns (is_valid, error_message).
+        """
+        if not hasattr(self, 'division_combo'):
+            return True, ""
+
+        division_data = self.division_combo.currentData()
+        if not division_data:
+            # No division selected, no validation
+            return True, ""
+
+        div_id, prefix, total_length = division_data
+
+        if not file_number:
+            return False, "File number is required"
+
+        if not file_number.startswith(prefix):
+            return False, f"File number must start with '{prefix}'"
+
+        if len(file_number) != total_length:
+            return False, f"File number must be exactly {total_length} characters (currently {len(file_number)})"
+
+        return True, ""
 
     # =========================================================================
     # User Management Methods
@@ -12900,21 +13348,30 @@ class TariffMill(QMainWindow):
                 role_item.setForeground(QColor("#0078d4"))
             self.user_table.setItem(row, 2, role_item)
 
-            # Actions buttons
+            # Actions buttons with standard icons
             actions_widget = QWidget()
             actions_layout = QHBoxLayout(actions_widget)
-            actions_layout.setContentsMargins(2, 2, 2, 2)
+            actions_layout.setContentsMargins(4, 2, 4, 2)
             actions_layout.setSpacing(4)
 
-            btn_edit = QPushButton("Edit")
-            btn_edit.setFixedWidth(55)
+            style = self.style()
+
+            # Edit button - use theme icon for pencil/edit
+            btn_edit = QPushButton()
+            edit_icon = QIcon.fromTheme("document-edit", style.standardIcon(QStyle.SP_FileDialogDetailedView))
+            btn_edit.setIcon(edit_icon)
+            btn_edit.setFixedSize(26, 24)
+            btn_edit.setToolTip("Edit user")
             btn_edit.clicked.connect(lambda checked, e=user_key: self._edit_user_dialog(e))
             actions_layout.addWidget(btn_edit)
 
             # Only show Reset PW for password-based users
             if not is_windows_user:
-                btn_reset = QPushButton("Reset PW")
-                btn_reset.setFixedWidth(80)
+                btn_reset = QPushButton()
+                reset_icon = QIcon.fromTheme("view-refresh", style.standardIcon(QStyle.SP_BrowserReload))
+                btn_reset.setIcon(reset_icon)
+                btn_reset.setFixedSize(26, 24)
+                btn_reset.setToolTip("Reset password")
                 btn_reset.clicked.connect(lambda checked, e=user_key: self._reset_user_password(e))
                 actions_layout.addWidget(btn_reset)
 
@@ -12922,12 +13379,15 @@ class TariffMill(QMainWindow):
             if hasattr(self, 'auth_manager') and self.auth_manager:
                 current_user = self.auth_manager.current_user or ''
                 if user_key.lower() != current_user.lower():
-                    btn_delete = QPushButton("Del")
-                    btn_delete.setFixedWidth(45)
-                    btn_delete.setStyleSheet("color: #dc3545;")
+                    btn_delete = QPushButton()
+                    delete_icon = QIcon.fromTheme("edit-delete", style.standardIcon(QStyle.SP_TrashIcon))
+                    btn_delete.setIcon(delete_icon)
+                    btn_delete.setFixedSize(26, 24)
+                    btn_delete.setToolTip("Delete user")
                     btn_delete.clicked.connect(lambda checked, e=user_key: self._delete_user(e))
                     actions_layout.addWidget(btn_delete)
 
+            actions_layout.addStretch()
             self.user_table.setCellWidget(row, 3, actions_widget)
 
     def _load_auth_users(self) -> dict:
@@ -13788,6 +14248,7 @@ class TariffMill(QMainWindow):
         event_filter.addItem("All Events", "")
         event_filter.addItem("Successful Exports", "EXPORT_SUCCESS")
         event_filter.addItem("Blocked - No File Number", "EXPORT_BLOCKED_NO_FILE_NUMBER")
+        event_filter.addItem("Blocked - Invalid Format", "EXPORT_BLOCKED_INVALID_FORMAT")
         event_filter.addItem("Blocked - Totals Mismatch", "EXPORT_BLOCKED_TOTALS_MISMATCH")
         event_filter.addItem("Blocked - Empty", "EXPORT_BLOCKED_EMPTY")
         filter_layout.addWidget(event_filter)
@@ -23829,6 +24290,9 @@ Please fix this error in the template code. Return the complete corrected templa
 
     def load_available_mids(self):
         try:
+            # Also load divisions combo
+            self._refresh_division_combo()
+
             # Preserve current selection before reloading
             current_selection = self.selected_mid
 
@@ -23896,6 +24360,42 @@ Please fix this error in the template code. Return the complete corrected templa
             self.selected_mid = text
         else:
             self.selected_mid = ""
+
+    def _on_division_changed(self):
+        """Handle division selection change - update file number validation and placeholder."""
+        division_data = self.division_combo.currentData()
+        if division_data:
+            div_id, prefix, total_length = division_data
+            self.file_number_input.setPlaceholderText(f"e.g., {prefix}{'X' * (total_length - len(prefix))} ({total_length} chars)")
+            self.file_number_input.setToolTip(f"Must start with '{prefix}' and be exactly {total_length} characters")
+        else:
+            self.file_number_input.setPlaceholderText("Enter file number (required)...")
+            self.file_number_input.setToolTip("Billing reference number - required for export")
+
+        # Re-validate current input
+        self._update_file_number_validation()
+
+    def _update_file_number_validation(self):
+        """Update the file number validation indicator based on current input and selected division."""
+        if not hasattr(self, 'file_number_validation_label'):
+            return
+
+        file_number = self.file_number_input.text().strip()
+        is_valid, error_msg = self._validate_file_number(file_number)
+
+        if not file_number:
+            self.file_number_validation_label.setText("")
+            self.file_number_validation_label.setStyleSheet("font-size: 11px;")
+        elif is_valid:
+            division_data = self.division_combo.currentData()
+            if division_data:
+                self.file_number_validation_label.setText("✓ Valid format")
+                self.file_number_validation_label.setStyleSheet("color: #27ae60; font-size: 11px;")
+            else:
+                self.file_number_validation_label.setText("")
+        else:
+            self.file_number_validation_label.setText(f"✗ {error_msg}")
+            self.file_number_validation_label.setStyleSheet("color: #e74c3c; font-size: 11px;")
 
     def update_export_invoice_total(self):
         """Update the invoice total display when a file is selected"""
