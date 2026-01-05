@@ -8194,6 +8194,32 @@ class TariffMill(QMainWindow):
                     btn.setStyleSheet(self.get_button_style("info"))
                 elif btn.text() == "Execute":
                     btn.setStyleSheet(self.get_button_style("success"))
+                elif btn.text() == "Add Row":
+                    btn.setStyleSheet(self.get_button_style("success"))
+                elif btn.text() == "Delete Selected":
+                    btn.setStyleSheet(self.get_button_style("danger"))
+                elif btn.text() == "Save Changes":
+                    btn.setStyleSheet(self.get_button_style("success"))
+                elif btn.text() == "Refresh":
+                    btn.setStyleSheet(self.get_button_style("info"))
+                elif btn.text() == "Export Missing HTS":
+                    btn.setStyleSheet(self.get_button_style("secondary"))
+                elif btn.text() == "Verify HTS":
+                    btn.setStyleSheet(self.get_button_style("info"))
+                elif btn.text() == "Export by Client":
+                    btn.setStyleSheet(self.get_button_style("primary"))
+                elif btn.text() == "Show All Parts":
+                    btn.setStyleSheet(self.get_button_style("default"))
+                elif btn.text() == "Missing HTS Codes":
+                    btn.setStyleSheet(self.get_button_style("warning"))
+                elif btn.text() == "Invalid HTS Codes":
+                    btn.setStyleSheet(self.get_button_style("danger"))
+                elif btn.text() == "Steel Parts":
+                    btn.setStyleSheet(self.get_button_style("info"))
+                elif btn.text() == "Aluminum Parts":
+                    btn.setStyleSheet(self.get_button_style("info"))
+                elif btn.text() == "Clear Filters":
+                    btn.setStyleSheet(self.get_button_style("warning"))
         
         # Config tab
         if hasattr(self, 'tab_config'):
@@ -8536,21 +8562,77 @@ class TariffMill(QMainWindow):
         from PyQt5.QtGui import QPalette, QColor
         from PyQt5.QtWidgets import QApplication
 
-        palette = QApplication.palette()
+        # Get current theme
+        current_theme = getattr(self, 'current_theme', 'Fusion (Light)')
 
-        # Get base colors from theme
-        base_bg = palette.color(QPalette.Button)
-        base_text = palette.color(QPalette.ButtonText)
-        highlight = palette.color(QPalette.Highlight)
+        # Define theme-specific color palettes
+        if current_theme in ["Light Cyan", "Muted Cyan"]:
+            # Cyan/Teal theme colors
+            colors = {
+                "default": (QColor(141, 178, 188), QColor(120, 158, 168)),    # Muted cyan
+                "primary": (QColor(70, 160, 170), QColor(55, 140, 150)),      # Teal
+                "secondary": (QColor(120, 150, 160), QColor(100, 130, 140)),  # Muted blue-gray
+                "success": (QColor(46, 160, 130), QColor(36, 140, 110)),      # Teal-green
+                "danger": (QColor(200, 85, 85), QColor(180, 65, 65)),         # Muted red
+                "warning": (QColor(200, 160, 60), QColor(180, 140, 40)),      # Muted amber
+                "info": (QColor(80, 150, 170), QColor(60, 130, 150)),         # Cyan-blue
+            }
+        elif current_theme == "Ocean":
+            # Ocean theme - deep blues
+            colors = {
+                "default": (QColor(58, 106, 154), QColor(48, 90, 130)),       # Ocean blue
+                "primary": (QColor(42, 122, 170), QColor(32, 102, 150)),      # Bright ocean
+                "secondary": (QColor(70, 100, 130), QColor(55, 85, 115)),     # Slate blue
+                "success": (QColor(46, 140, 120), QColor(36, 120, 100)),      # Ocean teal
+                "danger": (QColor(180, 70, 70), QColor(160, 50, 50)),         # Deep red
+                "warning": (QColor(180, 140, 50), QColor(160, 120, 30)),      # Amber
+                "info": (QColor(70, 130, 170), QColor(50, 110, 150)),         # Light ocean
+            }
+        elif current_theme == "Fusion (Dark)":
+            # Dark theme colors
+            colors = {
+                "default": (QColor(85, 85, 85), QColor(70, 70, 70)),          # Dark gray
+                "primary": (QColor(52, 120, 180), QColor(42, 100, 160)),      # Blue
+                "secondary": (QColor(100, 100, 110), QColor(85, 85, 95)),     # Medium gray
+                "success": (QColor(46, 140, 100), QColor(36, 120, 80)),       # Green
+                "danger": (QColor(180, 60, 60), QColor(160, 40, 40)),         # Red
+                "warning": (QColor(180, 140, 40), QColor(160, 120, 20)),      # Amber
+                "info": (QColor(60, 130, 170), QColor(40, 110, 150)),         # Cyan
+            }
+        elif current_theme == "macOS":
+            # macOS theme - Apple-style colors
+            colors = {
+                "default": (QColor(230, 230, 230), QColor(210, 210, 210)),    # Light gray
+                "primary": (QColor(0, 122, 255), QColor(0, 100, 220)),        # Apple blue
+                "secondary": (QColor(142, 142, 147), QColor(120, 120, 125)),  # Apple gray
+                "success": (QColor(52, 199, 89), QColor(40, 180, 70)),        # Apple green
+                "danger": (QColor(255, 59, 48), QColor(220, 50, 40)),         # Apple red
+                "warning": (QColor(255, 149, 0), QColor(230, 130, 0)),        # Apple orange
+                "info": (QColor(90, 200, 250), QColor(70, 180, 230)),         # Apple cyan
+            }
+        else:
+            # Default/Fusion Light - use logo blue as base
+            colors = {
+                "default": (QColor(52, 152, 219), QColor(41, 128, 185)),      # Logo blue
+                "primary": (QColor(52, 152, 219), QColor(41, 128, 185)),      # Logo blue
+                "secondary": (QColor(108, 117, 125), QColor(90, 100, 108)),   # Gray
+                "success": (QColor(46, 160, 100), QColor(36, 140, 80)),       # Green
+                "danger": (QColor(200, 60, 60), QColor(180, 40, 40)),         # Red
+                "warning": (QColor(200, 150, 50), QColor(180, 130, 30)),      # Amber
+                "info": (QColor(70, 140, 180), QColor(50, 120, 160)),         # Cyan
+            }
 
-        # All buttons use logo blue color across all themes
-        bg = QColor(52, 152, 219)  # Logo Blue
-        hover_bg = QColor(41, 128, 185)  # Darker Logo Blue
-        disabled_bg = QColor(160, 160, 160)  # Grey
+        # Get colors for the requested button type
+        bg, hover_bg = colors.get(button_type, colors["default"])
+        disabled_bg = QColor(160, 160, 160)  # Grey for all themes
 
-        # Text color - white for dark buttons, black for light buttons
-        text_color = QColor(255, 255, 255) if bg.lightness() < 128 else QColor(0, 0, 0)
-        
+        # Text color - white for dark buttons, dark for light buttons
+        # macOS default buttons need dark text
+        if current_theme == "macOS" and button_type == "default":
+            text_color = QColor(29, 29, 31)  # macOS dark text
+        else:
+            text_color = QColor(255, 255, 255) if bg.lightness() < 160 else QColor(33, 33, 33)
+
         return f"""
             QPushButton {{
                 background-color: rgb({bg.red()}, {bg.green()}, {bg.blue()});
