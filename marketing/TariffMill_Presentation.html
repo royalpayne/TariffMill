@@ -694,7 +694,7 @@
                       <feDropShadow dx="3" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.2"/>
                     </filter>
                     <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
-                      <feGaussianBlur stdDeviation="2" result="blur"/>
+                      <feGaussianBlur stdDeviation="3" result="blur"/>
                       <feMerge>
                         <feMergeNode in="blur"/>
                         <feMergeNode in="SourceGraphic"/>
@@ -706,6 +706,8 @@
                   <circle cx="700" cy="275" r="180" fill="none" stroke="#667eea" stroke-width="2" stroke-dasharray="10,5" opacity="0.3"/>
                   <rect x="40" y="80" width="200" height="390" rx="15" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.2)" stroke-width="1" filter="url(#dropShadow)"/>
                   <text x="140" y="60" font-family="Arial, sans-serif" font-size="18" fill="#a0aec0" text-anchor="middle" font-weight="bold">INPUT FILES</text>
+
+                  <!-- PDF Icon -->
                   <g transform="translate(65, 105)">
                     <rect width="150" height="90" rx="10" fill="#DC3545" filter="url(#dropShadow)"/>
                     <rect x="8" y="8" width="134" height="74" rx="6" fill="white"/>
@@ -713,6 +715,8 @@
                     <text x="75" y="58" font-family="Arial, sans-serif" font-size="11" fill="#666" text-anchor="middle">Invoices</text>
                     <text x="75" y="72" font-family="Arial, sans-serif" font-size="10" fill="#999" text-anchor="middle">.pdf</text>
                   </g>
+
+                  <!-- Excel Icon -->
                   <g transform="translate(65, 210)">
                     <rect width="150" height="90" rx="10" fill="#217346" filter="url(#dropShadow)"/>
                     <rect x="8" y="8" width="134" height="74" rx="6" fill="white"/>
@@ -724,6 +728,8 @@
                     <text x="75" y="50" font-family="Arial, sans-serif" font-size="11" fill="#666" text-anchor="middle">Spreadsheets</text>
                     <text x="75" y="72" font-family="Arial, sans-serif" font-size="10" fill="#999" text-anchor="middle">.xlsx</text>
                   </g>
+
+                  <!-- CSV Icon -->
                   <g transform="translate(65, 315)">
                     <rect width="150" height="90" rx="10" fill="#28A745" filter="url(#dropShadow)"/>
                     <rect x="8" y="8" width="134" height="74" rx="6" fill="white"/>
@@ -732,25 +738,49 @@
                     <text x="75" y="58" font-family="Arial, sans-serif" font-size="11" fill="#666" text-anchor="middle">Data Files</text>
                     <text x="75" y="72" font-family="Arial, sans-serif" font-size="10" fill="#999" text-anchor="middle">.csv</text>
                   </g>
+
+                  <!-- Animated data streams - PDF -->
                   <g filter="url(#softGlow)">
-                    <path d="M 240 150 C 320 150, 380 200, 460 230" stroke="url(#streamGradientLeft)" stroke-width="5" fill="none"/>
-                    <circle cx="280" cy="155" r="5" fill="#DC3545"/>
-                    <circle cx="340" cy="170" r="4" fill="#9b59b6"/>
-                    <circle cx="400" cy="200" r="5" fill="#764ba2"/>
+                    <path d="M 240 150 C 320 150, 380 200, 460 230" stroke="url(#streamGradientLeft)" stroke-width="5" fill="none" stroke-dasharray="10,5">
+                      <animate attributeName="stroke-dashoffset" from="0" to="-30" dur="1s" repeatCount="indefinite"/>
+                    </path>
+                    <circle r="6" fill="#DC3545">
+                      <animateMotion dur="2s" repeatCount="indefinite">
+                        <mpath href="#pathPDF"/>
+                      </animateMotion>
+                    </circle>
                   </g>
+                  <path id="pathPDF" d="M 240 150 C 320 150, 380 200, 460 230" fill="none" stroke="none"/>
+
+                  <!-- Animated data streams - Excel -->
                   <g filter="url(#softGlow)">
-                    <path d="M 240 255 C 320 255, 380 260, 460 265" stroke="url(#streamGradientLeft)" stroke-width="5" fill="none"/>
-                    <circle cx="290" cy="255" r="5" fill="#217346"/>
-                    <circle cx="350" cy="258" r="4" fill="#9b59b6"/>
-                    <circle cx="410" cy="262" r="5" fill="#764ba2"/>
+                    <path d="M 240 255 C 320 255, 380 260, 460 265" stroke="url(#streamGradientLeft)" stroke-width="5" fill="none" stroke-dasharray="10,5">
+                      <animate attributeName="stroke-dashoffset" from="0" to="-30" dur="1s" repeatCount="indefinite"/>
+                    </path>
+                    <circle r="6" fill="#217346">
+                      <animateMotion dur="2.2s" repeatCount="indefinite">
+                        <mpath href="#pathExcel"/>
+                      </animateMotion>
+                    </circle>
                   </g>
+                  <path id="pathExcel" d="M 240 255 C 320 255, 380 260, 460 265" fill="none" stroke="none"/>
+
+                  <!-- Animated data streams - CSV -->
                   <g filter="url(#softGlow)">
-                    <path d="M 240 360 C 320 360, 380 320, 460 300" stroke="url(#streamGradientLeft)" stroke-width="5" fill="none"/>
-                    <circle cx="280" cy="358" r="5" fill="#28A745"/>
-                    <circle cx="340" cy="345" r="4" fill="#9b59b6"/>
-                    <circle cx="400" cy="315" r="5" fill="#764ba2"/>
+                    <path d="M 240 360 C 320 360, 380 320, 460 300" stroke="url(#streamGradientLeft)" stroke-width="5" fill="none" stroke-dasharray="10,5">
+                      <animate attributeName="stroke-dashoffset" from="0" to="-30" dur="1s" repeatCount="indefinite"/>
+                    </path>
+                    <circle r="6" fill="#28A745">
+                      <animateMotion dur="2.5s" repeatCount="indefinite">
+                        <mpath href="#pathCSV"/>
+                      </animateMotion>
+                    </circle>
                   </g>
+                  <path id="pathCSV" d="M 240 360 C 320 360, 380 320, 460 300" fill="none" stroke="none"/>
+
                   <text x="350" y="130" font-family="Arial, sans-serif" font-size="12" fill="#718096" text-anchor="middle" font-style="italic">Raw Data</text>
+
+                  <!-- TariffMill center box -->
                   <g transform="translate(470, 115)">
                     <rect width="260" height="320" rx="20" fill="rgba(255,255,255,0.1)" stroke="url(#tariffmillGrad)" stroke-width="4" filter="url(#dropShadow)"/>
                     <rect x="0" y="0" width="260" height="60" rx="20" fill="url(#tariffmillGrad)"/>
@@ -780,14 +810,29 @@
                   </g>
                   <rect x="545" y="450" width="110" height="30" rx="15" fill="url(#tariffmillGrad)"/>
                   <text x="600" y="471" font-family="Arial, sans-serif" font-size="12" fill="white" text-anchor="middle" font-weight="bold">TRANSFORM</text>
+
+                  <!-- Animated output stream -->
                   <g filter="url(#softGlow)">
-                    <path d="M 750 275 C 850 275, 900 275, 980 275" stroke="url(#streamGradientRight)" stroke-width="8" fill="none"/>
+                    <path d="M 750 275 C 850 275, 900 275, 980 275" stroke="url(#streamGradientRight)" stroke-width="8" fill="none" stroke-dasharray="12,6">
+                      <animate attributeName="stroke-dashoffset" from="0" to="-36" dur="1s" repeatCount="indefinite"/>
+                    </path>
                     <polygon points="975,255 1010,275 975,295" fill="#27ae60"/>
-                    <circle cx="790" cy="275" r="6" fill="#764ba2"/>
-                    <circle cx="850" cy="275" r="7" fill="#27ae60"/>
-                    <circle cx="910" cy="275" r="6" fill="#2ecc71"/>
+                    <circle r="8" fill="#2ecc71">
+                      <animateMotion dur="1.5s" repeatCount="indefinite">
+                        <mpath href="#pathRight"/>
+                      </animateMotion>
+                    </circle>
+                    <circle r="6" fill="#27ae60">
+                      <animateMotion dur="1.5s" repeatCount="indefinite" begin="0.5s">
+                        <mpath href="#pathRight"/>
+                      </animateMotion>
+                    </circle>
                   </g>
+                  <path id="pathRight" d="M 750 275 C 850 275, 900 275, 980 275" fill="none" stroke="none"/>
+
                   <text x="870" y="250" font-family="Arial, sans-serif" font-size="12" fill="#718096" text-anchor="middle" font-style="italic">Upload Sheet</text>
+
+                  <!-- e2open box -->
                   <g transform="translate(1030, 140)">
                     <rect width="280" height="270" rx="20" fill="rgba(255,255,255,0.1)" stroke="#0066CC" stroke-width="3" filter="url(#dropShadow)"/>
                     <rect x="0" y="0" width="280" height="70" rx="20" fill="#0066CC"/>
