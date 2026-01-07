@@ -32,29 +32,12 @@ def _get_subprocess_startupinfo():
 
 def get_version():
     """
-    Get version from git tags.
-    Returns the most recent tag, or fallback if git is unavailable.
+    Get version from __fallback_version__ which is kept in sync with pyproject.toml.
+
+    Note: Previously used git tags, but since releases are managed via GitHub
+    and not all commits are tagged, we now use the explicit fallback version.
     """
-    try:
-        # Get the directory where this file is located
-        file_dir = os.path.dirname(os.path.abspath(__file__))
-
-        # Try to get version from git describe
-        version = subprocess.check_output(
-            ['git', 'describe', '--tags', '--always'],
-            cwd=file_dir,
-            stderr=subprocess.DEVNULL,
-            startupinfo=_get_subprocess_startupinfo()
-        ).decode().strip()
-
-        # Ensure it starts with 'v'
-        if not version.startswith('v'):
-            version = f"v{version}"
-
-        return version
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
-        # Git not available or not a git repo - use fallback
-        return __fallback_version__
+    return __fallback_version__
 
 def get_version_info():
     """
