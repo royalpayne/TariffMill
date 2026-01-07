@@ -4102,6 +4102,13 @@ class TariffMill(QMainWindow):
         self.reprocess_btn.clicked.connect(self.reprocess_invoice)
         self.reprocess_btn.setToolTip("Re-process invoice to pick up database changes")
 
+        self.add_missing_parts_btn = QPushButton("Add Missing")
+        self.add_missing_parts_btn.setEnabled(False)
+        self.add_missing_parts_btn.setFixedHeight(28)
+        self.add_missing_parts_btn.setStyleSheet(self.get_button_style("warning"))
+        self.add_missing_parts_btn.clicked.connect(self.show_add_missing_parts_dialog)
+        self.add_missing_parts_btn.setToolTip("Add 'Not Found' parts to the database")
+
         self.clear_btn = QPushButton("Clear All")
         self.clear_btn.setFixedHeight(28)
         self.clear_btn.setStyleSheet(self.get_button_style("danger"))
@@ -4109,6 +4116,7 @@ class TariffMill(QMainWindow):
 
         actions_layout.addWidget(self.process_btn)
         actions_layout.addWidget(self.reprocess_btn)
+        actions_layout.addWidget(self.add_missing_parts_btn)
         actions_layout.addWidget(self.clear_btn)
         actions_group.setLayout(actions_layout)
         left_side.addWidget(actions_group)
@@ -8843,6 +8851,7 @@ class TariffMill(QMainWindow):
         self.process_btn.setEnabled(False)
         self.process_btn.setText("Process Invoice")  # Reset button text
         self.reprocess_btn.setEnabled(False)  # Disable reprocess button
+        self.add_missing_parts_btn.setEnabled(False)  # Disable add missing parts button
         self.progress.setVisible(False)
         self.invoice_check_label.setText("No file loaded")
         self.csv_total_value = 0.0
@@ -10251,6 +10260,10 @@ class TariffMill(QMainWindow):
 
         # Enable reprocess button after data has been populated
         self.reprocess_btn.setEnabled(True)
+
+        # Enable "Add Missing" button if there are "Not Found" parts
+        has_not_found = self.last_processed_df is not None and self.last_processed_df['_not_in_db'].any()
+        self.add_missing_parts_btn.setEnabled(has_not_found)
 
         # Reset invoice check display after processing is complete
         self.invoice_check_label.setText("No file loaded")
@@ -21365,6 +21378,199 @@ Please fix this error in the template code. Return the complete corrected templa
         except Exception as e:
             logger.error(f"Failed to add not-found parts to database: {e}")
             return 0
+
+    def show_add_missing_parts_dialog(self):
+        """
+        Show a dialog with all 'Not Found' parts from the Result Preview,
+        allowing the user to enter HTS codes and add them to the database.
+        """
+        if self.last_processed_df is None:
+            QMessageBox.information(self, "No Data", "No processed invoice data available.")
+            return
+
+        # Get rows where _not_in_db is True
+        not_found_df = self.last_processed_df[self.last_processed_df['_not_in_db'] == True].copy()
+        if not_found_df.empty:
+            QMessageBox.information(self, "No Missing Parts", "All parts in the current invoice were found in the database.")
+            return
+
+        # Create the dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Add Missing Parts ({len(not_found_df)} parts)")
+        dialog.setMinimumSize(900, 500)
+        dialog.setModal(True)
+
+        layout = QVBoxLayout(dialog)
+
+        # Instructions
+        instructions = QLabel(
+            "Enter HTS codes for the parts below, then click 'Add to Database'.\n"
+            "Parts will be added with 100% Non-232 ratio by default. You can edit them later in Parts View."
+        )
+        instructions.setWordWrap(True)
+        layout.addWidget(instructions)
+
+        # Create table for missing parts
+        table = QTableWidget()
+        table.setColumnCount(5)
+        table.setHorizontalHeaderLabels(["Part Number", "Value (USD)", "HTS Code", "MID", "Description"])
+        table.setRowCount(len(not_found_df))
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        table.horizontalHeader().setStretchLastSection(True)
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.setAlternatingRowColors(True)
+
+        # Populate the table
+        for row_idx, (df_idx, row) in enumerate(not_found_df.iterrows()):
+            part_number = str(row.get('Product No', '')).strip()
+            value_usd = row.get('value_usd', 0)
+            try:
+                value_display = f"${float(value_usd):,.2f}"
+            except:
+                value_display = str(value_usd)
+
+            # Get current values from the preview table if available
+            hts_code = ""
+            mid = ""
+            for i in range(self.table.rowCount()):
+                item = self.table.item(i, 0)  # Column 0 is Product No
+                if item and item.text() == part_number:
+                    hts_item = self.table.item(i, 2)  # Column 2 is HTS
+                    mid_item = self.table.item(i, 3)  # Column 3 is MID
+                    if hts_item:
+                        hts_code = hts_item.text()
+                    if mid_item:
+                        mid = mid_item.text()
+                    break
+
+            # Part Number (read-only)
+            part_item = QTableWidgetItem(part_number)
+            part_item.setFlags(part_item.flags() & ~Qt.ItemIsEditable)
+            table.setItem(row_idx, 0, part_item)
+
+            # Value (read-only)
+            value_item = QTableWidgetItem(value_display)
+            value_item.setFlags(value_item.flags() & ~Qt.ItemIsEditable)
+            table.setItem(row_idx, 1, value_item)
+
+            # HTS Code (editable)
+            hts_item = QTableWidgetItem(hts_code)
+            table.setItem(row_idx, 2, hts_item)
+
+            # MID (editable)
+            mid_item = QTableWidgetItem(mid)
+            table.setItem(row_idx, 3, mid_item)
+
+            # Description (editable)
+            desc_item = QTableWidgetItem("")
+            table.setItem(row_idx, 4, desc_item)
+
+        # Resize columns
+        table.resizeColumnsToContents()
+        table.setColumnWidth(0, 150)  # Part Number
+        table.setColumnWidth(1, 100)  # Value
+        table.setColumnWidth(2, 120)  # HTS Code
+        table.setColumnWidth(3, 120)  # MID
+        table.setColumnWidth(4, 250)  # Description
+
+        layout.addWidget(table)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        btn_add = QPushButton("Add to Database")
+        btn_add.setStyleSheet(self.get_button_style("success"))
+        btn_add.setFixedHeight(32)
+
+        btn_cancel = QPushButton("Cancel")
+        btn_cancel.setStyleSheet(self.get_button_style("default"))
+        btn_cancel.setFixedHeight(32)
+
+        btn_layout.addWidget(btn_add)
+        btn_layout.addWidget(btn_cancel)
+        layout.addLayout(btn_layout)
+
+        # Connect buttons
+        btn_cancel.clicked.connect(dialog.reject)
+
+        def add_parts_to_database():
+            """Add the parts from the dialog table to the database."""
+            try:
+                conn = sqlite3.connect(str(DB_PATH))
+                c = conn.cursor()
+                now = datetime.now().isoformat()
+                added_count = 0
+                added_parts = []
+                skipped_parts = []
+
+                for row_idx in range(table.rowCount()):
+                    part_number = table.item(row_idx, 0).text().strip()
+                    if not part_number:
+                        continue
+
+                    # Check if part already exists
+                    c.execute("SELECT 1 FROM parts_master WHERE part_number = ?", (part_number.upper(),))
+                    if c.fetchone():
+                        skipped_parts.append(part_number)
+                        continue
+
+                    hts_code = table.item(row_idx, 2).text().strip() if table.item(row_idx, 2) else ""
+                    mid = table.item(row_idx, 3).text().strip() if table.item(row_idx, 3) else ""
+                    description = table.item(row_idx, 4).text().strip() if table.item(row_idx, 4) else ""
+
+                    # Auto-lookup qty_unit from hts_units table based on HTS code
+                    qty_unit = get_hts_qty_unit(hts_code) if hts_code else ""
+
+                    # Insert the part with 100% non-232 ratio by default
+                    c.execute("""INSERT INTO parts_master (part_number, description, hts_code, country_origin, mid, client_code,
+                              steel_ratio, non_steel_ratio, last_updated, qty_unit, aluminum_ratio, copper_ratio, wood_ratio, auto_ratio,
+                              Sec301_Exclusion_Tariff)
+                              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                              (part_number.upper(), description, hts_code, '', mid, '', 0.0, 100.0, now, qty_unit, 0.0, 0.0, 0.0, 0.0, ''))
+
+                    if c.rowcount:
+                        added_count += 1
+                        added_parts.append(part_number)
+
+                conn.commit()
+                conn.close()
+
+                # Show result message
+                if added_count > 0:
+                    logger.info(f"Added {added_count} new parts to database from dialog: {added_parts}")
+                    msg = f"Successfully added {added_count} part(s) to the database."
+                    if skipped_parts:
+                        msg += f"\n\n{len(skipped_parts)} part(s) were skipped (already exist)."
+                    QMessageBox.information(dialog, "Parts Added", msg)
+
+                    # Refresh MIDs and close dialog
+                    self.load_available_mids()
+                    dialog.accept()
+
+                    # Offer to reprocess
+                    reply = QMessageBox.question(
+                        self, "Reprocess Invoice?",
+                        "Parts have been added to the database.\n\nWould you like to reprocess the invoice to update the preview?",
+                        QMessageBox.Yes | QMessageBox.No,
+                        QMessageBox.Yes
+                    )
+                    if reply == QMessageBox.Yes:
+                        self.reprocess_invoice()
+                else:
+                    if skipped_parts:
+                        QMessageBox.information(dialog, "No Parts Added",
+                            f"All {len(skipped_parts)} part(s) already exist in the database.")
+                    else:
+                        QMessageBox.information(dialog, "No Parts Added", "No parts were added.")
+
+            except Exception as e:
+                logger.error(f"Failed to add parts from dialog: {e}")
+                QMessageBox.critical(dialog, "Error", f"Failed to add parts:\n{e}")
+
+        btn_add.clicked.connect(add_parts_to_database)
+
+        dialog.exec_()
 
     def filter_parts_table(self, text):
         text = text.lower().strip()
