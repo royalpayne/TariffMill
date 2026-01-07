@@ -10262,7 +10262,16 @@ class TariffMill(QMainWindow):
         self.reprocess_btn.setEnabled(True)
 
         # Enable "Add Missing" button if there are "Not Found" parts
-        has_not_found = self.last_processed_df is not None and self.last_processed_df['_not_in_db'].any()
+        has_not_found = False
+        if self.last_processed_df is not None and '_not_in_db' in self.last_processed_df.columns:
+            try:
+                # Check if any row has _not_in_db == True
+                has_not_found = (self.last_processed_df['_not_in_db'] == True).any()
+                not_found_count = (self.last_processed_df['_not_in_db'] == True).sum()
+                logger.info(f"Add Missing button: {not_found_count} parts not found in database, button enabled={has_not_found}")
+            except Exception as e:
+                logger.warning(f"Error checking _not_in_db column: {e}")
+                has_not_found = False
         self.add_missing_parts_btn.setEnabled(has_not_found)
 
         # Reset invoice check display after processing is complete
@@ -21423,7 +21432,8 @@ Please fix this error in the template code. Return the complete corrected templa
         # Populate the table
         for row_idx, (df_idx, row) in enumerate(not_found_df.iterrows()):
             part_number = str(row.get('Product No', '')).strip()
-            value_usd = row.get('value_usd', 0)
+            # Column is named 'ValueUSD' in preview DataFrame
+            value_usd = row.get('ValueUSD', row.get('value_usd', 0))
             try:
                 value_display = f"${float(value_usd):,.2f}"
             except:
