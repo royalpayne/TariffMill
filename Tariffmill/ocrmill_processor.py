@@ -15,8 +15,12 @@ try:
 except ImportError:
     pdfplumber = None
 
-from templates import get_all_templates, refresh_templates
-from templates.bill_of_lading import BillOfLadingTemplate
+try:
+    from Tariffmill.templates import get_all_templates, refresh_templates
+    from Tariffmill.templates.bill_of_lading import BillOfLadingTemplate
+except ImportError:
+    from templates import get_all_templates, refresh_templates
+    from templates.bill_of_lading import BillOfLadingTemplate
 
 
 class OCRMillConfig:
