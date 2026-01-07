@@ -16345,9 +16345,14 @@ class TariffMill(QMainWindow):
 
     def setup_ocrmill_tab(self):
         """Setup the OCRMill tab for OCR invoice processing"""
-        from ocrmill_database import OCRMillDatabase
-        from ocrmill_processor import ProcessorEngine, OCRMillConfig
-        from ocrmill_worker import OCRMillWorker, SingleFileWorker, MultiFileWorker, ParallelFolderWorker
+        try:
+            from Tariffmill.ocrmill_database import OCRMillDatabase
+            from Tariffmill.ocrmill_processor import ProcessorEngine, OCRMillConfig
+            from Tariffmill.ocrmill_worker import OCRMillWorker, SingleFileWorker, MultiFileWorker, ParallelFolderWorker
+        except ImportError:
+            from ocrmill_database import OCRMillDatabase
+            from ocrmill_processor import ProcessorEngine, OCRMillConfig
+            from ocrmill_worker import OCRMillWorker, SingleFileWorker, MultiFileWorker, ParallelFolderWorker
 
         # Use QVBoxLayout directly on the tab widget (like Process Shipment tab)
         layout = QVBoxLayout(self.tab_ocrmill)
@@ -19970,7 +19975,10 @@ Please fix this error in the template code. Return the complete corrected templa
         )
         if file_path:
             self.ocrmill_log(f"Processing file: {file_path}")
-            from ocrmill_worker import SingleFileWorker
+            try:
+                from Tariffmill.ocrmill_worker import SingleFileWorker
+            except ImportError:
+                from ocrmill_worker import SingleFileWorker
             self.ocrmill_single_worker = SingleFileWorker(
                 self.ocrmill_processor,
                 Path(file_path),
@@ -19996,7 +20004,10 @@ Please fix this error in the template code. Return the complete corrected templa
             return
 
         # Use parallel processing for multiple files
-        from ocrmill_worker import MultiFileWorker
+        try:
+            from Tariffmill.ocrmill_worker import MultiFileWorker
+        except ImportError:
+            from ocrmill_worker import MultiFileWorker
 
         self.ocrmill_log(f"Processing {len(file_paths)} dropped file(s) in parallel...")
 
@@ -20029,7 +20040,10 @@ Please fix this error in the template code. Return the complete corrected templa
 
     def ocrmill_process_folder_now(self):
         """Process all PDFs in the input folder immediately using parallel processing."""
-        from ocrmill_worker import ParallelFolderWorker
+        try:
+            from Tariffmill.ocrmill_worker import ParallelFolderWorker
+        except ImportError:
+            from ocrmill_worker import ParallelFolderWorker
 
         self.ocrmill_log("Processing folder in parallel...")
         input_folder = self.ocrmill_config.input_folder
