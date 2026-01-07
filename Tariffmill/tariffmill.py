@@ -7327,11 +7327,13 @@ class TariffMill(QMainWindow):
         import subprocess
         import os
 
+        logger.info("Starting Linux update process...")
         dialog.accept()
 
         # Find the install directory (where tariffmill.py is located)
         install_dir = Path(__file__).parent.parent
         venv_dir = install_dir / '.venv'
+        logger.info(f"Install dir: {install_dir}, venv dir: {venv_dir}")
 
         # Create progress dialog
         progress_dialog = QDialog(self)
