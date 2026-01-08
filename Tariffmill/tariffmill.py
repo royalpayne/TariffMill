@@ -602,7 +602,7 @@ class AuthenticationManager:
         self.auth_method = None  # 'windows' or 'password'
 
     def get_allowed_domains(self) -> list:
-        """Get allowed Windows domains from settings."""
+        """Get allowed Windows domains from settings."""  
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
@@ -4160,9 +4160,10 @@ class TariffMill(QMainWindow):
         left_scroll.setWidget(left_scroll_widget)
         left_outer_layout.addWidget(left_scroll)
 
-        # Set min/max width for left controls
-        left_outer_box.setMinimumWidth(300)
-        left_outer_box.setMaximumWidth(400)
+        # Set minimum width for left controls - allow user to resize wider via splitter
+        left_outer_box.setMinimumWidth(320)
+        # Use size policy to allow proper resizing - Preferred allows splitter to work
+        left_outer_box.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
 
         # Add left_outer_box to splitter
         splitter.addWidget(left_outer_box)
@@ -4236,13 +4237,34 @@ class TariffMill(QMainWindow):
         # Add right widget to splitter
         splitter.addWidget(right_widget)
 
-        # Set initial splitter sizes (left: 350, right: remaining)
-        splitter.setSizes([350, 850])
+        # Set stretch factors - right side (preview) should get more space when resizing
+        splitter.setStretchFactor(0, 0)  # Left panel: don't stretch automatically
+        splitter.setStretchFactor(1, 1)  # Right panel: stretch to fill available space
 
         # Make the splitter collapsible on the left side
         splitter.setCollapsible(0, False)  # Don't allow full collapse
         splitter.setCollapsible(1, False)
-        
+
+        # Restore saved splitter position or use default
+        saved_sizes = get_user_setting('invoice_splitter_sizes', None)
+        if saved_sizes:
+            try:
+                sizes = [int(s) for s in saved_sizes.split(',')]
+                if len(sizes) == 2 and all(s > 0 for s in sizes):
+                    splitter.setSizes(sizes)
+                else:
+                    splitter.setSizes([350, 850])
+            except (ValueError, AttributeError):
+                splitter.setSizes([350, 850])
+        else:
+            splitter.setSizes([350, 850])
+
+        # Save splitter position when changed
+        splitter.splitterMoved.connect(lambda pos, idx: set_user_setting('invoice_splitter_sizes', ','.join(str(s) for s in splitter.sizes())))
+
+        # Store reference for later access
+        self.invoice_splitter = splitter
+
         # Add splitter to main container
         main_container.addWidget(splitter)
 
@@ -4330,51 +4352,32 @@ class TariffMill(QMainWindow):
 
         # Button row
         btn_layout = QHBoxLayout()
-
+        
         btn_refresh = QPushButton("Refresh")
         btn_refresh.setStyleSheet("background:#28a745; color:white; font-weight:bold;")
         btn_refresh.clicked.connect(lambda: log_text.setPlainText(logger.get_logs()))
-
+        
         btn_copy = QPushButton("Copy to Clipboard")
         btn_copy.setStyleSheet("background:#0078D7; color:white; font-weight:bold;")
         btn_copy.clicked.connect(lambda: QApplication.clipboard().setText(log_text.toPlainText()))
-
+        
         btn_clear = QPushButton("Clear Log")
         btn_clear.setStyleSheet("background:#dc3545; color:white; font-weight:bold;")
         btn_clear.clicked.connect(lambda: (logger.logs.clear(), log_text.clear()))
-
-        # Auto-refresh checkbox
-        auto_refresh_cb = QCheckBox("Auto-refresh")
-        auto_refresh_cb.setChecked(True)
-        auto_refresh_cb.setToolTip("Uncheck to pause auto-refresh and review the log")
-
+        
         btn_close = QPushButton("Close")
         btn_close.clicked.connect(dialog.accept)
-
+        
         btn_layout.addWidget(btn_refresh)
         btn_layout.addWidget(btn_copy)
         btn_layout.addWidget(btn_clear)
-        btn_layout.addWidget(auto_refresh_cb)
         btn_layout.addStretch()
         btn_layout.addWidget(btn_close)
         layout.addLayout(btn_layout)
 
         # Auto-refresh timer
         refresh_timer = QTimer(dialog)
-
-        def do_refresh():
-            if auto_refresh_cb.isChecked():
-                # Save scroll position
-                scrollbar = log_text.verticalScrollBar()
-                was_at_bottom = scrollbar.value() >= scrollbar.maximum() - 10
-
-                log_text.setPlainText(logger.get_logs())
-
-                # Auto-scroll to bottom only if user was already at bottom
-                if was_at_bottom:
-                    scrollbar.setValue(scrollbar.maximum())
-
-        refresh_timer.timeout.connect(do_refresh)
+        refresh_timer.timeout.connect(lambda: log_text.setPlainText(logger.get_logs()))
         refresh_timer.start(1000)
 
         self.center_dialog(dialog)
@@ -16591,9 +16594,10 @@ class TariffMill(QMainWindow):
         left_scroll.setWidget(left_scroll_widget)
         left_outer_layout.addWidget(left_scroll)
 
-        # Set min/max width for left controls
-        left_outer_box.setMinimumWidth(300)
-        left_outer_box.setMaximumWidth(400)
+        # Set minimum width for left controls - allow user to resize wider via splitter
+        left_outer_box.setMinimumWidth(320)
+        # Use size policy to allow proper resizing - Preferred allows splitter to work
+        left_outer_box.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
 
         # Add left_outer_box to splitter
         splitter.addWidget(left_outer_box)
@@ -16664,8 +16668,29 @@ class TariffMill(QMainWindow):
         # Add right widget to splitter
         splitter.addWidget(right_widget)
 
-        # Set initial splitter sizes (left: 350, right: remaining)
-        splitter.setSizes([350, 650])
+        # Set stretch factors - right side should get more space when resizing
+        splitter.setStretchFactor(0, 0)  # Left panel: don't stretch automatically
+        splitter.setStretchFactor(1, 1)  # Right panel: stretch to fill available space
+
+        # Restore saved splitter position or use default
+        saved_sizes = get_user_setting('pdf_splitter_sizes', None)
+        if saved_sizes:
+            try:
+                sizes = [int(s) for s in saved_sizes.split(',')]
+                if len(sizes) == 2 and all(s > 0 for s in sizes):
+                    splitter.setSizes(sizes)
+                else:
+                    splitter.setSizes([350, 650])
+            except (ValueError, AttributeError):
+                splitter.setSizes([350, 650])
+        else:
+            splitter.setSizes([350, 650])
+
+        # Save splitter position when changed
+        splitter.splitterMoved.connect(lambda pos, idx: set_user_setting('pdf_splitter_sizes', ','.join(str(s) for s in splitter.sizes())))
+
+        # Store reference for later access
+        self.pdf_splitter = splitter
 
         processing_layout.addWidget(splitter, 1)
 
